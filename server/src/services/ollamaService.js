@@ -1,10 +1,31 @@
 const fs = require('fs').promises
+const fsSync = require('fs')
 const path = require('path')
 
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 const MAX_RETRIES = parseInt(process.env.LLM_MAX_RETRIES || '3')
 const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000')
 const PROMPTS_DIR = path.join(__dirname, '../../../prompts')
+const LOG_FILE = path.join(__dirname, '../../../LLM_log.txt')
+
+// ── LLM logger ────────────────────────────────────────────────────────────────
+
+function llmLog(entry) {
+  const sep = '═'.repeat(80)
+  const line = [
+    `\n${sep}`,
+    `[${new Date().toISOString()}]  model: ${entry.model}  phase: ${entry.phase || '?'}  attempt: ${entry.attempt}`,
+    sep,
+    '--- PROMPT ---',
+    entry.prompt,
+    '--- RESPONSE ---',
+    entry.response,
+    entry.error ? `--- ERROR ---\n${entry.error}` : null,
+    sep,
+  ].filter(Boolean).join('\n')
+
+  fsSync.appendFile(LOG_FILE, line + '\n', () => {})
+}
 
 // ── Carica e compila un prompt template ───────────────────────────────────────
 
@@ -20,7 +41,7 @@ async function loadPrompt(filename, vars = {}) {
 
 // ── Chiamata Ollama con retry ─────────────────────────────────────────────────
 
-async function callOllama(model, prompt, expectJson = true) {
+async function callOllama(model, prompt, expectJson = true, phase = '?') {
   let lastError
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -40,19 +61,27 @@ async function callOllama(model, prompt, expectJson = true) {
       const data = await res.json()
       const raw = data.response?.trim() || ''
 
-      if (!expectJson) return raw
+      if (!expectJson) {
+        llmLog({ model, phase, attempt, prompt, response: raw })
+        return raw
+      }
 
       // Estrai JSON dalla risposta (il modello potrebbe aggiungere testo intorno)
       const parsed = extractJSON(raw)
-      if (parsed !== null) return parsed
+      if (parsed !== null) {
+        llmLog({ model, phase, attempt, prompt, response: raw })
+        return parsed
+      }
 
       console.warn(`[Ollama] Risposta grezza (tentativo ${attempt}):\n${raw.slice(0, 500)}`)
+      llmLog({ model, phase, attempt, prompt, response: raw, error: `JSON non valido` })
       throw new Error(`JSON non valido (tentativo ${attempt}): ${raw.slice(0, 200)}`)
 
     } catch (err) {
       lastError = err
       if (err.name === 'AbortError') {
         lastError = new Error(`Timeout LLM (tentativo ${attempt})`)
+        llmLog({ model, phase, attempt, prompt, response: '', error: lastError.message })
       }
       console.warn(`[Ollama] ${lastError.message}`)
       if (attempt < MAX_RETRIES) await sleep(1000 * attempt)
@@ -88,12 +117,12 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 async function runPhase(model, promptFile, vars) {
   const prompt = await loadPrompt(promptFile, vars)
-  return callOllama(model, prompt, true)
+  return callOllama(model, prompt, true, promptFile)
 }
 
 async function runTagging(model, promptFile, vars) {
   const prompt = await loadPrompt(promptFile, vars)
-  return callOllama(model, prompt, true)
+  return callOllama(model, prompt, true, promptFile)
 }
 
 module.exports = { runPhase, runTagging, loadPrompt, callOllama }
