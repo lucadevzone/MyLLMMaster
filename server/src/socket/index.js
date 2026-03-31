@@ -63,10 +63,37 @@ module.exports = function setupSocket(io) {
 
       const { wasConnected, missed } = await svc.playerConnected(tableId, email)
 
-      // Invia stato completo al giocatore
+      // ── Macchina a stati sessione (prima di inviare session:state) ────────
+      let timerMsForClient = null
+
+      if (session.state === 'custode-pronto') {
+        await svc.updateSessionState(tableId, 'primo-giocatore')
+        timerMsForClient = TIMER_AVVIO_MS
+        svc.setTimer(tableId, 'avvio', TIMER_AVVIO_MS, async () => {
+          await avviaSessione(tableId)
+        })
+
+      } else if (session.state === 'primo-giocatore') {
+        const tutti = table.invitedPlayers.every(e =>
+          session.players.find(p => p.email === e)?.connected
+        )
+        if (tutti) {
+          svc.clearTimer(tableId, 'avvio')
+          // avviaSessione viene chiamato dopo l'invio dello stato iniziale
+        }
+
+      } else if (session.state === 'in-pausa') {
+        const anyConnected = session.players.some(p => p.connected)
+        if (anyConnected) {
+          await svc.updateSessionState(tableId, 'sessione-iniziata')
+        }
+      }
+
+      // Invia stato completo al giocatore (con stato già aggiornato)
       socket.emit('session:state', {
         session: ctx.session,
-        messages: wasConnected ? missed.map(m => ({ ...m, toRecover: true })) : ctx.messages
+        messages: wasConnected ? missed.map(m => ({ ...m, toRecover: true })) : ctx.messages,
+        timerMs: timerMsForClient
       })
 
       // Invia diario
@@ -85,37 +112,23 @@ module.exports = function setupSocket(io) {
         playerState: svc.getPlayer(ctx, email)?.playerState
       })
 
-      // ── Macchina a stati sessione ──────────────────────────────────────────
-      const connessi = session.players.filter(p => p.connected)
+      // Broadcast stato sessione agli altri (non al nuovo arrivato che ha già session:state)
+      socket.to(`table:${tableId}`).emit('session:status-update', {
+        state: ctx.session.state,
+        ...(timerMsForClient ? { timerMs: timerMsForClient } : {})
+      })
 
-      if (session.state === 'custode-pronto') {
-        // Primo giocatore → avvia timer 5 min
-        await svc.updateSessionState(tableId, 'primo-giocatore')
-        io.to(`table:${tableId}`).emit('session:status-update', {
-          state: 'primo-giocatore',
-          timerMs: TIMER_AVVIO_MS
-        })
-
-        svc.setTimer(tableId, 'avvio', TIMER_AVVIO_MS, async () => {
-          await avviaSessione(tableId)
-        })
-
-      } else if (session.state === 'primo-giocatore') {
-        // Tutti connessi → annulla timer e avvia subito
+      // Trigger post-invio
+      if (session.state === 'primo-giocatore') {
         const tutti = table.invitedPlayers.every(e =>
-          session.players.find(p => p.email === e)?.connected
+          ctx.session.players.find(p => p.email === e)?.connected
         )
-        if (tutti) {
-          svc.clearTimer(tableId, 'avvio')
-          await avviaSessione(tableId)
-        }
-
+        if (tutti) await avviaSessione(tableId)
       } else if (session.state === 'in-pausa') {
-        // Riconnessione dopo pausa
-        const anyConnected = session.players.some(p => p.connected)
+        const anyConnected = ctx.session.players.some(p => p.connected)
         if (anyConnected) {
-          await svc.updateSessionState(tableId, 'sessione-iniziata')
           io.to(`table:${tableId}`).emit('session:status-update', { state: 'sessione-iniziata' })
+          custodeEngine.getOrCreate(tableId, io).resume().catch(console.error)
         }
       }
     })
@@ -209,19 +222,7 @@ module.exports = function setupSocket(io) {
       }
     })
 
-    // ── session:avvia-custode ─────────────────────────────────────────────────
-    socket.on('session:avvia-custode', async () => {
-      const tableId = socket.tableId
-      if (!tableId) return
-      if (socket.user.role !== 'admin') {
-        return socket.emit('session:error', 'Solo l\'admin può avviare il Custode')
-      }
-      const engine = custodeEngine.getOrCreate(tableId, io)
-      engine.start().catch(console.error)
-      io.to(`table:${tableId}`).emit('session:toast', { type: 'connect', text: 'Custode avviato' })
-    })
-
-    // ── session:riprendi-custode ──────────────────────────────────────────────
+    // ── session:riprendi-custode ─────────────────────────────────────────────
     socket.on('session:riprendi-custode', async () => {
       const tableId = socket.tableId
       if (!tableId) return
@@ -275,7 +276,6 @@ module.exports = function setupSocket(io) {
     await svc.updateSessionState(tableId, 'sessione-iniziata')
     await svc.setAllPlayersState(tableId, 'gioco-libero')
     io.to(`table:${tableId}`).emit('session:status-update', { state: 'sessione-iniziata' })
-    // Aggiorna stato di tutti i player
     const ctx = svc.getSession(tableId)
     if (ctx) {
       ctx.session.players.forEach(p => {
@@ -286,5 +286,7 @@ module.exports = function setupSocket(io) {
         })
       })
     }
+    // Auto-avvio Custode
+    custodeEngine.getOrCreate(tableId, io).start().catch(console.error)
   }
 }

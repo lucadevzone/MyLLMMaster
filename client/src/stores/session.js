@@ -42,9 +42,10 @@ export const useSessionStore = defineStore('session', () => {
       connected.value = false
     })
 
-    socket.on('session:state', ({ session: s, messages: msgs }) => {
+    socket.on('session:state', ({ session: s, messages: msgs, timerMs: ms }) => {
       session.value = s
       messages.value = msgs || []
+      if (ms !== undefined) timerMs.value = ms
     })
 
     socket.on('session:message', (msg) => {
@@ -123,10 +124,6 @@ export const useSessionStore = defineStore('session', () => {
     socket?.emit('session:set-color', color)
   }
 
-  function avviaCustode() {
-    socket?.emit('session:avvia-custode')
-  }
-
   function riprendiCustode() {
     socket?.emit('session:riprendi-custode')
   }
@@ -146,6 +143,6 @@ export const useSessionStore = defineStore('session', () => {
     custodeTyping, custodePhase,
     myState, sessionState,
     connect, disconnect, sendMessage, rollDice, voteTardi, setColor,
-    avviaCustode, riprendiCustode, addToast
+    riprendiCustode, addToast
   }
 })

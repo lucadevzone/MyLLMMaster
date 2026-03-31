@@ -8,7 +8,13 @@
       "Bash(/Users/luca/Documents/gamedev/MyLLMMaster/server/.env:*)",
       "Bash(timeout 5 node src/server.js)",
       "Bash(git commit:*)",
-      "Bash(node_modules/.bin/vite --version)"
+      "Bash(node_modules/.bin/vite --version)",
+      "Bash(git add:*)",
+      "Bash(node:*)",
+      "Bash(mkdir:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(ollama list:*)"
     ]
   }
 }

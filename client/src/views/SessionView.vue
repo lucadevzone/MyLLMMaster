@@ -390,13 +390,7 @@ function msgBadge(msg) {
               <div v-if="sess.custodePhase" style="font-size:0.8rem;color:var(--color-text-light);margin-bottom:0.5rem">
                 Fase: {{ sess.custodePhase }}
               </div>
-              <button class="btn btn-primary" style="width:100%;margin-bottom:0.5rem"
-                :disabled="sess.sessionState !== 'sessione-iniziata'"
-                @click="sess.avviaCustode()">
-                Avvia Custode
-              </button>
               <button class="btn btn-secondary" style="width:100%;margin-bottom:1rem"
-                :disabled="sess.sessionState !== 'in-pausa'"
                 @click="sess.riprendiCustode()">
                 Riprendi Custode
               </button>
