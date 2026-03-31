@@ -30,6 +30,21 @@ async function getAllTables() {
   return tables
 }
 
+function isSessionDue(table) {
+  if (!table.plannedSession) return false
+  const { date, time } = table.plannedSession
+  return new Date(`${date}T${time}:00`) <= new Date()
+}
+
+async function checkAndOpenTable(table) {
+  if (table.state === 'ready' && isSessionDue(table)) {
+    table.state = 'open'
+    table.updatedAt = new Date().toISOString()
+    await writeJSON(path.join(TABLES_DIR, table.id, 'table.json'), table)
+  }
+  return table
+}
+
 async function getOllamaModels() {
   try {
     const res = await fetch(`${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}/api/tags`)
@@ -48,11 +63,11 @@ router.get('/ollama-models', authMiddleware, adminOnly, async (req, res) => {
 
 // GET /api/tables  (admin: tutti, player: solo i suoi)
 router.get('/', authMiddleware, async (req, res) => {
-  const tables = await getAllTables()
+  const raw = await getAllTables()
+  const tables = await Promise.all(raw.map(checkAndOpenTable))
   if (req.user.role === 'admin') {
     return res.json(tables)
   }
-  // Player vede solo i tavoli a cui è invitato con stato non archived
   const myTables = tables.filter(t =>
     t.invitedPlayers.includes(req.user.email) && t.state !== 'archived'
   )
@@ -63,7 +78,8 @@ router.get('/', authMiddleware, async (req, res) => {
 router.get('/:id', authMiddleware, async (req, res) => {
   const filePath = await getTablePath(req.params.id)
   if (!await fileExists(filePath)) return res.status(404).json({ error: 'Tavolo non trovato' })
-  res.json(await readJSON(filePath))
+  const table = await checkAndOpenTable(await readJSON(filePath))
+  res.json(table)
 })
 
 // POST /api/tables  (solo admin)
