@@ -63,33 +63,30 @@ module.exports = function setupSocket(io) {
 
       const { wasConnected, missed } = await svc.playerConnected(tableId, email)
 
-      // ── Macchina a stati sessione (prima di inviare session:state) ────────
+      // ── Macchina a stati sessione ─────────────────────────────────────────
+      const tutti = table.invitedPlayers.every(e =>
+        session.players.find(p => p.email === e)?.connected
+      )
+
       let timerMsForClient = null
+      let doAvvia = false
+      let doResume = false
 
-      if (session.state === 'custode-pronto') {
-        await svc.updateSessionState(tableId, 'primo-giocatore')
-        timerMsForClient = TIMER_AVVIO_MS
-        svc.setTimer(tableId, 'avvio', TIMER_AVVIO_MS, async () => {
-          await avviaSessione(tableId)
-        })
-
-      } else if (session.state === 'primo-giocatore') {
-        const tutti = table.invitedPlayers.every(e =>
-          session.players.find(p => p.email === e)?.connected
-        )
+      if (session.state === 'custode-pronto' || session.state === 'primo-giocatore') {
         if (tutti) {
           svc.clearTimer(tableId, 'avvio')
-          // avviaSessione viene chiamato dopo l'invio dello stato iniziale
+          doAvvia = true
+        } else if (session.state === 'custode-pronto') {
+          await svc.updateSessionState(tableId, 'primo-giocatore')
+          timerMsForClient = TIMER_AVVIO_MS
+          svc.setTimer(tableId, 'avvio', TIMER_AVVIO_MS, () => avviaSessione(tableId))
         }
-
       } else if (session.state === 'in-pausa') {
-        const anyConnected = session.players.some(p => p.connected)
-        if (anyConnected) {
-          await svc.updateSessionState(tableId, 'sessione-iniziata')
-        }
+        await svc.updateSessionState(tableId, 'sessione-iniziata')
+        doResume = true
       }
 
-      // Invia stato completo al giocatore (con stato già aggiornato)
+      // Invia stato al giocatore (dopo aggiornamenti di stato)
       socket.emit('session:state', {
         session: ctx.session,
         messages: wasConnected ? missed.map(m => ({ ...m, toRecover: true })) : ctx.messages,
@@ -99,37 +96,29 @@ module.exports = function setupSocket(io) {
       // Invia diario
       socket.emit('session:diary', await getDiary(tableId))
 
-      // Notifica agli altri (toast)
+      // Notifica agli altri
       socket.to(`table:${tableId}`).emit('session:toast', {
         type: 'connect',
         text: `${name} si è collegato`
       })
 
-      // Aggiorna stato player per tutti
       io.to(`table:${tableId}`).emit('session:player-update', {
         email,
         connected: true,
         playerState: svc.getPlayer(ctx, email)?.playerState
       })
 
-      // Broadcast stato sessione agli altri (non al nuovo arrivato che ha già session:state)
       socket.to(`table:${tableId}`).emit('session:status-update', {
         state: ctx.session.state,
         ...(timerMsForClient ? { timerMs: timerMsForClient } : {})
       })
 
-      // Trigger post-invio
-      if (session.state === 'primo-giocatore') {
-        const tutti = table.invitedPlayers.every(e =>
-          ctx.session.players.find(p => p.email === e)?.connected
-        )
-        if (tutti) await avviaSessione(tableId)
-      } else if (session.state === 'in-pausa') {
-        const anyConnected = ctx.session.players.some(p => p.connected)
-        if (anyConnected) {
-          io.to(`table:${tableId}`).emit('session:status-update', { state: 'sessione-iniziata' })
-          custodeEngine.getOrCreate(tableId, io).resume().catch(console.error)
-        }
+      // Trigger post-stato
+      if (doAvvia) {
+        await avviaSessione(tableId)
+      } else if (doResume) {
+        io.to(`table:${tableId}`).emit('session:status-update', { state: 'sessione-iniziata' })
+        custodeEngine.getOrCreate(tableId, io).resume().catch(console.error)
       }
     })
 
@@ -273,6 +262,7 @@ module.exports = function setupSocket(io) {
 
   // ── Avvia sessione (condiviso tra timer e trigger "tutti presenti") ─────────
   async function avviaSessione(tableId) {
+    console.log(`[Session] Avvio sessione: ${tableId}`)
     await svc.updateSessionState(tableId, 'sessione-iniziata')
     await svc.setAllPlayersState(tableId, 'gioco-libero')
     io.to(`table:${tableId}`).emit('session:status-update', { state: 'sessione-iniziata' })

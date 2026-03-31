@@ -502,11 +502,13 @@ class CustodeEngine {
     if (this.running) return
     this.running = true
     this.paused = false
+    console.log(`[Custode] Start — tavolo ${this.tableId}`)
 
     try {
       let next = await this.fase1()
       await this.runLoop(next)
     } catch (err) {
+      this.running = false
       if (!this.paused) {
         console.error('[Custode] Errore fatale:', err)
         await this.emitError('Errore imprevisto del Custode')
@@ -515,12 +517,23 @@ class CustodeEngine {
   }
 
   async resume() {
+    // Se il custode non era mai partito (es. errore in start), riparti da capo
+    if (!this.running && !this.paused) {
+      return this.start()
+    }
     if (!this.paused) return
     this.paused = false
+    this.running = true
     const ctx = svc.getSession(this.tableId)
     const phase = ctx?.session?.custodePhase || 'fase-3'
     const piano = ctx?.session?.pianoAzione
-    await this.runLoop(phase, piano)
+    try {
+      await this.runLoop(phase, piano)
+    } catch (err) {
+      this.running = false
+      console.error('[Custode] Errore in resume:', err)
+      await this.emitError('Errore riprendendo il Custode')
+    }
   }
 
   async runLoop(startPhase, extraData = null) {
