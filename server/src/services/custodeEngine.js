@@ -13,8 +13,8 @@ const svc = require('./sessionService')
 const ollama = require('./ollamaService')
 
 const MSG_BUFFER_SIZE = parseInt(process.env.MSG_BUFFER_SIZE || '20')
-const SILENCE_TIMER_MS = 30 * 1000
-const PROACTIVITY_TIMER_MS = 5 * 60 * 1000
+const SILENCE_TIMER_MS = parseInt(process.env.SILENCE_TIMER_MS || String(30 * 1000))
+const PROACTIVITY_TIMER_MS = parseInt(process.env.PROACTIVITY_TIMER_MS || String(5 * 60 * 1000))
 
 // ── Helpers filesystem ────────────────────────────────────────────────────────
 
@@ -262,7 +262,7 @@ class CustodeEngine {
     worldState.focusScene = result.id_scena
     await saveWorldState(this.tableId, worldState)
 
-    return 'fase-3'
+    return { next: 'fase-3' }
   }
 
   // ── FASE 3: Scena e Gioco Libero ──────────────────────────────────────────

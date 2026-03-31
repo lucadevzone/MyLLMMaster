@@ -1,7 +1,8 @@
 const fs = require('fs').promises
 const path = require('path')
+const bcrypt = require('bcrypt')
 
-const DATA_DIR = path.join(__dirname, '../../../data')
+const DATA_DIR = process.env.DATA_DIR_OVERRIDE || path.join(__dirname, '../../../data')
 
 const DIRS = [
   DATA_DIR,
@@ -19,12 +20,21 @@ async function ensureDataDirs() {
     await fs.mkdir(dir, { recursive: true })
   }
 
-  // Init users.json if not exists
+  // Init users.json if not exists — crea admin di default
   try {
     await fs.access(FILES.users)
   } catch {
-    await fs.writeFile(FILES.users, JSON.stringify([], null, 2))
-    console.log('Creato data/users.json')
+    const hash = await bcrypt.hash('admin123', 10)
+    const admin = [{
+      email: 'admin@test.com',
+      name: 'Admin',
+      role: 'admin',
+      password: hash,
+      accountState: 'attivo',
+      createdAt: new Date().toISOString()
+    }]
+    await fs.writeFile(FILES.users, JSON.stringify(admin, null, 2))
+    console.log('Creato data/users.json con admin di default')
   }
 
   // Init professions.json if not exists
