@@ -3,6 +3,7 @@ const path = require('path')
 const { readJSON, fileExists } = require('../utils/fileStore')
 const { DATA_DIR } = require('../utils/dataInit')
 const svc = require('../services/sessionService')
+const custodeEngine = require('../services/custodeEngine')
 
 const TIMER_AVVIO_MS = 5 * 60 * 1000  // 5 minuti
 
@@ -136,6 +137,13 @@ module.exports = function setupSocket(io) {
       } else {
         io.to(`table:${tableId}`).emit('session:message', msg)
       }
+
+      // Notifica il motore del Custode
+      const ctx = svc.getSession(tableId)
+      if (ctx?.session?.state === 'sessione-iniziata') {
+        const engine = custodeEngine.getOrCreate(tableId, io)
+        if (engine.running) engine.onPlayerMessage(msg).catch(console.error)
+      }
     })
 
     // ── session:dice-roll ─────────────────────────────────────────────────────
@@ -162,6 +170,13 @@ module.exports = function setupSocket(io) {
       io.to(`table:${tableId}`).emit('session:player-update', {
         email, connected: true, playerState: 'turno-custode'
       })
+
+      // Notifica il motore del Custode
+      const diceCtx = svc.getSession(tableId)
+      if (diceCtx?.session?.state === 'sessione-iniziata') {
+        const engine = custodeEngine.getOrCreate(tableId, io)
+        if (engine.running) engine.onDiceRoll(email, valore, soglia, caratteristica).catch(console.error)
+      }
     })
 
     // ── session:set-color ─────────────────────────────────────────────────────
@@ -192,6 +207,30 @@ module.exports = function setupSocket(io) {
       if (triggerChiusura) {
         io.to(`table:${tableId}`).emit('session:status-update', { state: 'in-chiusura' })
       }
+    })
+
+    // ── session:avvia-custode ─────────────────────────────────────────────────
+    socket.on('session:avvia-custode', async () => {
+      const tableId = socket.tableId
+      if (!tableId) return
+      if (socket.user.role !== 'admin') {
+        return socket.emit('session:error', 'Solo l\'admin può avviare il Custode')
+      }
+      const engine = custodeEngine.getOrCreate(tableId, io)
+      engine.start().catch(console.error)
+      io.to(`table:${tableId}`).emit('session:toast', { type: 'connect', text: 'Custode avviato' })
+    })
+
+    // ── session:riprendi-custode ──────────────────────────────────────────────
+    socket.on('session:riprendi-custode', async () => {
+      const tableId = socket.tableId
+      if (!tableId) return
+      if (socket.user.role !== 'admin') {
+        return socket.emit('session:error', 'Solo l\'admin può riprendere il Custode')
+      }
+      const engine = custodeEngine.getOrCreate(tableId, io)
+      engine.resume().catch(console.error)
+      io.to(`table:${tableId}`).emit('session:toast', { type: 'connect', text: 'Custode ripreso' })
     })
 
     // ── session:leave ─────────────────────────────────────────────────────────

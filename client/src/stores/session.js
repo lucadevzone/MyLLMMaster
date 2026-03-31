@@ -15,6 +15,8 @@ export const useSessionStore = defineStore('session', () => {
   const diceResult = ref(null)     // ultimo risultato dado
   const diary = ref('')
   const timerMs = ref(null)        // timer avvio sessione
+  const custodeTyping = ref(false) // indicatore di scrittura del Custode
+  const custodePhase = ref(null)   // fase corrente del Custode
 
   const myState = computed(() => {
     if (!session.value || !auth.user) return null
@@ -80,6 +82,15 @@ export const useSessionStore = defineStore('session', () => {
     socket.on('session:error', (msg) => {
       addToast('error', msg, 5000)
     })
+
+    socket.on('session:custode-typing', (isTyping) => {
+      custodeTyping.value = isTyping
+    })
+
+    socket.on('session:phase-update', ({ phase }) => {
+      custodePhase.value = phase
+      if (session.value) session.value.custodePhase = phase
+    })
   }
 
   function disconnect() {
@@ -112,6 +123,14 @@ export const useSessionStore = defineStore('session', () => {
     socket?.emit('session:set-color', color)
   }
 
+  function avviaCustode() {
+    socket?.emit('session:avvia-custode')
+  }
+
+  function riprendiCustode() {
+    socket?.emit('session:riprendi-custode')
+  }
+
   // ── Toast ──────────────────────────────────────────────────────────────────
   let toastId = 0
   function addToast(type, text, duration = 3000) {
@@ -124,7 +143,9 @@ export const useSessionStore = defineStore('session', () => {
 
   return {
     connected, session, messages, toasts, diceResult, diary, timerMs,
+    custodeTyping, custodePhase,
     myState, sessionState,
-    connect, disconnect, sendMessage, rollDice, voteTardi, setColor, addToast
+    connect, disconnect, sendMessage, rollDice, voteTardi, setColor,
+    avviaCustode, riprendiCustode, addToast
   }
 })

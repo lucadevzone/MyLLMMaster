@@ -120,6 +120,11 @@ watch(() => sess.messages.length, async () => {
   if (chatEl.value) chatEl.value.scrollTop = chatEl.value.scrollHeight
 })
 
+watch(() => sess.custodeTyping, async () => {
+  await nextTick()
+  if (chatEl.value) chatEl.value.scrollTop = chatEl.value.scrollHeight
+})
+
 // ── Azioni UI ─────────────────────────────────────────────────────────────────
 function sendMessage() {
   const text = messageInput.value.trim()
@@ -227,6 +232,14 @@ function msgBadge(msg) {
           <div v-if="sess.messages.length === 0" class="chat-empty">
             La sessione non è ancora iniziata…
           </div>
+          <!-- Indicatore di scrittura del Custode -->
+          <div v-if="sess.custodeTyping" class="bubble bubble-other bubble-typing">
+            <div class="bubble-header">
+              <span class="bubble-author">Custode</span>
+            </div>
+            <div class="typing-dots"><span /><span /><span /></div>
+          </div>
+
           <div v-for="msg in sess.messages" :key="msg.id"
             :class="['bubble', isMe(msg.from) ? 'bubble-me' : 'bubble-other',
                      msg.type === 'whisper' ? 'bubble-whisper' : '']"
@@ -370,6 +383,26 @@ function msgBadge(msg) {
                   cursor:'pointer'
                 }" />
             </div>
+
+            <!-- Controlli admin Custode -->
+            <template v-if="auth.user?.role === 'admin'">
+              <div style="font-size:0.75rem;font-weight:600;color:var(--color-text-light);margin-bottom:0.5rem;margin-top:1rem">
+                CUSTODE
+              </div>
+              <div v-if="sess.custodePhase" style="font-size:0.8rem;color:var(--color-text-light);margin-bottom:0.5rem">
+                Fase: {{ sess.custodePhase }}
+              </div>
+              <button class="btn btn-primary" style="width:100%;margin-bottom:0.5rem"
+                :disabled="sess.sessionState !== 'sessione-iniziata'"
+                @click="sess.avviaCustode()">
+                Avvia Custode
+              </button>
+              <button class="btn btn-secondary" style="width:100%;margin-bottom:1rem"
+                :disabled="sess.sessionState !== 'in-pausa'"
+                @click="sess.riprendiCustode()">
+                Riprendi Custode
+              </button>
+            </template>
 
             <button class="btn btn-danger" style="width:100%"
               :disabled="sess.myState?.voteTardi"
@@ -645,4 +678,30 @@ function msgBadge(msg) {
 
 .toast-enter-active, .toast-leave-active { transition: all 0.3s; }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* Typing indicator */
+.bubble-typing { background: #f3f4f6; padding: 0.5rem 0.75rem; }
+
+.typing-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  height: 16px;
+}
+
+.typing-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9ca3af;
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-5px); }
+}
 </style>

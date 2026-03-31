@@ -1,0 +1,716 @@
+/**
+ * Custode Engine — macchina a stati procedurale del Game Master LLM
+ *
+ * Fasi: 1 → 2 → 3 → 4[a/b/c] → 5[a/b/c] → torna a 3 o 2
+ */
+
+const path = require('path')
+const fs = require('fs').promises
+const { v4: uuidv4 } = require('uuid')
+const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileStore')
+const { DATA_DIR } = require('../utils/dataInit')
+const svc = require('./sessionService')
+const ollama = require('./ollamaService')
+
+const MSG_BUFFER_SIZE = parseInt(process.env.MSG_BUFFER_SIZE || '20')
+const SILENCE_TIMER_MS = 30 * 1000
+const PROACTIVITY_TIMER_MS = 5 * 60 * 1000
+
+// ── Helpers filesystem ────────────────────────────────────────────────────────
+
+function tDir(tableId) { return path.join(DATA_DIR, 'tables', tableId) }
+
+async function getTable(tableId) {
+  return readJSON(path.join(tDir(tableId), 'table.json'))
+}
+
+async function getModule(moduleId) {
+  return readJSON(path.join(DATA_DIR, 'modules', `${moduleId}.json`))
+}
+
+async function getWorldState(tableId) {
+  const p = path.join(tDir(tableId), 'world_state.json')
+  if (!await fileExists(p)) {
+    const ws = { currentChapter: 1, focusScene: null, groups: [], npcs: [], items: [] }
+    await writeJSON(p, ws)
+    return ws
+  }
+  return readJSON(p)
+}
+
+async function saveWorldState(tableId, ws) {
+  await writeJSON(path.join(tDir(tableId), 'world_state.json'), ws)
+}
+
+async function getDiary(tableId) {
+  const p = path.join(tDir(tableId), 'diary.txt')
+  try { return await fs.readFile(p, 'utf-8') } catch { return '' }
+}
+
+async function appendDiary(tableId, entry) {
+  const p = path.join(tDir(tableId), 'diary.txt')
+  await fs.appendFile(p, '\n\n' + entry)
+}
+
+async function getCharacters(tableId) {
+  const dir = path.join(tDir(tableId), 'characters')
+  try {
+    const files = await fs.readdir(dir)
+    return Promise.all(
+      files.filter(f => f.endsWith('.json')).map(f => readJSON(path.join(dir, f)))
+    )
+  } catch { return [] }
+}
+
+function synthChar(char) {
+  // Sintetizza la scheda in una riga per ridurre il contesto
+  const c = char.characteristics
+  return `${char.name} (${char.profession}, ${char.eta}a): ` +
+    `FOR${c.FOR} COS${c.COS} DES${c.DES} TAG${c.TAG} INT${c.INT} POT${c.POT} APP${c.APP} EDU${c.EDU} ` +
+    `PF${char.derivedAttributes?.hp?.current}/${char.derivedAttributes?.hp?.max} ` +
+    `SAN${char.derivedAttributes?.sanita?.current}`
+}
+
+async function getScene(tableId, sceneId) {
+  const active = path.join(tDir(tableId), 'active_scenes', `${sceneId}.json`)
+  if (await fileExists(active)) return readJSON(active)
+  const closed = path.join(tDir(tableId), 'closed_scenes', `${sceneId}.json`)
+  if (await fileExists(closed)) return readJSON(closed)
+  return null
+}
+
+async function saveScene(tableId, scene, closed = false) {
+  const dir = closed ? 'closed_scenes' : 'active_scenes'
+  await ensureDir(path.join(tDir(tableId), dir))
+  await writeJSON(path.join(tDir(tableId), dir, `${scene.id_scena}.json`), scene)
+}
+
+async function closeScene(tableId, sceneId, riepilogo) {
+  const scene = await getScene(tableId, sceneId)
+  if (!scene) return
+  scene.summary = riepilogo
+  // Sposta in closed_scenes
+  const src = path.join(tDir(tableId), 'active_scenes', `${sceneId}.json`)
+  const dst = path.join(tDir(tableId), 'closed_scenes', `${sceneId}.json`)
+  await ensureDir(path.join(tDir(tableId), 'closed_scenes'))
+  await writeJSON(dst, scene)
+  try { await fs.unlink(src) } catch {}
+}
+
+// ── Placeholder trigger annotazioni ──────────────────────────────────────────
+
+/**
+ * TODO: definire la logica che valuta le annotazioni della light LLM
+ * e decide se i giocatori hanno finito di dichiarare.
+ *
+ * @param {Array} annotatedMessages - messaggi con tag
+ * @returns {boolean}
+ */
+function shouldProcessByAnnotations(annotatedMessages) {
+  // PLACEHOLDER — implementa la logica basandoti sui tag
+  return false
+}
+
+// ── Custode per tavolo ────────────────────────────────────────────────────────
+
+class CustodeEngine {
+  constructor(tableId, io) {
+    this.tableId = tableId
+    this.io = io
+    this.buffer = []         // messaggi gioco-libero in attesa
+    this.running = false
+    this.paused = false
+  }
+
+  get room() { return `table:${this.tableId}` }
+
+  // ── Emit helpers ─────────────────────────────────────────────────────────
+
+  async emitNarrative(text, options = {}) {
+    const tableId = this.tableId
+
+    // Typing indicator
+    this.io.to(this.room).emit('session:custode-typing', true)
+    await sleep(Math.min(text.length * 20, 2000))   // simula latenza
+
+    const msg = await svc.addMessage(tableId, {
+      type: options.type || 'custode',
+      from: 'custode',
+      fromName: 'Custode',
+      to: options.to || null,
+      text
+    })
+
+    this.io.to(this.room).emit('session:custode-typing', false)
+
+    if (options.whisper && options.to) {
+      // Consegna solo al destinatario
+      const target = [...this.io.sockets.sockets.values()]
+        .find(s => s.user?.email === options.to && s.tableId === tableId)
+      if (target) target.emit('session:message', msg)
+      // Anche al custode/altri connessi come log interno? No: è un sussurro privato
+    } else {
+      this.io.to(this.room).emit('session:message', msg)
+    }
+  }
+
+  async emitPhaseChange(phase) {
+    const ctx = svc.getSession(this.tableId)
+    if (ctx) {
+      ctx.session.custodePhase = phase
+      await svc.saveSession(this.tableId, ctx.session)
+    }
+    this.io.to(this.room).emit('session:phase-update', { phase })
+  }
+
+  async emitError(text) {
+    this.io.to(this.room).emit('session:toast', { type: 'error', text })
+  }
+
+  // ── LLM call con gestione errori ──────────────────────────────────────────
+
+  async llm(promptFile, vars, useLight = false) {
+    const table = await getTable(this.tableId)
+    const model = useLight
+      ? (table['light-llmModel'] || table['heavy-llmModel'])
+      : table['heavy-llmModel']
+    try {
+      return await ollama.runPhase(model, promptFile, vars)
+    } catch (err) {
+      if (err.isLlmError) {
+        await svc.updateSessionState(this.tableId, 'in-pausa')
+        this.io.to(this.room).emit('session:status-update', { state: 'in-pausa' })
+        await this.emitError('Errore tecnico LLM – sessione in pausa')
+        this.paused = true
+      }
+      throw err
+    }
+  }
+
+  // ── Contesto comune ───────────────────────────────────────────────────────
+
+  async buildContext() {
+    const [table, worldState, diary, chars] = await Promise.all([
+      getTable(this.tableId),
+      getWorldState(this.tableId),
+      getDiary(this.tableId),
+      getCharacters(this.tableId)
+    ])
+    const mod = await getModule(table.moduleId)
+    const schede_PG = chars.map(synthChar).join('\n')
+    const focusScene = worldState.focusScene
+      ? await getScene(this.tableId, worldState.focusScene)
+      : null
+
+    return { table, worldState, diary, chars, mod, schede_PG, focusScene }
+  }
+
+  // ── FASE 1: Apertura ──────────────────────────────────────────────────────
+
+  async fase1() {
+    await this.emitPhaseChange('fase-1')
+    const { worldState, diary, chars, mod, schede_PG } = await this.buildContext()
+    const isFirstSession = !diary.trim()
+
+    const vars = isFirstSession
+      ? { primo_capitolo: mod.chapters[0]?.content || '', schede_PG }
+      : {
+          diary,
+          capitolo_corrente: mod.chapters[(worldState.currentChapter - 1)]?.content || '',
+          world_state: JSON.stringify(worldState),
+          schede_PG
+        }
+
+    const result = await this.llm('fase1_apertura.md', vars)
+    await this.emitNarrative(result.narrativa)
+
+    if (result.diary) await appendDiary(this.tableId, result.diary)
+
+    // Prossima fase
+    const hasActiveScene = worldState.focusScene &&
+      await fileExists(path.join(tDir(this.tableId), 'active_scenes', `${worldState.focusScene}.json`))
+
+    return hasActiveScene ? 'fase-3' : 'fase-2'
+  }
+
+  // ── FASE 2: Preparazione Scena ────────────────────────────────────────────
+
+  async fase2(suggerimento = null) {
+    await this.emitPhaseChange('fase-2')
+    const { worldState, mod } = await this.buildContext()
+    const capitolo = mod.chapters[(worldState.currentChapter - 1)]?.content || ''
+
+    const result = await this.llm('fase2_prepara_scena.md', {
+      capitolo_corrente: capitolo,
+      suggerimento_prossima_scena: suggerimento || ''
+    })
+
+    // Salva scena in active_scenes
+    await saveScene(this.tableId, result)
+
+    // Aggiorna world state
+    if (!worldState.groups.length) {
+      const chars = await getCharacters(this.tableId)
+      worldState.groups = [{
+        groupId: 'group01',
+        sceneId: result.id_scena,
+        participants: chars.map(c => c.playerID),
+        subLocation: result.contesto_dove,
+        activity: 'Inizio scena'
+      }]
+    }
+    worldState.focusScene = result.id_scena
+    await saveWorldState(this.tableId, worldState)
+
+    return 'fase-3'
+  }
+
+  // ── FASE 3: Scena e Gioco Libero ──────────────────────────────────────────
+
+  async fase3() {
+    await this.emitPhaseChange('fase-3')
+    const { worldState, schede_PG } = await this.buildContext()
+    const focusScene = await getScene(this.tableId, worldState.focusScene)
+    const recentMsgs = svc.getSession(this.tableId)?.messages.slice(-10)
+      .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
+
+    const result = await this.llm('fase3_scena.md', {
+      estratto_scena_corrente: JSON.stringify(focusScene),
+      world_state: JSON.stringify(worldState),
+      schede_PG,
+      storia_recente: recentMsgs
+    })
+
+    await this.emitNarrative(result.narrativa)
+
+    // Sussurri
+    for (const s of result.sussurri || []) {
+      await this.emitNarrative(s.testo, { whisper: true, to: s.target, type: 'whisper' })
+    }
+
+    // Imposta tutti i PG del gruppo in focus a gioco-libero
+    await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
+
+    // Avvia timer proattività
+    svc.setTimer(this.tableId, 'proattivita', PROACTIVITY_TIMER_MS, async () => {
+      if (!this.paused) await this.fase3()  // torna in fase 3 con nuovi stimoli
+    })
+
+    // Avvia raccolta buffer
+    this.startBuffer()
+
+    return null  // attende messaggi
+  }
+
+  // ── FASE 4: Gestione Dichiarazioni ────────────────────────────────────────
+
+  async fase4(pianoParziale = null) {
+    await this.emitPhaseChange('fase-4')
+    svc.clearTimer(this.tableId, 'proattivita')
+    svc.clearTimer(this.tableId, 'silenzio')
+
+    const msgs = this.buffer.map(m => `[${m.tag || '?'}] ${m.fromName}: ${m.text}`).join('\n')
+    const { worldState, schede_PG } = await this.buildContext()
+    const focusScene = await getScene(this.tableId, worldState.focusScene)
+
+    const result = await this.llm('fase4_dichiarazioni.md', {
+      estratto_scena_corrente: JSON.stringify(focusScene),
+      world_state: JSON.stringify(worldState),
+      schede_PG,
+      messaggi_buffer: msgs,
+      piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno'
+    })
+
+    // Salva piano in sessione
+    const ctx = svc.getSession(this.tableId)
+    if (ctx) {
+      ctx.session.pianoAzione = result
+      await svc.saveSession(this.tableId, ctx.session)
+    }
+
+    if (result.completo) {
+      this.buffer = []
+      return { next: 'fase-5', piano: result.piano }
+    }
+
+    // Sottofase
+    return { next: `sottofase-${result.sottofase}`, data: result }
+  }
+
+  async fase4a(data) {
+    await this.emitPhaseChange('fase-4a')
+    const result = await this.llm('fase4a_chiarimenti.md', {
+      pg_target: data.pg_target,
+      domanda: data.domanda,
+      piano_azione: JSON.stringify(data.piano_parziale || [])
+    })
+    await this.emitNarrative(result.narrativa)
+    await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
+    // Attende risposta del giocatore → gestita da onPlayerMessage
+    return null
+  }
+
+  async fase4b(data) {
+    await this.emitPhaseChange('fase-4b')
+    const result = await this.llm('fase4b_dichiarazione_assente.md', {
+      pg_target: data.pg_target,
+      sollecito: data.sollecito || '',
+      piano_parziale: JSON.stringify(data.piano_parziale || [])
+    })
+    await this.emitNarrative(result.narrativa)
+    await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
+    return null
+  }
+
+  async fase4c(data) {
+    await this.emitPhaseChange('fase-4c')
+    const result = await this.llm('fase4c_necessita_prova.md', {
+      pg_target: data.pg_target,
+      azione: data.azione || '',
+      caratteristica: data.caratteristica || '',
+      difficolta: data.difficolta || 'normale',
+      narrativa_setup: data.narrativa_setup || '',
+      piano_azione: JSON.stringify(data.piano_parziale || [])
+    })
+    await this.emitNarrative(result.narrativa)
+    await this.setPlayerTurn(data.pg_target, 'mio-turno-prova')
+    return null
+  }
+
+  // ── FASE 5: Risoluzione ───────────────────────────────────────────────────
+
+  async fase5(piano) {
+    await this.emitPhaseChange('fase-5')
+    const { worldState, schede_PG } = await this.buildContext()
+    const focusScene = await getScene(this.tableId, worldState.focusScene)
+
+    const result = await this.llm('fase5_risoluzione.md', {
+      piano_azione: JSON.stringify(piano),
+      estratto_scena_corrente: JSON.stringify(focusScene),
+      world_state: JSON.stringify(worldState),
+      schede_PG
+    })
+
+    await this.emitNarrative(result.narrativa)
+
+    for (const s of result.sussurri || []) {
+      await this.emitNarrative(s.testo, { whisper: true, to: s.target, type: 'whisper' })
+    }
+
+    // Aggiorna world state
+    if (result.aggiornamenti?.world_state) {
+      const ws = await getWorldState(this.tableId)
+      const upd = result.aggiornamenti.world_state
+      if (upd.npcs?.length) {
+        upd.npcs.forEach(n => {
+          const existing = ws.npcs.find(x => x.name === n.name)
+          if (existing) Object.assign(existing, n)
+          else ws.npcs.push(n)
+        })
+      }
+      if (upd.items?.length) {
+        upd.items.forEach(i => {
+          const existing = ws.items.find(x => x.name === i.name)
+          if (existing) Object.assign(existing, i)
+          else ws.items.push(i)
+        })
+      }
+      await saveWorldState(this.tableId, ws)
+    }
+
+    const cons = result.conseguenze || {}
+
+    if (cons.divisione_gruppi) return { next: 'fase-5a', data: result.dettagli_divisione }
+    if (cons.ricongiungimento_gruppi) return { next: 'fase-5b', data: result.dettagli_ricongiungimento }
+    if (cons.chiusura_scena) return { next: 'fase-5c', data: result.dettagli_chiusura }
+
+    return { next: 'fase-3' }
+  }
+
+  async fase5a(data) {
+    await this.emitPhaseChange('fase-5a')
+    const { worldState } = await this.buildContext()
+    const focusScene = await getScene(this.tableId, worldState.focusScene)
+    const recentMsgs = svc.getSession(this.tableId)?.messages.slice(-5)
+      .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
+
+    const result = await this.llm('fase5a_divisione_gruppi.md', {
+      estratto_scena_corrente: JSON.stringify(focusScene),
+      world_state: JSON.stringify(worldState),
+      messaggi_recenti: recentMsgs,
+      dettagli_divisione: JSON.stringify(data)
+    })
+    await this.emitNarrative(result.narrativa)
+    // TODO: aggiorna world_state con nuovi gruppi/scene
+    return { next: 'fase-3' }
+  }
+
+  async fase5b(data) {
+    await this.emitPhaseChange('fase-5b')
+    const { worldState } = await this.buildContext()
+    const activeScenes = await this.getActiveScenes()
+
+    const result = await this.llm('fase5b_ricongiungimento.md', {
+      estratti_scene_attive: JSON.stringify(activeScenes),
+      world_state: JSON.stringify(worldState),
+      dettagli_ricongiungimento: JSON.stringify(data)
+    })
+    await this.emitNarrative(result.narrativa)
+    // TODO: aggiorna world_state unendo i gruppi
+    return { next: 'fase-3' }
+  }
+
+  async fase5c(data) {
+    await this.emitPhaseChange('fase-5c')
+    const { worldState } = await this.buildContext()
+    const focusScene = await getScene(this.tableId, worldState.focusScene)
+
+    const result = await this.llm('fase5c_chiusura_scena.md', {
+      estratto_scena_corrente: JSON.stringify(focusScene),
+      world_state: JSON.stringify(worldState),
+      dettagli_chiusura: JSON.stringify(data)
+    })
+
+    await this.emitNarrative(result.narrativa)
+
+    if (result.aggiornamenti?.diary) await appendDiary(this.tableId, result.aggiornamenti.diary)
+    if (result.aggiornamenti?.scena_chiusa) {
+      await closeScene(this.tableId, result.aggiornamenti.scena_chiusa, result.riepilogo_scena)
+      const ws = await getWorldState(this.tableId)
+      ws.focusScene = null
+      await saveWorldState(this.tableId, ws)
+    }
+
+    // Invia aggiornamento diario ai client
+    this.io.to(this.room).emit('session:diary', await getDiary(this.tableId))
+
+    // Ci sono altre scene attive?
+    const active = await this.getActiveScenes()
+    if (active.length > 0) {
+      const ws = await getWorldState(this.tableId)
+      ws.focusScene = active[0].id_scena
+      await saveWorldState(this.tableId, ws)
+      return { next: 'fase-3' }
+    }
+
+    return { next: 'fase-2', suggerimento: result.suggerimento_prossima_scena }
+  }
+
+  // ── Loop principale ───────────────────────────────────────────────────────
+
+  async start() {
+    if (this.running) return
+    this.running = true
+    this.paused = false
+
+    try {
+      let next = await this.fase1()
+      await this.runLoop(next)
+    } catch (err) {
+      if (!this.paused) {
+        console.error('[Custode] Errore fatale:', err)
+        await this.emitError('Errore imprevisto del Custode')
+      }
+    }
+  }
+
+  async resume() {
+    if (!this.paused) return
+    this.paused = false
+    const ctx = svc.getSession(this.tableId)
+    const phase = ctx?.session?.custodePhase || 'fase-3'
+    const piano = ctx?.session?.pianoAzione
+    await this.runLoop(phase, piano)
+  }
+
+  async runLoop(startPhase, extraData = null) {
+    let current = startPhase
+    let data = extraData
+
+    while (current && !this.paused) {
+      try {
+        let result
+
+        if (current === 'fase-2') result = await this.fase2(data?.suggerimento)
+        else if (current === 'fase-3') result = await this.fase3()
+        else if (current === 'fase-4') result = await this.fase4(data)
+        else if (current === 'sottofase-4a') result = await this.fase4a(data)
+        else if (current === 'sottofase-4b') result = await this.fase4b(data)
+        else if (current === 'sottofase-4c') result = await this.fase4c(data)
+        else if (current === 'fase-5') result = await this.fase5(data?.piano || data)
+        else if (current === 'fase-5a') result = await this.fase5a(data?.data || data)
+        else if (current === 'fase-5b') result = await this.fase5b(data?.data || data)
+        else if (current === 'fase-5c') result = await this.fase5c(data?.data || data)
+        else break  // fase-1 già eseguita, fase-3 attende input
+
+        if (!result) break  // in attesa di input giocatori
+
+        current = result.next
+        data = result
+
+      } catch (err) {
+        if (this.paused) break
+        console.error(`[Custode] Errore in ${current}:`, err.message)
+        break
+      }
+    }
+  }
+
+  // ── Buffer messaggi ───────────────────────────────────────────────────────
+
+  startBuffer() {
+    this.bufferActive = true
+  }
+
+  async onPlayerMessage(message) {
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx) return
+    const phase = ctx.session.custodePhase
+
+    // Modalità turno singolo: riprendi da fase 4
+    if (phase === 'fase-4a' || phase === 'fase-4b') {
+      const pianoData = ctx.session.pianoAzione
+      this.buffer.push({ ...message, tag: 'dichiarazione' })
+      await this.runLoop('fase-4', pianoData)
+      return
+    }
+
+    // Dopo tiro dado: riprendi da fase 4
+    if (phase === 'fase-4c') {
+      // Il dado è già stato tirato via socket — viene gestito da onDiceRoll
+      return
+    }
+
+    // Gioco libero: accumula nel buffer
+    if (!this.bufferActive) return
+    this.buffer.push(message)
+
+    // Tagging asincrono
+    this.tagMessageAsync(message)
+
+    // Trigger immediato per mio-turno-libero
+    const player = svc.getPlayer(ctx, message.from)
+    if (player?.playerState === 'mio-turno-libero') {
+      this.flushBuffer('turno-libero')
+      return
+    }
+
+    // Trigger: buffer pieno
+    if (this.buffer.length >= MSG_BUFFER_SIZE) {
+      this.flushBuffer('buffer-pieno')
+      return
+    }
+
+    // Avvia/resetta timer silenzio
+    svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
+      this.flushBuffer('timer-silenzio')
+    })
+  }
+
+  async onDiceRoll(email, valore, soglia, caratteristica) {
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx || ctx.session.custodePhase !== 'fase-4c') return
+
+    const esito = valore <= soglia ? 'successo' : 'fallimento'
+    const piano = ctx.session.pianoAzione
+
+    // Aggiorna risultato nel piano
+    if (piano?.piano_parziale) {
+      const entry = piano.piano_parziale.find(p => p.pg === email)
+      if (entry) {
+        entry.risultato_prova = { valore_tiro: valore, esito }
+      }
+    }
+
+    this.buffer.push({
+      from: email,
+      tag: 'dichiarazione',
+      text: `[Tiro dado] ${caratteristica}: ${valore}/${soglia} → ${esito}`
+    })
+
+    await this.runLoop('fase-4', piano)
+  }
+
+  flushBuffer(reason) {
+    if (!this.buffer.length) return
+    svc.clearTimer(this.tableId, 'silenzio')
+    console.log(`[Custode] Buffer flush: ${reason} (${this.buffer.length} msgs)`)
+    this.bufferActive = false
+    this.runLoop('fase-4', null).catch(console.error)
+  }
+
+  async tagMessageAsync(message) {
+    const table = await getTable(this.tableId)
+    const lightModel = table['light-llmModel'] || table['heavy-llmModel']
+    if (!lightModel) return
+
+    try {
+      const result = await ollama.runTagging(lightModel, 'tagging_buffer.md', {
+        messaggi: JSON.stringify([{ id: message.id, testo: message.text }])
+      })
+
+      const ann = result.annotazioni?.find(a => a.id === message.id)
+      if (ann) {
+        const msg = this.buffer.find(m => m.id === message.id)
+        if (msg) msg.tag = ann.tag
+      }
+
+      // Placeholder: controlla se le annotazioni indicano fine
+      if (shouldProcessByAnnotations(this.buffer) && this.bufferActive) {
+        this.flushBuffer('annotazioni')
+      }
+    } catch {
+      // Il tagging è best-effort, non blocca il gioco
+    }
+  }
+
+  // ── Utilità ───────────────────────────────────────────────────────────────
+
+  async setGroupState(sceneId, worldState, playerState) {
+    const group = worldState.groups.find(g => g.sceneId === sceneId)
+    if (!group) return
+    for (const email of group.participants) {
+      await svc.updatePlayerState(this.tableId, email, playerState)
+      this.io.to(this.room).emit('session:player-update', {
+        email, connected: true, playerState
+      })
+    }
+  }
+
+  async setPlayerTurn(email, playerState) {
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx) return
+    // Tutti gli altri: fuori-turno
+    for (const p of ctx.session.players) {
+      const state = p.email === email ? playerState : 'fuori-turno'
+      await svc.updatePlayerState(this.tableId, p.email, state)
+      this.io.to(this.room).emit('session:player-update', {
+        email: p.email, connected: p.connected, playerState: state
+      })
+    }
+  }
+
+  async getActiveScenes() {
+    const dir = path.join(tDir(this.tableId), 'active_scenes')
+    try {
+      const files = await fs.readdir(dir)
+      return Promise.all(
+        files.filter(f => f.endsWith('.json')).map(f => readJSON(path.join(dir, f)))
+      )
+    } catch { return [] }
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
+function shouldProcessByAnnotations(msgs) { return false }  // placeholder
+
+// ── Registro engine attivi ────────────────────────────────────────────────────
+
+const engines = new Map()
+
+function getOrCreate(tableId, io) {
+  if (!engines.has(tableId)) engines.set(tableId, new CustodeEngine(tableId, io))
+  return engines.get(tableId)
+}
+
+module.exports = { getOrCreate }
