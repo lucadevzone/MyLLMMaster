@@ -482,24 +482,18 @@ async function runTests() {
   // ── Scenario 5: Giocatori in gioco-libero, messaggi nel buffer ────────────
   section('Scenario 5 — Buffer messaggi')
 
-  // Aspetta che il custode sia in fase-3 (bufferActive = true):
-  // emitPhaseChange('fase-3') viene emesso PRIMA della chiamata LLM, poi startBuffer() viene
-  // chiamato DOPO. Quindi aspettiamo la narrativa del custode (post-LLM) per essere sicuri
-  // che il buffer sia attivo prima di inviare messaggi.
+  // Aspetta che il custode sia in fase-3 e che startBuffer() sia stato chiamato.
+  // setGroupState (prima di startBuffer) emette session:player-update con 'gioco-libero':
+  // usarlo come segnale che il buffer è attivo.
   try {
     await playerA.waitForCondition('session:phase-update', d => d.phase === 'fase-3', 15000)
-    // Aspetta la narrativa custode di fase-3 (emessa prima di startBuffer)
-    const custodeMsgsBefore = playerA.allEvents('session:message').filter(m => m.from === 'custode').length
-    await playerA.waitForCondition('session:message',
-      d => d.from === 'custode' && playerA.allEvents('session:message').filter(m => m.from === 'custode').length > custodeMsgsBefore,
-      10000)
-    // Il buffer viene attivato DOPO emitNarrative (setGroupState → startBuffer).
-    // Aspetta che l'engine completi il bookkeeping prima di inviare messaggi.
-    await sleep(200)
+    await playerA.waitForCondition('session:player-update',
+      d => d.email === 'player_a@test.com' && d.playerState === 'gioco-libero', 8000)
+    await sleep(50)  // startBuffer() viene chiamato subito dopo setGroupState
     pass('Custode in fase-3 (buffer attivo)')
-  } catch {
-    log(`fase-3 non ricevuto. Phase updates ricevuti: ${JSON.stringify(playerA.allEvents('session:phase-update'))}`)
-    log(`Messaggi custode ricevuti: ${playerA.allEvents('session:message').filter(m => m.from === 'custode').length}`)
+  } catch (err) {
+    log(`fase-3 non raggiunto. Phase updates: ${JSON.stringify(playerA.allEvents('session:phase-update'))}`)
+    fail('Custode in fase-3 (buffer attivo)', err.message)
   }
 
   playerA.socket.emit('session:message', { text: 'Esamino la porta con attenzione.' })

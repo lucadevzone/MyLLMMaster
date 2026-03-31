@@ -174,13 +174,26 @@ class CustodeEngine {
     const model = useLight
       ? (table['light-llmModel'] || table['heavy-llmModel'])
       : table['heavy-llmModel']
+
+    if (!model) {
+      const err = Object.assign(
+        new Error('Modello LLM non configurato sul tavolo'),
+        { isLlmError: true }
+      )
+      await svc.updateSessionState(this.tableId, 'in-pausa')
+      this.io.to(this.room).emit('session:status-update', { state: 'in-pausa' })
+      await this.emitError('Modello LLM non configurato – vai in Gestione Tavoli e seleziona un modello')
+      this.paused = true
+      throw err
+    }
+
     try {
       return await ollama.runPhase(model, promptFile, vars)
     } catch (err) {
       if (err.isLlmError) {
         await svc.updateSessionState(this.tableId, 'in-pausa')
         this.io.to(this.room).emit('session:status-update', { state: 'in-pausa' })
-        await this.emitError('Errore tecnico LLM – sessione in pausa')
+        await this.emitError(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
         this.paused = true
       }
       throw err

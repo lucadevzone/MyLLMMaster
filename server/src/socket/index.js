@@ -269,7 +269,9 @@ module.exports = function setupSocket(io) {
   async function avviaSessione(tableId) {
     console.log(`[Session] Avvio sessione: ${tableId}`)
     await svc.updateSessionState(tableId, 'sessione-iniziata')
-    await svc.setAllPlayersState(tableId, 'gioco-libero')
+    // Durante fase-1 e fase-2 il Custode ha la parola: i giocatori aspettano.
+    // setGroupState in fase-3 li porterà poi a gioco-libero.
+    await svc.setAllPlayersState(tableId, 'turno-custode')
     io.to(`table:${tableId}`).emit('session:status-update', { state: 'sessione-iniziata' })
     const ctx = svc.getSession(tableId)
     if (ctx) {
@@ -277,7 +279,7 @@ module.exports = function setupSocket(io) {
         io.to(`table:${tableId}`).emit('session:player-update', {
           email: p.email,
           connected: p.connected,
-          playerState: 'gioco-libero'
+          playerState: 'turno-custode'
         })
       })
     }
