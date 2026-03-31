@@ -168,9 +168,7 @@ function setBubbleColor(color) {
 }
 
 function leaveSession() {
-  if (confirm('Vuoi tornare in lobby? La sessione continuerà senza di te.')) {
-    router.push({ name: 'lobby' })
-  }
+  router.push({ name: 'lobby' })
 }
 
 // ── Colori bolle ──────────────────────────────────────────────────────────────
