@@ -34,11 +34,13 @@ async function saveChat(tableId, sessionId, messages) {
 }
 
 async function appendLog(tableId, sessionId, entry) {
-  const p = logPath(tableId, sessionId)
-  let logs = []
-  if (await fileExists(p)) logs = await readJSON(p)
-  logs.push({ ts: new Date().toISOString(), ...entry })
-  await writeJSON(p, logs)
+  try {
+    const p = logPath(tableId, sessionId)
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n'
+    await fs.appendFile(p, line)
+  } catch {
+    // Il log non deve mai crashare il server
+  }
 }
 
 // ── Gestione sessione ─────────────────────────────────────────────────────────
