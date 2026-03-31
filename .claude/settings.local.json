@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(/Users/luca/Documents/gamedev/MyLLMMaster/client/vite.config.js:*)",
+      "Bash(/Users/luca/Documents/gamedev/MyLLMMaster/client/package.json:*)",
+      "Bash(/Users/luca/Documents/gamedev/MyLLMMaster/server/.env:*)",
+      "Bash(timeout 5 node src/server.js)",
+      "Bash(git commit:*)",
+      "Bash(node_modules/.bin/vite --version)"
+    ]
+  }
+}

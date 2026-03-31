@@ -1,0 +1,1017 @@
+DIRETTIVE GENERALI DELLA WEBAPP LLM-MASTER
+
+l'app simula una giocata di gioco di ruolo tradizionale ma con un master basato su LLM. Per quest app, il sistema di gioco sottostante è Call of Cthulhu (ovvero il sistema basic basato su d100)
+
+l sistema deve essere implementato come applicazione web con backend in Node.js e frontend in Vue.js
+Il sistema deve utilizzare JavaScript come linguaggio di programmazione sia per backend che frontend
+Il sistema deve persistere tutti i dati su file system in formato JSON o Markdown
+il sistema deve usare usa Socket.io per gestire chat multi-utente, aggiornamenti stato turno, toast, e typing effect
+Il sistema deve usare JWT stateless (fisso per 24h) per l'autenticazione
+
+Il sistema deve richiedere autenticazione tramite login per accedere al frontend
+Il sistema deve utilizzare l'email come identificatore univoco per ogni utente
+
+Il sistema deve garantire agli utenti con ruolo "player" l'accesso a: Login/Logout, Lobby, Session, Profile
+Il sistema deve garantire agli utenti con ruolo "admin" l'accesso a: Login/Logout, Profile, Manager Players, Module Manager, Table Manager
+Il sistema deve permettere agli utenti autenticati di effettuare logout, modificare la propria password, il proprio nome visualizzato
+Il sistema deve permettere solo agli utente con ruolo player di eliminare il proprio account (il sistema deve impedire a un utente admin di eliminare il proprio account; un admin non può avere accountState="disabilitato" o "eliminato")
+Un admin non è un giocatore (non può entrare in sessione). E' un account speciale che si occupa solo di gestire le cose. 
+
+
+GESTIONE ACCOUNT PLAYER
+Il sistema deve permettere agli admin di visualizzare la lista completa dei giocatori iscritti (vista Manager Players), mostrando per ogni giocatore: Email, Nome, Data di iscrizione, Stato account
+
+Il sistema deve permettere agli admin di invitare nuovi giocatori, e di eliminare giocatori esistenti
+
+Alla pressione del pulsante invita l'account verrà registrato come "invited". 
+L'utente invitato dovrà usare email e codice di invito per autenticarsi, ma sarà invitato a cambiare immediatamente la password. Dopo questo passo l'account diventerà attivo.
+
+
+GESTIONE MODULI AVVENTURA
+Il sistema deve permettere agli admin di creare nuovi moduli avventura, modificare moduli avventura esistenti, e di eliminare moduli avventura
+
+
+GESTIONE TAVOLI
+Il sistema deve permettere agli admin di creare un nuovo tavolo
+Durante la creazione di un tavolo, il sistema deve richiedere all'admin di selezionare un modulo avventura, di selezionare una lista di giocatori e  selezionare un modello LLM da una lista predefinita
+Il sistema deve permettere agli admin di aggiungere o sostituire giocatori in un tavolo, di riportare un tavolo da stato "disabled" a stato "active" tramite l'aggiunta di un giocatore, o di archiviare un tavolo.
+Il sistema deve impostare come pianificazione di default la data/orario di creazione dell'ultimo personaggio
+l sistema deve permettere all'admin di impostare data, orario e durata della prossima sessione
+In fase di betatest, il sistema deve fornire una funzione per cancellare tutti i tavoli. 
+
+Il sistema userà Ollama per l'accesso alla LLM. Quindi la lista dei modelli può essere ottenuta interrogando ollama con il comando list.
+
+
+GESTIONE SALA DI ATTESA (LOBBY)
+
+Il sistema deve visualizzare nella lobby tutte le table a cui l'utente corrente è stato invitato.
+Il sistema deve permettere a un giocatore invitato di creare il proprio personaggio quando il tavolo è in stato "active"
+Il sistema deve permettere a un giocatore di entrare in sessione quando la data e l'orario pianficato sono giunti.
+
+
+GENERAZIONE DEL PERSONAGGIO
+Il sistema deve permettere di generare tutte le volte che si vuole le 8 caratteristiche del personaggio (FOR, COS, etc.) più il valore di Fortuna, assegnando casualmente ad esse dei valori da un pool (40, 50, 50, 50, 60, 60, 60, 70, 80) 
+
+Il sistema calcola e mostra i valori derivati:
+- Punti Ferita (PF) = (COS + TAG) / 10 arrotondato per difetto
+- Punti Magia (PM) = POT / 5 arrotondato per difetto
+- Sanità (SAN) = POT
+- Bonus Danno: calcolato da FOR + TAG secondo la tabella: 
+FOR+TAG in [2-64] => Bonus Danno=-2
+FOR+TAG in [65-84] => Bonus Danno=-1
+FOR+TAG in [85-124] => Bonus Danno=0
+FOR+TAG in [125-164] => Bonus Danno=+1d4
+FOR+TAG in [165-204] => Bonus Danno=+1d6
+
+- Movimento (MOV): 
+se FOR e DES sono entrambe < TAG => mov = 7; 
+se una tra FOR e DES >= TAG => mov = 8;
+se sia FOR che DES >= TAG => mov = 9;
+
+Le abilità derivano dalla professione scelta.
+Le professioni e le relative abilità si leggono da file 
+I valori base delle abilità di professione sono impostati a 40%. 
+
+
+SESSIONE DI GIOCO
+Il sistema deve avviare un timer "avvio sessione" di 5 minuti quando il primo giocatore si collega a un tavolo in stato "open", impostando lo stato della sessione a `primo-giocatore`
+Il sistema deve impostare lo stato del tavolo a "playing" quando il timer "avvio sessione" scade o quando tutti i giocatori invitati sono collegati. Quando lo stato del tavolo passa a "playing" il custode per iniziare, impostando lo stato della sessione a `sessione-iniziata`
+Il sistema deve considerare temporanee tutte le disconnessioni che avvengono dopo che lo stato è passato a "sessione-iniziata", mantenendo le attività anche quando alcuni giocatori si disconnettono (temporaneamente).
+Il sistema deve permettere ai giocatori che si riconnettono di recuperare i messaggi persi durante la disconnessione. Questi saranno visualizzati normalmente in chat al momento della riconnessione, ma con un marker speciale "da recuperare".
+Il custode deve risolvere le situazioni in cui un giocatore di turno si disconnette, spostando il focus sua qualche altra situazione.
+Il sistema può mettere in pausa la sessione quando tutti i giocatori si disconnettono o se c'è un problema tecnico. Quando è in pausa il ciclo del custode si ferma e i timer (proattività e silenzio) vengono messi in pausa.
+Il sistema deve mantenere un registro dei presenti (non tenendo conto di eventuali ritardi o disconnessioni premature)
+Il sistema deve permettere ai giocatori di indicare la propria volontà a terminare la sessione. Se la somma dei giocatori disconnessi e di quelli ancora presenti che hanno indicato di voler terminare è almeno la metà dei presenti durante la sessione (vedi registro presenti), allora la sessione passa in stato "In chiusura". Il Custode deve procedere alla fase "Chiusura sessione".
+Il sistema deve impostare stato "Terminata" quando il Custode saluta tutti.
+
+Area Chat
+Il sistema deve visualizzare nella chat solo le conversazioni tra PG e tra PG e Custode
+Il sistema deve visualizzare i messaggi di connessione/disconnessione o problemi tecnici come toast temporanei di breve durata
+Il sistema deve visualizzare i risultati di un tiro di dadi come toast temporanei di media durata
+Il sistema deve fare un auto-scroll all'ultimo messaggio quando arriva nuovo messaggio
+Il sistema deve comunque garantire lo scroll manuale disponibile per leggere storia
+Il sistema deve garantire al giocatore di selezionare il proprio colore per le bolle messaggio. Il cambio colore aggiorna retroattivamente tutte bolle già in chat.
+Il sistema, per i messaggi del custode, mostra un "..." prima di scrivere il testo e poi applica un effetto macchina da scrivere
+Il sistema consegna i messaggi marcati come sussurri solo al giocatore target (sarà visibile solo nella sua area chat).
+   
+Area Stato Giocatore
+Il sistema gestisce lo stato di ogni giocatore in base al contesto della giocata.
+
+BUFFER MESSAGGI - TRIGGER DI ELABORAZIONE
+Il sistema deve processare immediatamente la dichiarazione svolta in modalità 'mio-turno-libero'
+Il sistema deve processare immediatamente l'esito di una prova svolta in modalità 'mio-turno-prova'
+Il sistema deve raccogliere le dichiarazioni in gioco-libero in un buffer, per poi elaborarle in un unico batch.
+Il sistema può avviare un timer "di silenzio" (30 secondi) per stimare se la conversazione è terminata e i giocatori aspettano una risposta dal master. 
+Il sistema può usare una light LLM per processare il buffer di gioco-libero in background per "annotare" i messaggi dei giocatori con delle etichette utili sia a stabilire quando processare che nella fase di processo
+Il sistema deve processare il buffer di gioco-libero quando il timer "di silenzio" scade , oppure quando il buffer si riempie (la dimensione del buffer è un parametro di ambiente), o ancora quando le annotazioni dei messaggi indicano che i giocatori hanno finito di dichiarare.
+Il sistema deve cancellare il timer "di silenzio" attivo quando processa il buffer
+Il sistema deve svuotare completamente il buffer dopo ogni elaborazione
+
+STATO DEL MONDO
+Il Custode deve consultare il documento Stato del Mondo per conoscere dettagli della scena in corso
+Il Custode deve aggiornare il documento Stato del Mondo quando cambia qualcosa di attinente nelle scene
+Il sistema deve permettere la coesistenza di più gruppi di PG contemporaneamente
+Il sistema deve permettere l'esistenza di più scene/sottoscene contemporaneamente (una per gruppo)
+Il custode deve mantenere il focus narrativo su una sola scena alla volta
+Il sistema deve raggruppare nello stesso gruppo i PG che si ricongiungono nella stessa scena
+Il Custode deve aggiornare il documento Stato del Mondo per tenere conto dell'eventuale suddivisione dei PG in vari gruppi
+Il Custode deve tenere conto della suddivisione in gruppi per destinare messaggi e gestire turni
+    
+Il sistema deve strutturare l'avventura in scene sequenziali.
+Il sistema prepara una scena estraendo le informazioni chiave dal modulo avventura.
+
+
+CICLO DI VITA DEL CUSTODE
+Il comportamento del custode è gestito tramite un ciclo di vita procedurale strutturato in fasi
+Le decisioni e le esternazioni del custode nelle varie fasi è gestito tramite LLM
+Il custode può usare diverse LLM con capacità e tempi di risposta differenti per gestire diverse fasi e momenti (distinguiamo in light LLM e heavy LLM).
+Tutte le comunicazioni ai giocatori devono essere gestite da una heavy LLM.
+Il custode può usare un timer "proattività" (5 min) per misurare il tempo di inattività in chat e aggiungere stimoli al gioco. Il timer si avvia in Fase 3, e si interrompe in Fase 4. 
+Il sistem reagisce al timer "proattività" tornando in Fase 3 e aggiungendo dettagli e opportunità per i PG. 
+
+Il sistema deve registrare dati rilevanti al testing del sistema in dei file di log. Dati rilevanti includono connessione/disconnessione di giocatori, messaggi in chat, dati del buffer, fasi e decisioni del custode, eventi dei timer.
+
+Il sistema usa delle LLM per generare dei file JSON. Il sistema deve prevedere un meccanismo di retrial per garantire robustezza quando il modello genera output malformato.
+Se una chiamata ad una LLM va in timeout per un certo numero di volte consecutive, il sistema segnala un errore tecnico (tramite toast message) e si mette in pausa.
+
+Il sistema può prevedere un meccanismo di compressione/troncamento del contesto per l'ottimizzazione della dimensione del prompt per la LLM.
+L'uso di una scena al posto di fornire l'intero modulo avventura fa parte di queste strategie. Al posto di passare l'intera scheda PG in JSON, si potrebbe pensare ad un "sintetizzatore" che riduce la scheda ad una sola riga di testo.
+
+Quando i PG si dividono in più gruppu, il custode interagisce con un solo gruppo per volta. Questo si chiama gruppo in focus.
+Il sistema usa un timer "proattività" per gestire la conversazione con il gruppo in focus per valutare il bisogno di intervenire con nuove informazione o stimoli. 
+Il custode cercherà di alternare tra i gruppi,, rispettando però delle regole di gestione della scena.
+
+
+
+SCHEMA DATI PER UN ACCOUNT
+email: string - Email utente (ID univoco) [obbligatorio] [email valida]
+name: string - Nome visualizzato [obbligatorio]
+password: string - Password hash [obbligatorio]
+role: enum - Ruolo utente [obbligatorio] [player|admin]
+accountState: enum - Stato account [obbligatorio] [invited|attivo|disabilitato|eliminato]
+registrationDate: string - Data registrazione [obbligatorio] [ISO 8601]
+
+Esempio: 
+{
+  "email": "alice@example.com",
+  "name": "Alice Wonderland",
+  "password": "$2b$10$...", 
+  "role": "player",
+  "accountState": "attivo",
+  "registrationDate": "2026-03-15T10:30:00Z"
+}
+
+ENUM VALORI VALIDI PER LO STATO DI UN ACCOUNT:
+Invited: Giocatore invitato ma non registrato
+attivo: Account funzionante (solo gli account attivi possono essere inclusi in un tavolo)
+disabilitato: Utente ha eliminato il proprio account
+eliminato: Admin ha eliminato l'utente
+
+
+
+SCHEMA DATI PER UN MODULO AVVENTURA
+Id: string - Identificatore univoco modulo [obbligatorio] [UUID]
+title: string - Titolo modulo [obbligatorio]
+minPlayers: number - Numero minimo giocatori [obbligatorio] [min: 1]
+maxPlayers: number - Numero massimo giocatori [obbligatorio] [max: 10]
+chapters: array<object> - Lista capitoli [obbligatorio] [min: 1]
+
+chapterNumber: number - Numero capitolo [obbligatorio]
+title: string - Titolo capitolo [obbligatorio]
+content: string - Contenuto in Markdown [obbligatorio]
+
+Esempio:
+{
+  "id": "mod_masks_nyarlathotep",
+  "title": "Le Maschere di Nyarlathotep",
+  "minPlayers": 3,
+  "maxPlayers": 6,
+  "chapters": [
+    {
+      "chapterNumber": 1,
+      "title": "New York - L'inizio del mistero",
+      "content": "# New York - Gennaio 1925\n\nLa morte di Jackson Elias..."
+    },
+    {
+      "chapterNumber": 2,
+      "title": "Londra - Seguendo le tracce",
+      "content": "# Londra - Febbraio 1925\n\nIl vapore arriva a Southampton..."
+    }
+  ]
+}
+
+
+STRUTTURA FILE DI UN TAVOLO
+
+ogni tavolo genere una cartella data/tables/{table-id}/
+che contiene:
+	- table.json (che contiene info sul tavolo)
+	- characters (con le schede dei PG)
+	- diary.txt (file di testo che riassume i fatti)
+	- world_state.json (che contiene lo stato corrente del mondo, le scene aperte, il focus di scena e il capitolo del modulo a cui i PG sono arrivati)
+	- una sottocartella sessions che ciontiene i dati di sessione
+	- una sottocartella active_scenes che contiene tutti le scene ancora attive
+	- una sottocartella closed_scenes che contiene tutti le scene chiuse
+	- una sottocartella logs che contiene tutti i file log_session
+
+
+
+SCHEMA DATI PER UN TAVOLO
+- id: string - Identificatore univoco tavolo [obbligatorio] [UUID]
+- moduleId: string - Riferimento modulo avventura [obbligatorio]
+- heavy-llmModel: string - Modello LLM selezionato per i task impegnativi [obbligatorio]
+- light-llmModel: string - Modello LLM selezionato per task secondari [opzionale]
+- state: enum - Stato tavolo [obbligatorio] [active|ready|open|playing|disabled|archived]
+- invitedPlayers: array<string> - Email giocatori invitati [obbligatorio] [min: 1]
+- plannedSession: object - Pianificazione prossima sessione [opzionale]
+  - date: string - Data sessione [obbligatorio] [ISO 8601 date]
+  - time: string - Orario sessione [obbligatorio] [HH:MM]
+  - duration: number - Durata in minuti [obbligatorio]
+- custodeStarted: boolean - Custode ha avviato sessione [obbligatorio] [default: false]
+
+I tavoli sono persistenti in data/tables/{table-id}/table.json
+
+Esempio
+{
+  "id": "tbl_a1b2c3d4",
+  "moduleId": "mod_masks_nyarlathotep",
+  "heavy-llmModel": "claude-sonnet-4",
+  "light-llmModel": "claude-sonnet-4",
+  "state": "ready",
+  "invitedPlayers": [
+    "alice@example.com",
+    "bob@example.com",
+    "charlie@example.com"
+  ],
+  "plannedSession": {
+    "date": "2026-04-05",
+    "time": "20:00",
+    "duration": 180
+  },
+  "custodeStarted": false
+}
+
+ENUM VALORI VALIDI PER STATE OF TABLE:
+- `active`: Tavolo creato, non tutti i giocatori hanno aderito e creato PG
+- `ready`: Tutti i giocatori hanno creato PG, pronta la pianificazione prossima sessione
+- `open`: Data/orario pianificati sono passati, si può entrare in sessione
+- `playing`: tutti i giocatori sono in sessione, o comunque il custode ha avviato la sessione
+- `disabled`: Un giocatore invitato è stato eliminato
+- `archived`: Tavolo eliminato
+
+
+
+SCHEMA DATI PER UNA SCHEDA PERSONAGGIO
+[Informazioni base]
+  id: string - Identificatore univoco personaggio [obbligatorio] [UUID]
+  playerID: string - Email del giocatore proprietario [obbligatorio]
+  name: string - Nome personaggio [obbligatorio]
+  eta: number - Eta del personaggio [obbligatorio] [20-60]
+  Fortuna: number - Fortuna del personaggio [obbligatorio] [1-100]
+  profession: string - Professione [obbligatorio]
+  descrizionePersonale: string - Descrizione fisica e aspetto [opzionale]
+  background: string - Storia personale e background [opzionale]
+  notes: string - Appunti personali [opzionale]
+
+[Caratteristiche (characteristics)]
+  characteristics: object - Caratteristiche del personaggio [obbligatorio]
+    FOR: number - Forza [obbligatorio] [1-100]
+    COS: number - Costituzione [obbligatorio] [1-100]
+    DES: number - Destrezza [obbligatorio] [1-100]
+    TAG: number - Taglia [obbligatorio] [1-100]
+    INT: number - Intelligenza [obbligatorio] [1-100]
+    POT: number - Potere [obbligatorio] [1-100]
+    APP: number - Apparenza [obbligatorio] [1-100]
+    EDU: number - Educazione [obbligatorio] [1-100]
+
+[Attributi derivati (derivedAttributes)]
+  derivedAttributes: object - Valori calcolati dalle caratteristiche [obbligatorio]
+    hp: object - Punti Ferita [obbligatorio]
+      max: number - PF massimi, calcolato (COS+TAG)/10 arrotondato per difetto [obbligatorio]
+      current: number - PF attuali [obbligatorio]
+    mp: object - Punti Magia [obbligatorio]
+      max: number - PM massimi, calcolato POT/5 arrotondato per difetto [obbligatorio]
+      current: number - PM attuali [obbligatorio]
+    sanita: object - Punti Sanita Mentale [obbligatorio]
+      max: number - Sanita massima, sempre 99 [obbligatorio] [99]
+      current: number - Sanita attuale [obbligatorio]
+      startingValue: number - Valore iniziale, uguale a POT [obbligatorio]
+    bonusDanno: string - Bonus al danno, calcolato da FOR+TAG [obbligatorio] ["-2", "-1", "0", "+1d4", "+1d6", ecc.]
+    build: number - Corporatura, calcolato da FOR+TAG [obbligatorio] [-2, -1, 0, 1, 2, ecc.]
+    movimento: number - Valore di movimento [obbligatorio] [7, 8, o 9]
+
+[Abilita (abilita)]
+  abilita: object - Abilita del personaggio [obbligatorio]
+    comuni: object - Abilita sempre presenti [obbligatorio]
+      schivare: number - Abilita Schivare, valore base DES/2 [obbligatorio] [1-100]
+      rissa: number - Abilita Rissa, valore base 25 [obbligatorio] [1-100]
+      ascoltare: number - Abilita Ascoltare, valore base 20 [obbligatorio] [1-100]
+      charme: number - Abilita Charme, valore base 15 [obbligatorio] [1-100]
+      intimidire: number - Abilita Intimidire, valore base 15 [obbligatorio] [1-100]
+      persuadere: number - Abilita Persuadere, valore base 10 [obbligatorio] [1-100]
+      raggirare: number - Abilita Raggirare, valore base 5 [obbligatorio] [1-100]
+      osservare: number - Abilita Osservare, valore base 25 [obbligatorio] [1-100]
+      psicologia: number - Abilita Psicologia, valore base 10 [obbligatorio] [1-100]
+      credito: number - Abilita Nota di Credito, valore base 10 [obbligatorio] [1-100]
+    specialistiche: array - Lista abilita specialistiche/professionali [obbligatorio]
+      [elemento array]
+        nome: string - Nome dell'abilita [obbligatorio]
+        valore: number - Valore abilita [obbligatorio] [1-100]
+        specializzazione: string - Specializzazione specifica (es. "Pittura" per Arte) [opzionale]
+
+[Armi e combattimento (armiECombattimento)]
+  armiECombattimento: array - Lista armi possedute [opzionale]
+    [elemento array]
+      nome: string - Nome dell'arma [obbligatorio]
+      abilita: string - Abilita associata (es. "Armi da Fuoco (Pistole)") [obbligatorio]
+      danno: string - Danno inflitto (es. "1d10") [obbligatorio]
+      gittata: string - Gittata dell'arma [opzionale]
+      colpi: number - Colpi per caricatore [opzionale]
+      malfunzionamento: string - Valore di malfunzionamento (es. "00") [opzionale]
+
+[Equipaggiamento (equipaggiamento)]
+  equipaggiamento: array - Lista equipaggiamento posseduto [opzionale]
+    [elemento array]
+      nome: string - Nome dell'oggetto [obbligatorio]
+      quantita: number - Quantita posseduta [obbligatorio]
+      descrizione: string - Descrizione oggetto [opzionale]
+
+
+Le schede dei PG sono file persisenti in data/tables/{table-id}/characters/{character-id}.json
+
+
+PROFESSIONI
+I dati delle professioni sono persisteni in data/professions.json
+
+Professioni disponibili (con abilità di professione):
+- Antiquario: Valutare, Arte/Artigianato (qualsiasi), Storia, Biblioteca, Altra Lingua, una abilità interpersonale (Fascino, Parlare a Vanvera, Intimidire o Persuadere), Individuare Nascosti, una abilità a scelta.
+- Scrittore: Arte (Letteratura), Storia, Biblioteca, Mondo Naturale o Occulto, Altra Lingua, Lingua Madre, Psicologia, una abilità a scelta.
+- Dilettante: Arte/Artigianato (qualsiasi), Armi da Fuoco, Altra Lingua, Equitazione, una abilità interpersonale (Fascino, Parlare a Vanvera, Intimidire o Persuadere), tre abilità a scelta.
+- Medico: Primo Soccorso, Altra Lingua (Latino), Medicina, Psicologia, Scienze (Biologia), Scienze (Farmacologia), due abilità a scelta come specialità.
+- Giornalista: Arte/Artigianato (Fotografia), Storia, Biblioteca, Lingua Madre, una abilità interpersonale (Fascino, Parlare a Vanvera, Intimidire o Persuadere), Psicologia, due abilità a scelta.
+- Detective della Polizia: Arte/Artigianato (Recitazione) o Travestimento, Armi da Fuoco, Legge, Ascoltare, una abilità interpersonale (Fascino, Parlare a Vanvera, Intimidire o Persuadere), Psicologia, Individuare Nascosti, una abilità a scelta.
+- Investigatore Privato: Arte/Artigianato (Fotografia), Travestimento, Legge, Biblioteca, una abilità interpersonale (Fascino, Parlare a Vanvera, Intimidire o Persuadere), Psicologia, Individuare Nascosti, una abilità a scelta (es. Scassinare, Armi da Fuoco).
+- Professore: Biblioteca, Altra Lingua, Lingua Madre, Psicologia, quattro abilità a scelta come specialità accademiche.
+
+
+
+SCHEMA DATI STATO DEL MONDO
+- currentChapter: number - Capitolo corrente modulo [obbligatorio]
+- focusScene: string - ID scena con focus narrativo [obbligatorio]
+- groups: array<object> - Lista gruppi PG [obbligatorio] [min: 1]
+++groupId: string - Identificatore gruppo (es: "group01") [obbligatorio]
+++sceneId: string - ID scena dove si trova il gruppo [obbligatorio]
+++participants: array<string> - Email PG nel gruppo [obbligatorio] [min: 1]
+++subLocation: string - Sotto-location specifica dentro la scena [obbligatorio]
+++activity: string - Cosa sta facendo il gruppo [obbligatorio]
+- npcs: array<object> - Stati PNG nel mondo [opzionale]
+++name: string - Nome PNG [obbligatorio]
+++sceneId: string - ID scena dove si trova [obbligatorio]
+++status: string - Stato corrente (es: "nervosa", "ferito") [opzionale]
+++notes: string - Note narrative rilevanti [opzionale]
+- items: array<object> - Oggetti rilevanti nel mondo [opzionale]
+++name: string - Nome oggetto [obbligatorio]
+++sceneId: string - ID scena dove si trova [obbligatorio]
+++location: string - Location specifica (es: "vetrina", "scrivania") [obbligatorio]
+++owner: string|null - Email proprietario o null se non posseduto [obbligatorio]
+  
+  
+Esempio
+{
+  "currentChapter": 1,
+  "focusScene": "scene_001",
+  
+  "groups": [
+    {
+      "groupId": "group01",
+      "sceneId": "scene_001",
+      "participants": ["alice@example.com", "bob@example.com"],
+      "subLocation": "Vicino alla vetrina con la tavoletta",
+      "activity": "Esaminano la tavoletta anomala"
+    },
+    {
+      "groupId": "group02",
+      "sceneId": "scene_002",
+      "participants": ["charlie@example.com"],
+      "subLocation": "Soggiorno appartamento",
+      "activity": "Cerca indizi tra le carte di Belloq"
+    }
+  ],
+  
+  "npcs": [
+    {
+      "name": "Sophia Hapgood",
+      "sceneId": "scene_001",
+      "status": "nervosa",
+      "notes": "Ha rivelato l'amuleto ad Alice"
+    },
+    {
+      "name": "Klaus Kerner",
+      "sceneId": "scene_001",
+      "status": "osservatore",
+      "notes": "Ha annotato i PG nel taccuino"
+    }
+  ],
+  
+  "items": [
+    {
+      "name": "Tavoletta con script anomalo",
+      "sceneId": "scene_001",
+      "location": "vetrina sala aste",
+      "owner": null
+    },
+    {
+      "name": "Diario di Belloq",
+      "sceneId": "scene_002",
+      "location": "scrivania",
+      "owner": null
+    }
+  ]
+}
+
+Lo stato del mondo è persistente in: data/tables/{table-id}/world_state.json
+
+SESSIONE DI GIOCO
+
+La sessione di gioco ha uno stato di cui i valori validi sono:
+- `custode-pronto`: In attesa dei giocatori
+- `primo-giocatore`: Primo giocatore collegato, timer avviato
+- `sessione-iniziata`: Tutti collegati o timer scaduto
+- `in-pausa`: Tutti i player si sono collegati o il custode ha un problema tecnico
+- `in-chiusura`: Maggioranza ha votato "è tardi"
+- `terminata`: Custode ha salutato tutti
+
+
+Ogni giocatore in sessione ha uno stato:
+- `turno-custode`: Custode sta comunicando
+- `gioco-libero`: Tutti i PG di un gruppo possono chattare e dichiarare
+- `mio-turno-libero`: È il turno del giocatore di dichiarare
+- `mio-turno-prova`: È il turno del giocatore di tirare i dadi
+- `fuori-turno`: Turno di un altro giocatore del proprio gruppo
+- `fuori-scena`: Turno di altro gruppo
+
+Queste informazioni persistono in un file data/tables/{table-id}/sessions/session{session-id}.json
+      
+SCHEMA DATI PER UNA SESSIONE
+- sessionId: string - Identificatore univoco sessione [obbligatorio] [UUID]
+- sessionNumber: number - Numero progressivo sessione per questo tavolo [obbligatorio]
+- state: enum - Stato sessione [obbligatorio] 
+  [custode-pronto|primo-giocatore|sessione-iniziata|in-pausa|in-chiusura|terminata]
+- custodePhase: string - Fase corrente del ciclo Custode [opzionale] 
+  ["fase-1"|"fase-2"|"fase-3"|"fase-4"|"fase-4a"|"fase-4b"|"fase-4c"|"fase-5"|"fase-5a"|"fase-5b"|"fase-5c"|null]
+- focusGroupId: string - Gruppo attualmente in focus [opzionale]
+- startedAt: string - Timestamp inizio sessione [opzionale] [ISO 8601]
+- endedAt: string - Timestamp fine sessione [opzionale] [ISO 8601]
+- registroPresenti: array<string> - Email dei giocatori che si sono collegati almeno una volta [obbligatorio]
+- players: array<object> - Stato corrente di ogni giocatore [obbligatorio]
+  - email: string - Email giocatore [obbligatorio]
+  - playerState: enum - Stato di gioco [obbligatorio]
+    [turno-custode|gioco-libero|mio-turno-libero|mio-turno-prova|fuori-turno|fuori-scena]
+  - connected: boolean - Connesso via WebSocket [obbligatorio]
+  - voteTardi: boolean - Ha votato "è tardi" [obbligatorio] [default: false]
+  - lastSeen: string - Ultimo timestamp di attività [opzionale] [ISO 8601]
+  - missedSince: string - Timestamp disconnessione (per calcolo messaggi "da recuperare") [opzionale] [ISO 8601]
+- pianoAzione: object|null - Piano azione parziale o completo della fase 4 corrente [opzionale]
+- lastMessageId: string - ID ultimo messaggio in chat (per gestione riconnessione) [opzionale]
+    
+
+I messaggi dei giocatori possono essere annotati con questi tag:
+[domanda al custode]
+[dichiarazione]
+[discutendo tra PG]
+[fuori ruolo]
+
+
+SCHEMA DATI PER UNA SCENA
+  id_scena: string - Identificatore univoco scena [obbligatorio] [UUID]
+  contesto_dove: string - Contesto generale dove si svolge la scena [obbligatorio]
+  contesto_quando: string - Contesto temporale quando si svolge la scena [obbligatorio]
+  location: string - Descrizione dettagliata della location [obbligatorio]
+  npcs: string - Descrizione dei PNG presenti nella scena [opzionale]
+  opportunita: array - Lista delle opportunita disponibili nella scena [opzionale]
+    [elemento array]
+      descrizione: string - Descrizione dell'opportunita [obbligatorio]
+      prova: string - Caratteristica o abilita da testare [obbligatorio]
+      difficolta: string - Livello di difficolta [obbligatorio] ["facile", "normale", "difficile"]
+      esito_successo: string - Cosa accade in caso di successo [obbligatorio]
+  minacce: array - Lista delle minacce presenti nella scena [opzionale]
+    [elemento array]
+      descrizione: string - Descrizione della minaccia [obbligatorio]
+      trigger: string - Cosa scatena la minaccia [obbligatorio]
+      conseguenza: string - Cosa accade quando si attiva [obbligatorio]
+  indizi: array - Lista degli indizi scopribili nella scena [opzionale]
+    [elemento array]
+      descrizione: string - Descrizione dell'indizio [obbligatorio]
+      metodo: string - Come puo essere scoperto l'indizio [obbligatorio]
+      prova: string - Caratteristica o abilita da testare [opzionale]
+      difficolta: string - Livello di difficolta [opzionale] ["facile", "normale", "difficile"]
+      informazione: string - L'informazione rivelata dall'indizio [obbligatorio]
+      porta_a: string - Cosa sblocca questo indizio [opzionale]
+ summary: string - riepilogo della narrativa di questa scena una volta chiusa [opzionale]
+ 
+Il file scene sono persistenti nelle cartella
+data/tables/{table-id}/active_scenes se la scena è ancora attiva
+data/tables/{table-id}/closed_scenes se la scena è chiusa
+
+
+il file diary.txt è un file di testo puro. Sarà aggiornato dal custode nell'arco delle scene e delle sessioni.
+
+
+PROMPT PER LA LLM
+Tutti i prompt sono persistenti nella cartella prompts
+
+
+
+
+DIRETTIVE GENERALI PER IL FRONTEND
+Stile chiaro (non dark mode)
+Palette di colori pastello
+Design minimalista e pulito
+Font leggibile e professionale
+Lingua: italiano - anche se diversamente indicato la lingua del frontend è l'italiano
+Palette Colori Consigliata:
+Background principale: tonalità chiare (bianco, grigio chiarissimo)
+Accenti: colori pastello (azzurro, verde, rosa, giallo tenue)
+Testo: grigio scuro per contrasto
+Errori/Alert: rosso pastello
+Conferme: verde pastello
+
+
+DESIGN INTERFACCIA GENERALE DI UNA VISTA ACCOUNT
+Tutte le pagine hanno uno Header
+-Nome utente (a destra)
+-Pulsanti per Pagine attive per il ruolo dell'account
+-Logout
+
+
+DESIGN INTERFACCIA DELLA VISTA PROFILE
+Sezione info
+-Nome utente
+-Email
+-Ruolo (badge: "Player" o "Admin")
+-Stato account (badge colore)
+
+Sezione "Cambia Nome"
+-Input nome
+-Pulsante "Salva"
+
+Sezione "Cambia Password"
+-Input password attuale
+-Input nuova password
+-Input conferma password
+-Pulsante "Aggiorna Password"
+
+Sezione "Elimina Account" (solo se NON admin)
+-Testo warning
+-Pulsante "Elimina Account" (rosso)
+
+
+DESIGN INTERFACCIA DELLA VISTA MANAGER PLAYERS
+SubHeader
+-Titolo "Gestione Giocatori"
+-Pulsante "Invita Giocatore"
+
+Tabella giocatori
+-Colonne: Email, Nome, Data Iscrizione, Stato, Azioni
+-Riga per ogni giocatore
+++ stato dell'account
+++Pulsante "Elimina" (se NON self e NON admin)
+
+
+DESIGN INTERFACCIA DELLA VISTA INVITA NUOVI GIOCATORI
+SubHeader
+-Titolo "Invita nuovo Giocatore"
+
+Body form
+-Input "Email"
+-Input "Codice di invito" (randomly generated alfanumeric password)
+-Pulsante "Invita"
+
+
+
+DESIGN INTERFACCIA DELLA VISTA MANAGER MODULES
+SubHeader
+  - Titolo "Gestione Moduli Avventura"
+  - Pulsante "Nuovo Modulo"
+- Lista ordinata per data creazione dei moduli
+++Titolo modulo
+++Num. giocatori
+++Numero capitoli
+++Pulsante "Modifica"
+++Pulsante "Elimina"
+
+
+DESIGN INTERFACCIA CREA/MODIFICA MODULE
+SubHeader: 
+"Nuovo Modulo" o "Modifica Modulo"
+
+Body form
+-Input "Titolo" (text, required)
+-Input "Min Giocatori" (number, 1-10, required)
+-Input "Max Giocatori" (number, 1-10, required)
+
+Sezione "Capitoli"
+-Pulsante "Aggiungi Capitolo"
+-Lista capitoli editabili
+++Input "Titolo Capitolo"
+++Pulsante "Modifica Capitolo"
+++Pulsante "Rimuovi Capitolo"
+
+Sezione "Capitolo" (appare solo se si preme Modifica Capitolo o Nuovo Capitolo)
+-Textarea "Contenuto" (Markdown)
+-Pulsante "Aggiungi/Salva Capitolo"
+
+Footer
+-Pulsante "Annulla"
+-Pulsante "Salva"
+
+
+
+DESIGN INTERFACCIA DELLA VISTA TABLE MANAGER
+SubHeader
+  - Titolo "Gestione Tavoli"
+  - Pulsante "Crea Tavolo"
+  - Pulsante "Clear All Tables" (playtest, rosso)
+
+Lista tavoli
+- Titolo modulo avventura
+- stato tavolo
+- Lista giocatori invitati (con badge stato giocatore, giallo = invitato, verde = registrato scheda personaggio, rosso=disabilitato o cancellato)
+- Prossima sessione: [data] [ora] [durata]
+- Azioni disponibili
+++"Plan Next Session" (se stato = ready)
+++"Change Player List"
+++"Close Table"
+
+il tasto Plan Next Session apre un semplice data picker che permette di scegliere la data/orario della prossima sessione.
+
+
+DESIGN INTERFACCIA DELLA VISTA CREA TAVOLO
+SubHeader: 
+"Crea Nuovo Tavolo"
+
+Body form
+- Select "Modulo Avventura" (caricato dinamicamente, required)
+- Multi-select "Giocatori" (solo account attivi, required)
+- Select "Modello LLM" (lista predefinita, required)
+- Select "Modello LLM (leggero)" (lista predefinita, required)
+- Footer
+++Pulsante "Annulla"
+++Pulsante "Crea Tavolo"
+
+
+
+DESIGN INTERFACCIA VISTA LOBBY
+SubHeader lobby
+ - "Lobby"
+ 
+ Lista tavoli a cui il player è invitato
+- Titolo modulo avventura
+- Lista giocatori
+-Azioni
++Crea Personaggio (se non è ancora stato creato)
++Rivedi Personaggio (se è già stato creato)
++Entra in Sessione (se il tavolo è in stato "open")
+
+
+DESIGN INTERFACCIA DELLA VISTA CREA/RIVEDI PERSONAGGIO
+SubHeader: 
+-"Crea il tuo personaggio"
+
+Body form
+- Input "Nome" (text, required)
+- Input "Età" (default = 35)
+- Select "Professione" (caricato da professioni.json, required)
+- Sezione "Caratteristiche" (read-only, generate random)
+++ FOR, COS, DES, TAG, INT, POT, APP, EDU, Fortuna
+- Pulsante "Rigenera Caratteristiche" (secondario)
+- Sezione caratteristiche derivate
+++ bonus al danno
+++ punti ferita
+++ punti magia
+++ punti sanità
+- Sezione abilità comuni/professionali (lista come elenco separato da virgola dell'abilità seguita dal valore di percentuale)
+- Textarea "Background" (opzionale, max 500 caratteri)
+
+Footer
+ - Pulsante "Annulla"
+ - Pulsante "Entrare al tavolo" (primario)
+ 
+ 
+DESIGN INTERFACCIA DELLA VISTA SESSIONE
+Barra superiore (fissa)
+  - Label stato partita (centrata)
+  - Pulsante "Torna in Lobby" (destra)
+
+Container principale (sotto la barra)
+- Area sinistra (60% larghezza)
+++Area stato Custode
+++Chat (scroll verticale)
+++Area stato giocatore
+++Textarea input
+++Pulsanti comandi
+- Area destra (40% larghezza)
+++Tab container
++++Tab "Statistiche"
++++Tab "Diario"
++++Tab "Sessione"
+
+
+Varianti Label stato partita
+- Tavolo pronto: testo arancione, "Primo giocatore collegato - Aspettiamo 5 minuti e vediamo chi si collega"
+- Tutti pronti: testo verde, "Tutti pronti - Iniziamo"
+- In chiusura: testo rosso pastello, "Si è fatto tardi - Sessione in chiusura"
+- Terminata: testo grigio, "Sessione terminata"
+
+
+Struttura Container chat (scroll verticale)
+- Lista bolle messaggi (ordine cronologico)
+++Bolla messaggio
+
+Struttura Container bolla Messaggio (colore distintivo per autore)
+-Header
+++Nome autore (bold)
+++Badge etichetta (opzionale)
++++"sussurri" (se tipo=sussurro, per messaggi personali)
++++"da recuperare" (se tipo=da-recuperare, per messaggi persi) 
+-Body testo (formato markdown se necessario)
+ 
+ 
+ Stile delle bolle messaggi:
+- Normale: colore player, testo normale, no badge
+- Sussurro: colore player + badge "sussurri", testo corsivo
+- Da recuperare: badge "da recuperare", sfondo leggermente evidenziato
+- Custode: header fisso "Custode", effetto typing, no colore personalizzato (usa colore sistema)
+
+
+Container stato (barra orizzontale sopra textarea)
+- Label stato turno (centrata, testo medio)
+
+
+Stili da usare per gli Stati del giocatore
+- turno-custode: sfondo grigio chiaro, testo "Il Custode sta parlando"
+- gioco-libero: sfondo azzurro pastello, testo "Gioco libero"
+- mio-turno-libero: sfondo verde pastello, testo "È il tuo turno di dichiarare"
+- mio-turno-prova: sfondo verde pastello, testo "Devi affrontare una prova in [Abilità|Caratteristica] (hai [%])"
+- fuori-turno: sfondo giallo pastello, testo "Turno di [NomePG]",
+- fuori-scena: sfondo grigio, testo "Sei fuori scena - Attendi..."
+
+
+Textarea multi-line (ENTER → invia messaggio)
+  - Placeholder: "Cosa fai?"  +
+  - Altezza minima: 2 righe
+  
+Container pulsanti (riga orizzontale)
+  - Pulsante "Dichiara" (primario, verde)
+  - Pulsante "Tira dado" (accento, blu) [appare solo se richiesto]
+
+
+Mapping stato giocatore con gli elementi dell'interfaccia:
+- `turno-custode`: Textarea e buttons disabilitati
+- `gioco-libero`: abilita Textarea e pulsante "Dichiara"
+- `mio-turno-libero`: abilita Textarea e il pulsante "Dichiara" il pulsante "Tira dado" è nascosto
+- `mio-turno-prova`: diasabilita Textarea e il pulsante "Dichiara". Mostra e abilita il pulsante "Tira dado"
+- `fuori-turno`: disabilita Textarea e pulsante "Dichiara"
+- `fuori-scena`: disabilita Textarea e pulsante "Dichiara"
+
+
+Nella Tab "Statistiche" si deve mostrare la scheda del personaggio.
+Nella Tab "Diario" ci sono due aree di testo, quella in alto viene popolata dinamicamente con il contenuto del file "diario.txt" man mano che il custode l'aggiornerà. Nella textarea in basso il giocatore potrò prendere i propri appunti (da salvare nella scheda del PG)
+Nella Tab "Sessione" il sistema dovrà mostrare l'elenco dei "presenti", sotto un picker di colori prestabiliti da usare come colore personalizzato per le bolle messaggi, e infine, in basso nella scheda il tasto "E' Tardi". Con un badge rosso se non è connesso, e verde se connesso. Ad ogni presente sarà associato un icon "è tardi" qualora sia stato premuto il tasto corrispondente.
+
+  
+
+
+
+Fase 1 - Aprire la sessione 
+Obiettivo: (se è le prima sessione) introdurre l'ambientazione, l'avventura e i PG; (dalla seconda sessione in poi) riassumere sessioni precedenti. 
+Input (prima sessione): {{primo_capitolo}}, {{schede_PG}}
+Input (altre sessioni): {{diary}}, {{capitolo_corrente}}, {{world_state}}, {{schede_PG}}
+Output:
+{
+  "narrativa": "{{testo_introduttivo}}",
+  "diary": "{{entry_diary}}"  // solo prima sessione
+}
+Sistema:
+Mostra {{testo_introduttivo}} in chat
+appendi {{entry_diary}} a diary.txt
+Prossima: Fase 2 o Fase 3
+
+Fase 2 - (opzionale, se non c'è una scena attiva) Preparare una Scena
+Obiettivo: estrarre dal capitolo una scena, ovver un estratto super compatto con tutte le informazioni necessarie per condurre il gioco, evitando di passare l'intero capitolo alle fasi successive. 
+Input: {{capitolo_corrente}}, {{suggerimento_prossima_scena}} (opzionale)
+Output:
+{
+  "id_scena": "{{id}}",
+  "contesto_dove": "{{dove}}",
+  "contesto_quando": "{{quando}}",
+  "location": "{{location_dettagliata}}",
+  "npcs": "{{npcs_descrizione}}",
+  "opportunita": [
+    {
+      "descrizione": "{{desc}}",
+      "prova": "{{caratteristica}}",
+      "difficolta": "{{facile|normale|difficile}}",
+      "esito_successo": "{{esito}}"
+    }
+  ],
+  "minacce": [
+    {
+      "descrizione": "{{desc}}",
+      "trigger": "{{trigger}}",
+      "conseguenza": "{{conseguenza}}"
+    }
+  ],
+  "indizi": [
+    {
+      "descrizione": "{{desc}}",
+      "metodo": "{{metodo}}",
+      "prova": "{{caratteristica}}",
+      "difficolta": "{{facile|normale|difficile}}",
+      "informazione": "{{info}}",
+      "porta_a": "{{sblocca}}"
+    }
+  ]
+}
+Sistema:
+- Salva {{scene}} nel file scene_{{id}}.json in active_scenes/
+- Aggiorna {{world_state}}
+Prossima: Fase 3
+
+Fase 3 - Scena
+Obiettivo: Dare spazio ad una scena/sottoscena; presentare opportunità ai PG per poi lasciare la parola ai giocatori (gioco libero). In questa fase è anche possibile usare i messaggi "sussurrati" ad un solo PG se è l'unico che può accedere a delle informazioni.
+Input: {{estratto_scena_corrente}}, {{world_state}}, {{schede_PG}}, {{storia_recente}}
+Output:
+{
+  "narrativa": "{{presentazione_scena}}",
+  "sussurri": [
+  { "target": "alice@example.com", "testo": "Solo tu noti..." }
+]
+}
+Sistema:
+- Mostra {{presentazione_scena}} in chat
+- Imposta tutti PG → "gioco-libero"
+- Abilita input per tutti
+- Avvia buffer messaggi
+- Avvia timer proattività
+Prossima (dopo aver raccolto i messaggi in chat): Fase 4 - Gestione Dichiarazioni
+
+Fase 4 - Gestione delle Dichiarazioni. 
+Obiettivo: compilare il Piano Azione in base ai messaggi ricevuti. Può usare delle sottofasi interattive (quindi che assegnano il turno ad un singolo player). 
+Input: {{estratto_scena_corrente}}, {{world_state}}, {{schede_PG}}, {{messaggi_buffer/risultato_prova}}, {{piano_azione}} 
+Output: {{piano_azione}} o {{chiarimenti | dichiarazione assente | necessita prova}}
+Prossima: (se Piano Azione è completo): Fase 5, altrimenti una delle sottofasi.
+Il Piano Azione ha questa forma
+{
+  "piano": [
+    {
+      "pg": "{{id_pg}}",
+      "azione": "{{descrizione_azione}}",
+      "richiede_prova": {{true|false}},
+      "caratteristica": "{{caratteristica}}",  // se richiede_prova=true
+      "difficolta": "{{facile|normale|difficile}}",  // se richiede_prova=true
+      "esito": "{{esito_narrativo}}",  // se richiede_prova=false
+      "risultato_prova": {  // se prova già eseguita
+        "valore_tiro": {{numero}},
+        "esito": "{{successo|fallimento}}"
+      }
+    }
+  ]
+}
+
+Fase 4.a - Chiarimenti. 
+Obiettivo: una dichiarazione non è chiara, chiedere dettagli. Poi lasciare la parola al giocatore
+Input: {{pg_target}}, {{domanda}}, {{piano_azione}}
+Output:
+{
+  "narrativa": "{{domanda_al_pg}}"
+}
+Sistema:
+- Mostra {{domanda_al_pg}} in chat
+- Imposta {{pg_target}} → "mio-turno-libero", altri → "fuori-turno"
+- Abilita input solo per {{pg_target}}
+- Aspetta messaggio
+- Quando arriva → aggiungi a {{messaggi_buffer}}
+- Prossima: FASE 4 (richiamata con buffer aggiornato)
+Prossimo: Fase 4 
+
+Fase 4.b - Dichiarazione Assente: un pg non han dichiarato niente. 
+Obiettivo: Chiedere esplicitamente che farà. Poi lasciare la parola al giocatore
+Input: {{pg_target}}, {{sollecito}}, {{piano_parziale}}
+Output:
+{
+  "narrativa": "{{sollecito_al_pg}}"
+}
+Sistema:
+- Mostra {{sollecito_al_pg}} in chat
+- Imposta {{pg_target}} → "mio-turno-libero", altri → "fuori-turno"
+- Abilita input solo per {{pg_target}}
+- Aspetta messaggio
+- Quando arriva → aggiungi a {{messaggi_buffer}}
+- Prossima: FASE 4 (richiamata)
+Prossimo: Fase 4
+
+
+Fase 4.c - Necessita Prova: una dichiarazione non ha successo automatico. 
+Obiettivo: richiedere una prova. Poi lasciare che il giocatore tiri il dado.
+Input: {{pg_target}}, {{azione}}, {{caratteristica}}, {{difficolta}}, {{narrativa_setup}}, {{piano_azione}}
+Output:
+{
+  "narrativa": "{{setup_prova}}"
+}
+Sistema:
+- Mostra {{setup_prova}} in chat
+- Imposta {{pg_target}} → "mio-turno-prova", altri → "fuori-turno"
+- Abilita "Tira dado" solo per {{pg_target}}
+- Aspetta tiro dado
+- Quando tira:
+  - Genera {{valore_tiro}}
+  - Mostra toast con risultato
+  - Salva {{risultato_prova}}
+Prossimo: Fase 4
+
+Fase 5 - Risoluzione e Conseguenze. 
+Obiettivo: convertire il Piano Azione in narrativa. Descriuvere anche la reazione del mondo (avversari) alle azioni dei PG (in pratica per fare agire il mondo). In questa fase è anche possibile usare i messaggi "sussurrati" ad un solo PG se è l'unico che può accedere a delle informazioni (ad esempio il risutato di una prova di percezione).
+Input: {{piano_azione}}, {{estratto_scena_corrente}}, {{world_state}}, {{schede_PG}}
+Output:
+{
+  "narrativa": "{{narrativa_risoluzione}}",
+  "sussurri": [
+  { "target": "alice@example.com", "testo": "Solo tu noti..." }
+],
+  "conseguenze": {
+    "divisione_gruppi": {{true|false}},
+    "ricongiungimento_gruppi": {{true|false}},
+    "chiusura_scena": {{true|false}}
+  },
+  "dettagli_divisione": {  // se divisione=true
+    "motivazione": "{{motivo}}"
+  },
+  "dettagli_ricongiungimento": {  // se ricongiungimento=true
+    "motivazione": "{{motivo}}"
+  },
+  "dettagli_chiusura": {  // se chiusura=true
+    "motivazione": "{{motivo}}",
+    "suggerimento_prossima_scena": "{{suggerimento}}"
+  },
+  "aggiornamenti": {
+    "events": ["{{evento1}}", "{{evento2}}"],
+    "world_state": {
+      "npcs": [{{aggiornamenti_npcs}}],
+      "items": [{{aggiornamenti_items}}]
+    }
+  }
+}
+Sistema:
+- Mostra {{narrativa_risoluzione}} in chat
+- Appendi {{events}} a scene file
+- Aggiorna {{world_state}}
+Prossimo: Fase 3 o (in casi speciali) una delle sottofasi (non esclusive l'una con l'altra)
+
+Fase 5.a - Divisione Gruppi. 
+Obiettivo: un gruppo di PG si divide. 
+Input: {{estratto_scena_corrente}}, {{world_state}}, {{messaggi_recenti}}, {{dettagli_divisione}}
+Output:
+{
+  "narrativa": "{{narrativa_divisione}}",
+}
+Sistema:
+- Mostra {{narrativa_divisione}} in chat
+- Se subscene → crea file subscene_*.json
+- Se scene diverse → invoca FASE 2 per nuovi estratti
+- Aggiorna {{world_state}}
+Prossimo: Fase 3
+
+Fase 5.b - Rincongiungimento Gruppi. 
+Obiettivo: un gruppo di PG si ricongiunge. 
+Input: {{estratti_scene_attive}}, {{world_state}}, {{dettagli_ricongiungimento}}
+Output:
+{
+  "narrativa": "{{narrativa_fusione}}",
+}
+Sistema:
+- Mostra {{narrativa_fusione}} in chat
+- Sposta participants → {{gruppo_destinazione}}
+- Chiudi {{subscene_da_chiudere}}
+- Aggiorna {{world_state}}
+Prossimo: Fase 3
+ 
+Fase 5.c - Chiusura\Cambio Scena. 
+Obiettivo: i riflettori si spostano da una scena alla successiva. 
+Input: {{estratto_scena_corrente}}, {{world_state}}, {{dettagli_chiusura}}
+Output:
+{
+  "narrativa": "{{narrativa_chiusura}}",
+  "riepilogo_scena": "{{riepilogo}}",
+  "suggerimento_prossima_scena": "{{suggerimento}}",
+  "aggiornamenti": {
+    "diary": "{{entry_diary}}",
+    "scena_chiusa": "{{sceneId}}"
+  }
+}
+Sistema:
+Mostra {{narrativa_chiusura}} in chat
+Chiudi scene_{{sceneId}}.json (summary={{riepilogo}} e sposta il file nella cartella closed_scenes)
+Appendi {{entry_diary}} a diary.txt
+Prossimo: Se altre scene attive → FASE 3 (focus su altra scena)
+Altrimenti → FASE 2 (prepara nuova scena con {{suggerimento}})
