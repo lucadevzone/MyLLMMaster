@@ -6,6 +6,7 @@ import AppHeader from '../components/AppHeader.vue'
 
 const router = useRouter()
 const tables = ref([])
+const playerNames = ref({})  // email → name
 const loading = ref(true)
 const error = ref('')
 
@@ -29,12 +30,14 @@ const STATE_BADGE = {
 
 onMounted(async () => {
   try {
-    const [allTables, allModules] = await Promise.all([
+    const [allTables, allModules, names] = await Promise.all([
       api.get('/tables'),
-      api.get('/modules')
+      api.get('/modules'),
+      api.get('/users/names')
     ])
     const modMap = Object.fromEntries(allModules.map(m => [m.id, m]))
     tables.value = allTables.map(t => ({ ...t, module: modMap[t.moduleId] }))
+    playerNames.value = Object.fromEntries(names.map(n => [n.email, n.name]))
   } catch (e) {
     error.value = e.message
   } finally {
@@ -75,7 +78,7 @@ function enterSession(tableId) {
                   <span :class="['badge', STATE_BADGE[table.state]]">{{ STATE_LABELS[table.state] }}</span>
                 </div>
                 <p style="font-size:0.875rem;color:var(--color-text-light)">
-                  Giocatori: {{ table.invitedPlayers.join(', ') }}
+                  Giocatori: {{ table.invitedPlayers.map(e => playerNames[e] || e).join(', ') }}
                 </p>
                 <p v-if="table.plannedSession" style="font-size:0.875rem;color:var(--color-text-light);margin-top:0.25rem">
                   Prossima sessione: {{ table.plannedSession.date }} {{ table.plannedSession.time }}

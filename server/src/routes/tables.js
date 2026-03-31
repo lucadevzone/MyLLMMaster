@@ -198,8 +198,14 @@ router.post('/:id/characters', authMiddleware, playerOnly, async (req, res) => {
   const charOwners = chars.map(c => c.playerID)
   const allCreated = activePlayers.every(email => charOwners.includes(email))
   if (allCreated && table.state === 'active') {
-    table.state = 'ready'
-    table.updatedAt = new Date().toISOString()
+    const now = new Date()
+    table.state = 'open'
+    table.plannedSession = {
+      date: now.toISOString().slice(0, 10),
+      time: now.toTimeString().slice(0, 5),
+      duration: 180
+    }
+    table.updatedAt = now.toISOString()
     await writeJSON(tablePath, table)
   }
 

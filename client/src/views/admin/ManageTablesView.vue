@@ -6,6 +6,7 @@ import AppHeader from '../../components/AppHeader.vue'
 const tables = ref([])
 const modules = ref([])
 const players = ref([])
+const playerNames = ref({})  // email → name
 const ollamaModels = ref([])
 const loading = ref(true)
 const error = ref('')
@@ -48,15 +49,17 @@ const PLAYER_BADGE = {
 
 onMounted(async () => {
   try {
-    const [t, m, p, om] = await Promise.all([
+    const [t, m, p, names, om] = await Promise.all([
       api.get('/tables'),
       api.get('/modules'),
       api.get('/users'),
+      api.get('/users/names'),
       api.get('/tables/ollama-models').catch(() => [])
     ])
     tables.value = t.filter(t => t.state !== 'archived')
     modules.value = m
     players.value = p.filter(p => p.accountState === 'attivo')
+    playerNames.value = Object.fromEntries(names.map(n => [n.email, n.name]))
     ollamaModels.value = om
   } catch (e) {
     error.value = e.message
@@ -224,7 +227,9 @@ function togglePlayer(email) {
                 <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem">
                   <span v-for="email in table.invitedPlayers" :key="email"
                     :class="['badge', 'badge-sm', PLAYER_BADGE[getPlayerState(email)] || 'badge-yellow']"
-                    style="font-size:0.7rem">{{ email }}</span>
+                    style="font-size:0.7rem" :title="email">
+                    {{ playerNames[email] || email }}
+                  </span>
                 </div>
                 <div v-if="table.plannedSession" style="font-size:0.8rem;color:var(--color-text-light)">
                   Prossima sessione: {{ table.plannedSession.date }} {{ table.plannedSession.time }}

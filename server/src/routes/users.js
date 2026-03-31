@@ -6,6 +6,15 @@ const { readJSON, writeJSON } = require('../utils/fileStore')
 const { FILES } = require('../utils/dataInit')
 const { authMiddleware, adminOnly, playerOnly } = require('../middleware/auth')
 
+// GET /api/users/names  (tutti gli autenticati - mappa email→nome per UI)
+router.get('/names', authMiddleware, async (req, res) => {
+  const users = await readJSON(FILES.users)
+  const names = users
+    .filter(u => u.role === 'player')
+    .map(u => ({ email: u.email, name: u.name, accountState: u.accountState }))
+  res.json(names)
+})
+
 // GET /api/users/me
 router.get('/me', authMiddleware, async (req, res) => {
   const users = await readJSON(FILES.users)
