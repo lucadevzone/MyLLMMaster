@@ -231,6 +231,7 @@ module.exports = function setupSocket(io) {
     // ── session:leave ─────────────────────────────────────────────────────────
     socket.on('session:leave', async () => {
       await handleDisconnect(socket)
+      socket.tableId = null  // impedisce un secondo handleDisconnect via 'disconnect'
     })
 
     // ── disconnect ────────────────────────────────────────────────────────────
