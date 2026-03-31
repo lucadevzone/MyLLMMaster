@@ -8,6 +8,7 @@ const router = createRouter({
     { path: '/', redirect: '/lobby' },
     { path: '/lobby', name: 'lobby', component: () => import('../views/LobbyView.vue'), meta: { roles: ['player'] } },
     { path: '/session/:tableId', name: 'session', component: () => import('../views/SessionView.vue'), meta: { roles: ['player'] } },
+    { path: '/table/:tableId/character', name: 'character', component: () => import('../views/CharacterView.vue'), meta: { roles: ['player'] } },
     { path: '/profile', name: 'profile', component: () => import('../views/ProfileView.vue'), meta: { roles: ['player', 'admin'] } },
     { path: '/admin/players', name: 'manage-players', component: () => import('../views/admin/ManagePlayersView.vue'), meta: { roles: ['admin'] } },
     { path: '/admin/modules', name: 'manage-modules', component: () => import('../views/admin/ManageModulesView.vue'), meta: { roles: ['admin'] } },

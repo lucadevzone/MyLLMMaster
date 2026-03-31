@@ -42,17 +42,8 @@ onMounted(async () => {
   }
 })
 
-async function getMyCharacter(tableId) {
-  try {
-    return await api.get(`/tables/${tableId}/characters/mine`)
-  } catch {
-    return null
-  }
-}
-
-async function goToCharacter(table) {
-  const char = await getMyCharacter(table.id)
-  router.push({ name: 'character', params: { tableId: table.id }, query: char ? { edit: '1' } : {} })
+function goToCharacter(tableId) {
+  router.push({ name: 'character', params: { tableId } })
 }
 
 function enterSession(tableId) {
@@ -92,7 +83,7 @@ function enterSession(tableId) {
                 </p>
               </div>
               <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-                <button class="btn btn-secondary btn-sm" @click="goToCharacter(table)">
+                <button class="btn btn-secondary btn-sm" @click="goToCharacter(table.id)">
                   Personaggio
                 </button>
                 <button

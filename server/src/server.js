@@ -25,6 +25,7 @@ app.use('/api/auth', require('./routes/auth'))
 app.use('/api/users', require('./routes/users'))
 app.use('/api/modules', require('./routes/modules'))
 app.use('/api/tables', require('./routes/tables'))
+app.use('/api/professions', require('./routes/professions'))
 
 // Socket.io
 require('./socket/index')(io)
