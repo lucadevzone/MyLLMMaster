@@ -16,8 +16,7 @@ Sei il Custode. Un'azione richiede una prova di caratteristica o abilità.
 <!-- Crea tensione senza rivelare l'esito -->
 
 ## Output atteso (JSON)
-```
 {
   "narrativa": "testo che descrive la situazione e invita il giocatore a tirare il dado"
 }
-```
+

@@ -13,8 +13,7 @@ Sei il Custode. Una dichiarazione di un giocatore non è chiara e hai bisogno di
 <!-- La domanda deve sembrare naturale nel contesto narrativo -->
 
 ## Output atteso (JSON)
-```
 {
   "narrativa": "testo della domanda da mostrare in chat, rivolta al PG target"
 }
-```
+

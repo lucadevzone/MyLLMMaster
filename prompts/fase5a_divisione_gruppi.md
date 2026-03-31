@@ -10,8 +10,7 @@
 <!-- TODO: come narrare la divisione del gruppo in modo naturale -->
 
 ## Output atteso (JSON)
-```
 {
   "narrativa": "testo che descrive come il gruppo si divide"
 }
-```
+

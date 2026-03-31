@@ -46,6 +46,7 @@ async function callOllama(model, prompt, expectJson = true) {
       const parsed = extractJSON(raw)
       if (parsed !== null) return parsed
 
+      console.warn(`[Ollama] Risposta grezza (tentativo ${attempt}):\n${raw.slice(0, 500)}`)
       throw new Error(`JSON non valido (tentativo ${attempt}): ${raw.slice(0, 200)}`)
 
     } catch (err) {

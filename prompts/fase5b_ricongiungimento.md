@@ -9,8 +9,7 @@
 <!-- TODO: come narrare il ricongiungimento in modo coerente con le scene attive -->
 
 ## Output atteso (JSON)
-```
 {
   "narrativa": "testo che descrive il ricongiungimento del gruppo"
 }
-```
+

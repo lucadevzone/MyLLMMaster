@@ -228,9 +228,6 @@ function msgBadge(msg) {
 
         <!-- Chat -->
         <div class="chat-area" ref="chatEl">
-          <div v-if="sess.messages.length === 0" class="chat-empty">
-            La sessione non è ancora iniziata…
-          </div>
           <!-- Indicatore di scrittura del Custode -->
           <div v-if="sess.custodeTyping" class="bubble bubble-other bubble-typing">
             <div class="bubble-header">

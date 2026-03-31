@@ -19,7 +19,6 @@ Classifica ogni messaggio con UNA delle seguenti etichette:
 - `fuori ruolo`: messaggio OOC non rilevante per il gioco
 
 ## Output atteso (JSON)
-```
 {
   "annotazioni": [
     { "id": "message-id", "tag": "dichiarazione" },
@@ -27,7 +26,7 @@ Classifica ogni messaggio con UNA delle seguenti etichette:
   ],
   "pronti": false
 }
-```
+
 
 Il campo `pronti` indica se, secondo le annotazioni, i giocatori hanno terminato di dichiarare.
 <!-- TODO: definire la logica del campo "pronti" -->

@@ -12,8 +12,7 @@ Sei il Custode. Un giocatore non ha ancora dichiarato cosa fa e devi sollecitarl
 <!-- TODO: definire come sollecitare il giocatore in modo narrativo e non meccanico -->
 
 ## Output atteso (JSON)
-```
 {
   "narrativa": "testo del sollecito rivolto al PG target"
 }
-```
+

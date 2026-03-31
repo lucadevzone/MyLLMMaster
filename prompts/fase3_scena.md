@@ -25,13 +25,12 @@ Sei il Custode. Devi presentare la scena corrente ai giocatori, dando loro spazi
 ## Output atteso (JSON)
 Rispondi SOLO con un oggetto JSON valido:
 
-```
 {
   "narrativa": "testo descrittivo della scena da mostrare in chat",
   "sussurri": [
     { "target": "email@giocatore.com", "testo": "informazione privata per questo PG" }
   ]
 }
-```
+
 
 Il campo "sussurri" può essere un array vuoto se non ci sono informazioni private.

@@ -18,7 +18,6 @@ Sei il Custode. Devi estrarre dal capitolo corrente una scena compatta con tutte
 ## Output atteso (JSON)
 Rispondi SOLO con un oggetto JSON valido:
 
-```
 {
   "id_scena": "scene_XXX",
   "contesto_dove": "dove si svolge la scena",
@@ -51,4 +50,4 @@ Rispondi SOLO con un oggetto JSON valido:
     }
   ]
 }
-```
+

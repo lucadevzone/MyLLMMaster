@@ -24,7 +24,6 @@ Sei il Custode. Devi convertire il Piano Azione in narrativa e far reagire il mo
 <!-- Usa sussurri per informazioni accessibili solo a singoli PG -->
 
 ## Output atteso (JSON)
-```
 {
   "narrativa": "testo narrativo della risoluzione",
   "sussurri": [
@@ -49,4 +48,4 @@ Sei il Custode. Devi convertire il Piano Azione in narrativa e far reagire il mo
     }
   }
 }
-```
+

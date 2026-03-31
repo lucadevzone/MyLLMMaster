@@ -31,7 +31,6 @@ Sei il Custode. Devi analizzare le dichiarazioni dei giocatori e compilare un Pi
 Rispondi SOLO con un oggetto JSON valido.
 
 Se il piano è completo:
-```
 {
   "completo": true,
   "piano": [
@@ -50,10 +49,10 @@ Se il piano è completo:
     }
   ]
 }
-```
+
 
 Se serve una sottofase:
-```
+
 {
   "completo": false,
   "sottofase": "4a|4b|4c",
@@ -65,4 +64,3 @@ Se serve una sottofase:
   "difficolta": "normale (per 4c)",
   "piano_parziale": []
 }
-```
