@@ -159,8 +159,7 @@ async function saveNotes() {
 }
 
 function setBubbleColor(color) {
-  const player = sess.session?.players?.find(p => p.email === auth.user?.email)
-  if (player) player.bubbleColor = color
+  sess.setColor(color)
 }
 
 function leaveSession() {

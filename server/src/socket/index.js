@@ -40,8 +40,10 @@ module.exports = function setupSocket(io) {
 
   // ── Connessione ───────────────────────────────────────────────────────────
   io.on('connection', async (socket) => {
-    const { email, name } = socket.user
-    console.log(`[Socket] Connesso: ${email}`)
+    const { email } = socket.user
+    // Leggo sempre il nome aggiornato dal DB (non dalla JWT che può essere vecchia)
+    const name = await getPlayerName(email)
+    console.log(`[Socket] Connesso: ${email} (${name})`)
 
     // ── session:join ─────────────────────────────────────────────────────────
     socket.on('session:join', async (tableId) => {
@@ -160,6 +162,18 @@ module.exports = function setupSocket(io) {
       io.to(`table:${tableId}`).emit('session:player-update', {
         email, connected: true, playerState: 'turno-custode'
       })
+    })
+
+    // ── session:set-color ─────────────────────────────────────────────────────
+    socket.on('session:set-color', async (color) => {
+      const tableId = socket.tableId
+      if (!tableId) return
+      const ctx = svc.getSession(tableId)
+      if (!ctx) return
+      const player = svc.getPlayer(ctx, email)
+      if (player) player.bubbleColor = color
+      await svc.saveSession(tableId, ctx.session)
+      io.to(`table:${tableId}`).emit('session:player-update', { email, bubbleColor: color })
     })
 
     // ── session:vote-tardi ────────────────────────────────────────────────────

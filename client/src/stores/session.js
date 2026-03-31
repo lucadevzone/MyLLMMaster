@@ -49,13 +49,14 @@ export const useSessionStore = defineStore('session', () => {
       messages.value.push(msg)
     })
 
-    socket.on('session:player-update', ({ email, connected: isConnected, playerState, voteTardi }) => {
+    socket.on('session:player-update', ({ email, connected: isConnected, playerState, voteTardi, bubbleColor }) => {
       if (!session.value) return
       const player = session.value.players.find(p => p.email === email)
       if (!player) return
       if (isConnected !== undefined) player.connected = isConnected
       if (playerState !== undefined) player.playerState = playerState
       if (voteTardi !== undefined) player.voteTardi = voteTardi
+      if (bubbleColor !== undefined) player.bubbleColor = bubbleColor
     })
 
     socket.on('session:status-update', ({ state, timerMs: ms }) => {
@@ -107,6 +108,10 @@ export const useSessionStore = defineStore('session', () => {
     socket?.emit('session:vote-tardi')
   }
 
+  function setColor(color) {
+    socket?.emit('session:set-color', color)
+  }
+
   // ── Toast ──────────────────────────────────────────────────────────────────
   let toastId = 0
   function addToast(type, text, duration = 3000) {
@@ -120,6 +125,6 @@ export const useSessionStore = defineStore('session', () => {
   return {
     connected, session, messages, toasts, diceResult, diary, timerMs,
     myState, sessionState,
-    connect, disconnect, sendMessage, rollDice, voteTardi, addToast
+    connect, disconnect, sendMessage, rollDice, voteTardi, setColor, addToast
   }
 })
