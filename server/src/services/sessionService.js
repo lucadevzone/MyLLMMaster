@@ -7,6 +7,9 @@ const { DATA_DIR } = require('../utils/dataInit')
 // In-memory active sessions: tableId → { session, messages, timers }
 const activeSessions = new Map()
 
+// Lock per getOrCreateSession: evita che join concorrenti creino ctx duplicati
+const sessionLocks = new Map()
+
 function tableDir(tableId) {
   return path.join(DATA_DIR, 'tables', tableId)
 }
@@ -47,6 +50,13 @@ async function appendLog(tableId, sessionId, entry) {
 
 async function getOrCreateSession(tableId, invitedPlayers) {
   if (activeSessions.has(tableId)) return activeSessions.get(tableId)
+
+  // Serializza chiamate concorrenti per lo stesso tavolo
+  if (sessionLocks.has(tableId)) return sessionLocks.get(tableId)
+
+  let resolveLock
+  const lock = new Promise(r => { resolveLock = r })
+  sessionLocks.set(tableId, lock)
 
   const tDir = tableDir(tableId)
   const sessDir = path.join(tDir, 'sessions')
@@ -103,6 +113,8 @@ async function getOrCreateSession(tableId, invitedPlayers) {
 
   const ctx = { session, messages, timers: {} }
   activeSessions.set(tableId, ctx)
+  sessionLocks.delete(tableId)
+  resolveLock(ctx)
   return ctx
 }
 
@@ -262,6 +274,11 @@ function clearAllTimers(tableId) {
   ctx.timers = {}
 }
 
+function destroySession(tableId) {
+  clearAllTimers(tableId)
+  activeSessions.delete(tableId)
+}
+
 module.exports = {
   getOrCreateSession,
   getSession,
@@ -277,5 +294,6 @@ module.exports = {
   setTimer,
   clearTimer,
   clearAllTimers,
+  destroySession,
   saveSession
 }

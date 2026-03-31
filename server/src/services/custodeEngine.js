@@ -726,4 +726,13 @@ function getOrCreate(tableId, io) {
   return engines.get(tableId)
 }
 
-module.exports = { getOrCreate }
+function destroy(tableId) {
+  const engine = engines.get(tableId)
+  if (engine) {
+    engine.paused = true   // interrompe il runLoop se in esecuzione
+    engine.running = false
+  }
+  engines.delete(tableId)
+}
+
+module.exports = { getOrCreate, destroy }

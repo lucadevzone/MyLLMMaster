@@ -55,13 +55,18 @@ module.exports = function setupSocket(io) {
       }
 
       // Carica / crea sessione
-      const ctx = await svc.getOrCreateSession(tableId, table.invitedPlayers)
-      const { session } = ctx
+      await svc.getOrCreateSession(tableId, table.invitedPlayers)
 
       socket.tableId = tableId
       socket.join(`table:${tableId}`)
 
       const { wasConnected, missed } = await svc.playerConnected(tableId, email)
+
+      // Rileggi il contesto dopo playerConnected: in caso di join concorrenti
+      // getOrCreateSession può creare ctx duplicati; solo quello in activeSessions
+      // è aggiornato da playerConnected.
+      const ctx = svc.getSession(tableId)
+      const { session } = ctx
 
       // ── Macchina a stati sessione ─────────────────────────────────────────
       const tutti = table.invitedPlayers.every(e =>

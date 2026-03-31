@@ -98,8 +98,9 @@ onUnmounted(() => {
 
 // ── Timer countdown ───────────────────────────────────────────────────────────
 watch(() => sess.timerMs, (ms) => {
-  if (!ms) return
   if (timerInterval) clearInterval(timerInterval)
+  timerDisplay.value = ''
+  if (!ms) return
   let remaining = ms
   timerInterval = setInterval(() => {
     remaining -= 1000

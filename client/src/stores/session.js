@@ -65,6 +65,7 @@ export const useSessionStore = defineStore('session', () => {
     socket.on('session:status-update', ({ state, timerMs: ms }) => {
       if (session.value) session.value.state = state
       if (ms !== undefined) timerMs.value = ms
+      if (state === 'sessione-iniziata') timerMs.value = null
     })
 
     socket.on('session:dice-result', (result) => {

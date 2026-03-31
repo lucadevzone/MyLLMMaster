@@ -45,6 +45,8 @@ body { font-family: var(--font); background-color: var(--color-bg); color: var(-
 .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
 .btn-success { background: var(--color-success); color: #166534; }
 .btn-success:hover:not(:disabled) { background: var(--color-success-hover); }
+.btn-warning { background: #fef3c7; color: #92400e; }
+.btn-warning:hover:not(:disabled) { background: #fde68a; }
 .btn-danger { background: var(--color-danger); color: #991b1b; }
 .btn-danger:hover:not(:disabled) { background: var(--color-danger-hover); }
 .btn-secondary { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); }

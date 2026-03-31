@@ -170,6 +170,40 @@ router.delete('/', authMiddleware, adminOnly, async (req, res) => {
 })
 
 // GET /api/tables/:id/characters
+// POST /api/tables/:id/reset — riporta il tavolo allo stato dopo creazione PG
+router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
+  const tableId = req.params.id
+  const tablePath = path.join(TABLES_DIR, tableId, 'table.json')
+  if (!await fileExists(tablePath)) return res.status(404).json({ error: 'Tavolo non trovato' })
+
+  // Ferma engine e sessione in-memory
+  const custodeEngine = require('../services/custodeEngine')
+  const svc = require('../services/sessionService')
+  custodeEngine.destroy(tableId)
+  svc.destroySession(tableId)
+
+  const tableDir = path.join(TABLES_DIR, tableId)
+
+  // Cancella directory di sessione, scene e log
+  for (const dir of ['sessions', 'active_scenes', 'closed_scenes', 'logs']) {
+    const p = path.join(tableDir, dir)
+    try { await fs.rm(p, { recursive: true, force: true }) } catch { /* già assente */ }
+  }
+
+  // Cancella world_state e diary
+  for (const file of ['world_state.json', 'diary.txt']) {
+    try { await fs.unlink(path.join(tableDir, file)) } catch { /* già assente */ }
+  }
+
+  // Riporta table.state a 'open'
+  const table = await readJSON(tablePath)
+  table.state = 'open'
+  table.updatedAt = new Date().toISOString()
+  await writeJSON(tablePath, table)
+
+  res.json({ message: 'Tavolo resettato', table })
+})
+
 router.get('/:id/characters', authMiddleware, async (req, res) => {
   const tableDir = path.join(TABLES_DIR, req.params.id)
   const charsDir = path.join(tableDir, 'characters')

@@ -100,6 +100,18 @@ async function createTable() {
   }
 }
 
+async function resetTable(tableId) {
+  if (!confirm('Reset tavolo? Verranno cancellate sessione, scene e diario. I personaggi vengono mantenuti.')) return
+  try {
+    const updated = await api.post(`/tables/${tableId}/reset`, {})
+    const idx = tables.value.findIndex(t => t.id === tableId)
+    if (idx !== -1) tables.value[idx] = updated.table
+    actionMsg.value = 'Tavolo resettato'
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
 async function archiveTable(tableId) {
   if (!confirm('Archiviare il tavolo?')) return
   try {
@@ -240,6 +252,7 @@ function togglePlayer(email) {
                 <button v-if="table.state === 'ready'" class="btn btn-primary btn-sm" @click="openPlanSession(table.id)">
                   Pianifica Sessione
                 </button>
+                <button class="btn btn-warning btn-sm" @click="resetTable(table.id)" title="Cancella sessione e scene, mantieni i PG">Reset</button>
                 <button class="btn btn-danger btn-sm" @click="archiveTable(table.id)">Archivia</button>
               </div>
             </div>
