@@ -65,7 +65,8 @@ async function getCharacters(tableId) {
 function synthChar(char) {
   // Sintetizza la scheda in una riga per ridurre il contesto
   const c = char.characteristics
-  return `${char.name} (${char.profession}, ${char.eta}a): ` +
+  const desc = char.descrizionePersonale ? ` — ${char.descrizionePersonale}` : ''
+  return `${char.name} (${char.profession}, ${char.eta}a)${desc}: ` +
     `FOR${c.FOR} COS${c.COS} DES${c.DES} TAG${c.TAG} INT${c.INT} POT${c.POT} APP${c.APP} EDU${c.EDU} ` +
     `PF${char.derivedAttributes?.hp?.current}/${char.derivedAttributes?.hp?.max} ` +
     `SAN${char.derivedAttributes?.sanita?.current}`

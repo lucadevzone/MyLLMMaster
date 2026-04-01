@@ -24,6 +24,7 @@ const charName = ref('')
 const eta = ref(35)
 const selectedProfession = ref('')
 const background = ref('')
+const descrizionePersonale = ref('')
 
 // CoC stats
 const characteristics = ref({})
@@ -71,6 +72,7 @@ function loadFromChar(char) {
   eta.value = char.eta
   selectedProfession.value = char.profession
   background.value = char.background || ''
+  descrizionePersonale.value = char.descrizionePersonale || ''
   characteristics.value = { ...char.characteristics }
   fortuna.value = char.Fortuna
   derived.value = { ...char.derivedAttributes }
@@ -111,6 +113,7 @@ async function save() {
       name: charName.value.trim(),
       eta: Number(eta.value),
       profession: selectedProfession.value,
+      descrizionePersonale: descrizionePersonale.value,
       background: background.value,
       Fortuna: fortuna.value,
       characteristics: characteristics.value,
@@ -239,6 +242,17 @@ async function save() {
                   {{ ab.nome }} <strong>{{ ab.valore }}%</strong>
                 </span>
               </div>
+            </div>
+          </div>
+
+          <!-- Descrizione Personale -->
+          <div class="card" style="margin-bottom:1rem">
+            <h3 class="section-title">Aspetto Fisico</h3>
+            <div class="form-group" style="margin-bottom:0">
+              <label>Descrizione fisica <span style="color:var(--color-text-light)">(opzionale, max 300 caratteri)</span></label>
+              <textarea v-model="descrizionePersonale" class="form-control" rows="3" :disabled="readOnly"
+                maxlength="300" placeholder="Età apparente, corporatura, capelli, abbigliamento…"></textarea>
+              <div v-if="!readOnly" style="font-size:0.75rem;color:var(--color-text-light);text-align:right">{{ descrizionePersonale.length }}/300</div>
             </div>
           </div>
 
