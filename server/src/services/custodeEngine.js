@@ -469,12 +469,15 @@ class CustodeEngine {
                    (e.stato === 'prova' && e.risultato_prova == null))
       .sort((a, b) => (a.priorita || 99) - (b.priorita || 99))[0]
 
+    // Costruisce l'entry con pg già convertito in nome per le sottofasi
+    const entryPerLlm = (e, lookup) => ({ ...e, pg: lookup.toName[e.pg] || e.pg })
+
     if (pending.stato === 'incompleta')
-      return { next: 'sottofase-4a', data: { pg_target: pending.pg, azione_parziale: pending.azione, piano } }
+      return { next: 'sottofase-4a', data: { pg_target: pending.pg, richiesta_chiarimenti: entryPerLlm(pending, pgLookup) } }
     if (pending.stato === 'assente')
-      return { next: 'sottofase-4b', data: { pg_target: pending.pg, piano } }
+      return { next: 'sottofase-4b', data: { pg_target: pending.pg, richiesta_dichiarazione: entryPerLlm(pending, pgLookup) } }
     if (pending.stato === 'prova')
-      return { next: 'sottofase-4c', data: { pg_target: pending.pg, azione: pending.azione, abilita_o_caratteristica: pending.abilita_o_caratteristica, difficolta: pending.difficolta, piano } }
+      return { next: 'sottofase-4c', data: { pg_target: pending.pg, richiesta_prova: entryPerLlm(pending, pgLookup) } }
   }
 
   async fase4a(data) {
@@ -483,7 +486,7 @@ class CustodeEngine {
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4a_chiarimenti.md', {
       pg_target: pgNome,
-      azione_parziale: data.azione_parziale || ''
+      richiesta_chiarimenti: JSON.stringify(data.richiesta_chiarimenti)
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
@@ -495,7 +498,8 @@ class CustodeEngine {
     const { pgLookup } = await this.buildContext()
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4b_dichiarazione_assente.md', {
-      pg_target: pgNome
+      pg_target: pgNome,
+      richiesta_dichiarazione: JSON.stringify(data.richiesta_dichiarazione)
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
@@ -508,9 +512,7 @@ class CustodeEngine {
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4c_necessita_prova.md', {
       pg_target: pgNome,
-      azione: data.azione || '',
-      abilita_o_caratteristica: data.abilita_o_caratteristica || '',
-      difficolta: data.difficolta || 'normale'
+      richiesta_prova: JSON.stringify(data.richiesta_prova)
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-prova')

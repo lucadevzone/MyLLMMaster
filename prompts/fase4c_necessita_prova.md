@@ -15,11 +15,8 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 **PG target:** {{pg_target}}
 
-**Azione dichiarata:** {{azione}}
-
-**Abilità o caratteristica richiesta:** {{abilita_o_caratteristica}}
-
-**Difficoltà:** {{difficolta}}
+**Prova richiesta:**
+{{richiesta_prova}}
 
 ## Istruzioni
 - Descrivi l'azione del PG e l'ostacolo che si frappone

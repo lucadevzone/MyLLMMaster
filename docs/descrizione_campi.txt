@@ -97,8 +97,19 @@ Disponibili in tutte le fasi che chiamano buildContext().
 
 {{pg_target}}               [fase4a, fase4b, fase4c]
   Nome del PG a cui il custode si sta rivolgendo direttamente.
-  Convertito da email a nome prima di passare alla LLM,
-  e riconvertito in email dopo l'output LLM.
+  Convertito da email a nome prima di passare alla LLM.
+
+{{richiesta_chiarimenti}}  [fase4a]
+  Entry del piano azione con stato=incompleta, pg già come nome.
+  JSON: { pg, stato, azione, priorita }
+
+{{richiesta_dichiarazione}} [fase4b]
+  Entry del piano azione con stato=assente, pg già come nome.
+  JSON: { pg, stato, priorita }
+
+{{richiesta_prova}}         [fase4c]
+  Entry del piano azione con stato=prova, pg già come nome.
+  JSON: { pg, stato, azione, abilita_o_caratteristica, difficolta, risultato_prova, priorita }
 
 
 ── CONVERSIONE EMAIL <-> NOME PG ─────────────────────────────────────────────

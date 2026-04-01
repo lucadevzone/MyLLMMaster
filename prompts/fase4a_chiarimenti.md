@@ -15,7 +15,8 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 **PG target:** {{pg_target}}
 
-**Azione parziale dichiarata:** {{azione_parziale}}
+**Dichiarazione incompleta:**
+{{richiesta_chiarimenti}}
 
 ## Istruzioni
 - Rivolgiti direttamente al PG target usando il suo nome

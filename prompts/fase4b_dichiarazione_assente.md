@@ -15,6 +15,9 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 **PG target:** {{pg_target}}
 
+**Situazione:**
+{{richiesta_dichiarazione}}
+
 ## Istruzioni
 - Rivolgiti direttamente al PG target usando il suo nome
 - Descrivi qualcosa che accade intorno a lui che lo chiama all'azione
