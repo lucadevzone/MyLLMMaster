@@ -422,6 +422,15 @@ class CustodeEngine {
     svc.clearTimer(this.tableId, 'proattivita')
     svc.clearTimer(this.tableId, 'silenzio')
 
+    // Round fresco: azzera il piano residuo da round precedenti
+    if (!pianoParziale) {
+      const ctx = svc.getSession(this.tableId)
+      if (ctx) {
+        ctx.session.pianoAzione = null
+        await svc.saveSession(this.tableId, ctx.session)
+      }
+    }
+
     const msgs = this.buffer.map(m => `[${m.tag || '?'}] ${m.fromName || m.from}: ${m.text}`).join('\n')
     const { worldState, schede_PG, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
