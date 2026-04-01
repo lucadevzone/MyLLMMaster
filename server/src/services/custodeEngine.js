@@ -284,8 +284,9 @@ class CustodeEngine {
       suggerimento_scena: suggerimento || 'scena introduttiva'
     })
 
-    // Assegna ID progressivo (il codice sovrascrive qualsiasi id_scena della LLM)
+    // Assegna ID progressivo e inizializza progressione
     result.id_scena = await nextSceneId(this.tableId)
+    result.progressione = ''
 
     // Salva scena in active_scenes
     await saveScene(this.tableId, result)
@@ -309,22 +310,47 @@ class CustodeEngine {
   // ── FASE 3: Scena e Gioco Libero ──────────────────────────────────────────
 
   async fase3() {
-    await this.emitPhaseChange('fase-3')
     const { worldState, schede_PG } = await this.buildContext()
+    const ctx = svc.getSession(this.tableId)
+    const engagement = ctx?.session?.engagement || {}
+
+    // ── 3a (opzionale): scelta focus scena ──
+    const activeSceneFiles = await fs.readdir(path.join(tDir(this.tableId), 'active_scenes')).catch(() => [])
+    const needsFocusChoice = worldState.focusScene === 'tbd' ||
+      activeSceneFiles.filter(f => f.endsWith('.json')).length > 1
+
+    if (needsFocusChoice) {
+      await this.emitPhaseChange('fase-3a')
+      const activeScenes = await Promise.all(
+        activeSceneFiles.filter(f => f.endsWith('.json'))
+          .map(f => readJSON(path.join(tDir(this.tableId), 'active_scenes', f)))
+      )
+      const result3a = await this.llm('fase3a_scelta_focus.md', {
+        world_state: JSON.stringify(worldState),
+        schede_PG,
+        engagement: JSON.stringify(engagement),
+        scene_attive: JSON.stringify(activeScenes)
+      }, true)  // light LLM
+
+      worldState.focusScene = result3a.focus_scene
+      await saveWorldState(this.tableId, worldState)
+    }
+
+    // ── 3b (sempre): narrazione scena ──
+    await this.emitPhaseChange('fase-3b')
     const focusScene = await getScene(this.tableId, worldState.focusScene)
-    const recentMsgs = svc.getSession(this.tableId)?.messages.slice(-10)
+    const recentMsgs = ctx?.messages.slice(-10)
       .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
 
-    const result = await this.llm('fase3_scena.md', {
-      estratto_scena_corrente: JSON.stringify(focusScene),
-      world_state: JSON.stringify(worldState),
+    const result = await this.llm('fase3b_narrazione.md', {
+      scena_focus: JSON.stringify(focusScene),
       schede_PG,
+      engagement: JSON.stringify(engagement),
       storia_recente: recentMsgs
     })
 
     await this.emitNarrative(result.narrativa)
 
-    // Sussurri
     for (const s of result.sussurri || []) {
       await this.emitNarrative(s.testo, { whisper: true, to: s.target, type: 'whisper' })
     }
@@ -334,7 +360,7 @@ class CustodeEngine {
 
     // Avvia timer proattività
     svc.setTimer(this.tableId, 'proattivita', PROACTIVITY_TIMER_MS, async () => {
-      if (!this.paused) await this.fase3()  // torna in fase 3 con nuovi stimoli
+      if (!this.paused) await this.fase3()
     })
 
     // Avvia raccolta buffer
@@ -436,6 +462,25 @@ class CustodeEngine {
 
     for (const s of result.sussurri || []) {
       await this.emitNarrative(s.testo, { whisper: true, to: s.target, type: 'whisper' })
+    }
+
+    // Aggiorna engagement: incrementa i PG presenti nel piano
+    const ctx = svc.getSession(this.tableId)
+    if (ctx) {
+      if (!ctx.session.engagement) ctx.session.engagement = {}
+      for (const azione of piano || []) {
+        if (azione.pg) {
+          ctx.session.engagement[azione.pg] = (ctx.session.engagement[azione.pg] || 0) + 1
+        }
+      }
+      await svc.saveSession(this.tableId, ctx.session)
+    }
+
+    // Aggiorna progressione della scena con il riassunto delle conseguenze
+    if (result.progressione && focusScene) {
+      const prev = focusScene.progressione || ''
+      focusScene.progressione = prev ? `${prev}\n${result.progressione}` : result.progressione
+      await saveScene(this.tableId, focusScene)
     }
 
     // Aggiorna world state

@@ -105,7 +105,8 @@ async function getOrCreateSession(tableId, invitedPlayers) {
         missedSince: null
       })),
       pianoAzione: null,
-      lastMessageId: null
+      lastMessageId: null,
+      engagement: {}
     }
     await saveSession(tableId, session)
     await appendLog(tableId, session.sessionId, { event: 'session-created', sessionNumber })
