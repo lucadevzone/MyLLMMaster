@@ -92,12 +92,32 @@ async function nextSceneId(tableId) {
   return `scene_${String(count).padStart(3, '0')}`
 }
 
-async function buildNarrativeGroups(tableId, worldState) {
+function buildPgLookup(chars) {
+  return {
+    toName:  Object.fromEntries(chars.map(c => [c.playerID, c.name])),
+    toEmail: Object.fromEntries(chars.map(c => [c.name.toLowerCase(), c.playerID]))
+  }
+}
+
+function engagementForLlm(engagement, lookup) {
+  return Object.fromEntries(
+    Object.entries(engagement).map(([email, count]) => [lookup.toName[email] || email, count])
+  )
+}
+
+function pianoToEmails(piano, lookup) {
+  return (piano || []).map(a => ({
+    ...a,
+    pg: lookup.toEmail[a.pg?.toLowerCase()] || a.pg
+  }))
+}
+
+async function buildNarrativeGroups(tableId, worldState, lookup = {}) {
   if (!worldState.groups?.length) return 'Nessun gruppo attivo.'
   const parts = await Promise.all(worldState.groups.map(async (g, i) => {
     const scene = g.sceneId ? await getScene(tableId, g.sceneId) : null
     const location = scene?.contesto_dove || scene?.location || g.sceneId || 'posizione sconosciuta'
-    const players = g.participants?.join(', ') || '—'
+    const players = g.participants?.map(e => lookup.toName?.[e] || e).join(', ') || '—'
     const activity = g.activity ? ` (${g.activity})` : ''
     const ordinal = worldState.groups.length === 1 ? 'L\'unico gruppo' : `Il gruppo ${i + 1} (${g.groupId})`
     return `${ordinal} si trova in ${location} [${g.sceneId || 'nessuna scena'}]${activity}. Partecipanti: ${players}.`
@@ -240,11 +260,12 @@ class CustodeEngine {
     ])
     const mod = await getModule(table.moduleId)
     const schede_PG = chars.map(synthChar).join('\n')
+    const pgLookup = buildPgLookup(chars)
     const focusScene = worldState.focusScene
       ? await getScene(this.tableId, worldState.focusScene)
       : null
 
-    return { table, worldState, diary, chars, mod, schede_PG, focusScene }
+    return { table, worldState, diary, chars, mod, schede_PG, pgLookup, focusScene }
   }
 
   // ── FASE 1: Apertura ──────────────────────────────────────────────────────
@@ -326,9 +347,9 @@ class CustodeEngine {
   // ── FASE 3: Scena e Gioco Libero ──────────────────────────────────────────
 
   async fase3() {
-    const { worldState, schede_PG } = await this.buildContext()
+    const { worldState, schede_PG, pgLookup } = await this.buildContext()
     const ctx = svc.getSession(this.tableId)
-    const engagement = ctx?.session?.engagement || {}
+    const engagement = engagementForLlm(ctx?.session?.engagement || {}, pgLookup)
 
     // ── 3a (opzionale): scelta focus scena ──
     const activeSceneFiles = await fs.readdir(path.join(tDir(this.tableId), 'active_scenes')).catch(() => [])
@@ -341,7 +362,7 @@ class CustodeEngine {
         activeSceneFiles.filter(f => f.endsWith('.json'))
           .map(f => readJSON(path.join(tDir(this.tableId), 'active_scenes', f)))
       )
-      const narrativeGroups = await buildNarrativeGroups(this.tableId, worldState)
+      const narrativeGroups = await buildNarrativeGroups(this.tableId, worldState, pgLookup)
       const result3a = await this.llm('fase3a_scelta_focus.md', {
         narrative_groups: narrativeGroups,
         engagement: JSON.stringify(engagement),
@@ -393,7 +414,7 @@ class CustodeEngine {
     svc.clearTimer(this.tableId, 'silenzio')
 
     const msgs = this.buffer.map(m => `[${m.tag || '?'}] ${m.fromName}: ${m.text}`).join('\n')
-    const { worldState, schede_PG } = await this.buildContext()
+    const { worldState, schede_PG, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase4_dichiarazioni.md', {
@@ -403,6 +424,14 @@ class CustodeEngine {
       messaggi_buffer: msgs,
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno'
     })
+
+    // Conversione nomi → email nell'output LLM
+    if (result.completo) {
+      result.piano = pianoToEmails(result.piano, pgLookup)
+    } else {
+      result.pg_target = pgLookup.toEmail[result.pg_target?.toLowerCase()] || result.pg_target
+      if (result.piano_parziale) result.piano_parziale = pianoToEmails(result.piano_parziale, pgLookup)
+    }
 
     // Salva piano in sessione
     const ctx = svc.getSession(this.tableId)
@@ -422,21 +451,24 @@ class CustodeEngine {
 
   async fase4a(data) {
     await this.emitPhaseChange('fase-4a')
+    const { pgLookup } = await this.buildContext()
+    const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4a_chiarimenti.md', {
-      pg_target: data.pg_target,
+      pg_target: pgNome,
       domanda: data.domanda,
       piano_azione: JSON.stringify(data.piano_parziale || [])
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
-    // Attende risposta del giocatore → gestita da onPlayerMessage
     return null
   }
 
   async fase4b(data) {
     await this.emitPhaseChange('fase-4b')
+    const { pgLookup } = await this.buildContext()
+    const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4b_dichiarazione_assente.md', {
-      pg_target: data.pg_target,
+      pg_target: pgNome,
       sollecito: data.sollecito || '',
       piano_parziale: JSON.stringify(data.piano_parziale || [])
     })
@@ -447,8 +479,10 @@ class CustodeEngine {
 
   async fase4c(data) {
     await this.emitPhaseChange('fase-4c')
+    const { pgLookup } = await this.buildContext()
+    const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4c_necessita_prova.md', {
-      pg_target: data.pg_target,
+      pg_target: pgNome,
       azione: data.azione || '',
       caratteristica: data.caratteristica || '',
       difficolta: data.difficolta || 'normale',

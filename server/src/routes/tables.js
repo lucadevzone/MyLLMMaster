@@ -234,11 +234,22 @@ router.post('/:id/characters', authMiddleware, playerOnly, async (req, res) => {
   }
 
   const character = { ...req.body, playerID: req.user.email, id: uuidv4() }
+
+  // Validazione: nome PG univoco nel tavolo (case-insensitive)
+  const charsDir = path.join(tableDir, 'characters')
+  const existingFiles = await fs.readdir(charsDir).catch(() => [])
+  for (const f of existingFiles.filter(f => f.endsWith('.json'))) {
+    const existing = await readJSON(path.join(charsDir, f))
+    if (existing.playerID !== req.user.email &&
+        existing.name?.toLowerCase() === character.name?.toLowerCase()) {
+      return res.status(400).json({ error: `Il nome "${character.name}" è già usato da un altro PG in questo tavolo` })
+    }
+  }
+
   const charPath = path.join(tableDir, 'characters', `${character.id}.json`)
   await writeJSON(charPath, character)
 
   // Check if all players have created their character → set table to 'ready'
-  const charsDir = path.join(tableDir, 'characters')
   const charFiles = await fs.readdir(charsDir)
   const chars = []
   for (const f of charFiles.filter(f => f.endsWith('.json'))) {
