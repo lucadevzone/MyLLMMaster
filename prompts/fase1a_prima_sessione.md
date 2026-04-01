@@ -9,6 +9,7 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 {
   "narrativa": "circa 3-5 frasi",
+  "diary": "sintesi della narrativa da aggiungere al diario (circa 1-2 frasi)"
 }
 
 ## Input (prima sessione)
@@ -20,8 +21,8 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 ## Istruzioni
 Questa è la prima sessione:
-- Introduci l'ambientazione con un paragrafo evocativo (luogo, atmosfera, ora del giorno)
-- Presenta l'avventura, ma non svelare nulla della trama e dei misteri.
-- Poi presenta brevente i PG come i protagonisti di questa avventura, menziona solo nome, professione e aspetto.
-- Il tuo stile deve essere evocativo e atmosferico.
-- Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori.
+- Introduci l'ambientazione raccontando luogo, atmosfera e anni in maniera evocativa
+- Poi presenta brevente i PG come i protagonisti di questa avventura, menziona solo nome, professione e aspetto (se disponibile)
+- Il tuo stile deve essere evocativo e atmosferico
+- Non svelare nulla della trama e dei misteri
+- Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori

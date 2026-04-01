@@ -8,8 +8,7 @@ Riprendi l'avventura dall'ultima sessione, rievocando brevemente cosa è success
 Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun markdown, nessun backtick.
 
 {
-  "narrativa": "circa 3-5 frasi",
-  "diary": "una riga di riepilogo da aggiungere al diario (opzionale)"
+  "narrativa": "circa 2-4 frasi",
 }
 
 ## Input
@@ -17,16 +16,10 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 {{diary}}
 
 **Capitolo corrente del modulo:**
-{{capitolo_corrente}}
-
-**Stato del mondo:**
-{{world_state}}
-
-**Schede PG:**
-{{schede_PG}}
+{{scena_in_focus}}
 
 ## Istruzioni
 - Inizia con un breve "nella sessione precedente…" che riepiloga i fatti salienti del diario
 - Riporta i PG nella scena corrente: dove si trovano, cosa sta succedendo intorno a loro
-- Il tono deve essere evocativo e atmosferico, coerente con Call of Cthulhu
+- Il tono deve essere evocativo e atmosferico, ma non svelare la trama ne misteri
 - Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori

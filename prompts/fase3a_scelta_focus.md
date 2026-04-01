@@ -22,6 +22,7 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 {{scene_attive}}
 
 ## Istruzioni
-- Scegli la scena che offre più opportunità narrative in questo momento
-- Preferisci coinvolgere i PG meno attivi (quelli con engagement più basso)
-- Tieni conto di dove si trovano i PG rispetto alle scene attive
+- Gruppi diversi di PG si trovano in scene differenti: alterna tra le scene per mantenere tensione e simultaneità
+- Dai priorità a scene che: i PG stanno affrontano un pericolo, o stanno per accedere ad indizi cruciali 
+- Cambia scena quando: è successo qualcosa di rilevante, si trovano davanti ad una scelta difficile o se la scena è un pò statica
+- Dai spazio a chi è rimasto indietro e coinvolgi i PG meno attivi (quelli con engagement più basso)
