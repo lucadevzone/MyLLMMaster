@@ -15,7 +15,7 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 }
 
 ## Input
-**Scena in focus (inclusa progressione):**
+**Scena in focus:**
 {{scena_focus}}
 
 **Schede PG:**

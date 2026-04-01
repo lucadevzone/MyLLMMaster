@@ -122,7 +122,7 @@ Il sistema prepara una scena estraendo le informazioni chiave dal modulo avventu
 
 
 CICLO DI VITA DEL CUSTODE
-Il comportamento del custode è gestito tramite un ciclo di vita procedurale strutturato in fasi
+Il comportamento del custode è gestito tramite un ciclo di vita procedurale strutturato in fasi. La Fase 1 del ciclo di vita inizia automaticamente nel momento stesso in cui la sessione va in stato "sessione-iniziata". Il ciclo di vita può essere messo in pausa.
 Le decisioni e le esternazioni del custode nelle varie fasi è gestito tramite LLM
 Il custode può usare diverse LLM con capacità e tempi di risposta differenti per gestire diverse fasi e momenti (distinguiamo in light LLM e heavy LLM).
 Tutte le comunicazioni ai giocatori devono essere gestite da una heavy LLM.
@@ -209,7 +209,7 @@ che contiene:
 	- characters (con le schede dei PG)
 	- diary.txt (file di testo che riassume i fatti)
 	- world_state.json (che contiene lo stato corrente del mondo, le scene aperte, il focus di scena e il capitolo del modulo a cui i PG sono arrivati)
-	- una sottocartella sessions che ciontiene i dati di sessione
+	- una sottocartella sessions che contiene i dati di sessione
 	- una sottocartella active_scenes che contiene tutti le scene ancora attive
 	- una sottocartella closed_scenes che contiene tutti le scene chiuse
 	- una sottocartella logs che contiene tutti i file log_session

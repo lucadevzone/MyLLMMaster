@@ -23,14 +23,6 @@ Ogni PG del gruppo in focus deve avere una entry nel piano.
   ]
 }
 
-Valori di `stato`:
-- `dichiarazione`: azione chiara, non richiede prova — può procedere
-- `prova`: azione richiede un tiro di dado
-- `incompleta`: il PG ha detto qualcosa ma l'intenzione non è chiara
-- `assente`: il PG non ha dichiarato nulla
-
-`priorita` indica l'ordine con cui le pendenze vengono risolte (1 = prima).
-
 ## Input
 
 **Messaggi buffer (con annotazioni tag):**
@@ -40,17 +32,22 @@ Valori di `stato`:
 {{piano_azione}}
 
 **Estratto scena corrente:**
-{{estratto_scena_corrente}}
+{{scena_focus}}
 
 **Schede PG (sintetizzate):**
 {{schede_PG}}
 
+**Stato del Mondo**
+{{world_state}}
+
 ## Istruzioni
 - Per ogni PG del gruppo in focus, determina lo stato della sua dichiarazione
-- Se il piano parziale è presente, aggiornalo con le nuove dichiarazioni (non azzerarlo)
-- Un'azione è `dichiarazione` se è chiara e non richede una verifica meccanica
-- Un'azione è `prova` se richede una verifica meccanica (tiro di dado)
-- Un'azione è `incompleta` se il PG ha parlato ma l'intenzione non è chiara
-- Un'azione è `assente` se il PG non ha dichiarato nulla
-- Assegna `priorita` crescente: prima le prove e incompleti, poi gli assenti
-- `risultato_prova` deve essere sempre `null` in output (viene popolato dal sistema)
+- Il piano deve essere aggiornato non azzerato. 
+- Aggiungi o modifica per rispecchiare le nuove dichiarazioni
+- Assegna un valori di `stato` con
+- `dichiarazione`: se l'azione è chiara, non richiede prova e fa avanzare la narrazione. Accetta anche un "non faccio" niente come una dichiarazione
+- `prova`: se l'azione è chiara ma richiede una prova e quindi un tiro di dado
+- `incompleta`: il giocatore ha dichiarato qualcosa ma l'intenzione non è chiara o incompleta
+- `assente`: il PG non ha ancora dichiarato nulla
+- Assegna una `priorita` secondo l'importanza in narrazione: un valore più basso va alle prima le prove e incompleti, poi gli assenti
+- `risultato_prova` può essere `null` per le prove per cui il giocatore non ha ancora tirato i dadi

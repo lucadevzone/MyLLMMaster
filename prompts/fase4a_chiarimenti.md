@@ -12,15 +12,18 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 }
 
 ## Input
-
-**PG target:** {{pg_target}}
-
 **Dichiarazione incompleta:**
 {{richiesta_chiarimenti}}
 
+**Estratto scena corrente:**
+{{scena_focus}}
+
+**Stato del Mondo**
+{{world_state}}
+
 ## Istruzioni
 - Rivolgiti direttamente al PG target usando il suo nome
-- La domanda deve sembrare naturale nel contesto narrativo, non meccanica
+- La domanda deve sembrare naturale magari proponendo delle alternative
 - Chiedi esattamente cosa vuole fare, senza svelare la meccanica di gioco
 - Tono evocativo, coerente con Call of Cthulhu
 - Parla in italiano, in seconda persona singolare

@@ -1,0 +1,8 @@
+Il problema è chiaro: fase4_dichiarazioni.md usa {{world_state}} ma fase4() non lo passa:
+	
+dopo # Fase 4b — Dichiarazione Assente
+in cui la LLM ha generato
+{
+  "narrativa": "Marcel, guardi, la scena è in fermento. L'asta sta per iniziare e la sala è gremita di persone provenienti da tutto il mondo. Sembra che tutti siano alla ricerca di qualcosa. Il Tavoletta con script non identificato è appena stato venduto a Sophia Hapgood, ma potrebbe esserci più dietro questo acquisto... Cosa fai?"
+}
+il sistema non ha dato correttamente il turno al giocatore (la sottofase dovrebbe sapere a quale giocatore dare il turno

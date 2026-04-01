@@ -14,7 +14,11 @@
       "Bash(mkdir:*)",
       "Bash(git checkout:*)",
       "Bash(git merge:*)",
-      "Bash(ollama list:*)"
+      "Bash(ollama list:*)",
+      "Bash(pkill -f \"nodemon src/server.js\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(curl:*)",
+      "Bash(git rm:*)"
     ]
   }
 }

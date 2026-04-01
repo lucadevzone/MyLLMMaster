@@ -8,11 +8,11 @@ Tutti hanno dichiarato un azione. Devi convertire il Piano Azione in narrativa e
 {
   "narrativa": "testo narrativo della risoluzione contemporanea di tutte le dichiarazioni e reazione del mondo",
   "sussurri": [
-    { "target": "email@giocatore.com", "testo": "informazione privata" }
+    { "target": "Nome PG destinatario", "testo": "informazione privata per questo PG" }
   ],
-  "divisione_gruppi": false,
-  "ricongiungimento_gruppi": false,
-  "chiusura_scena": false,
+  "divisione_gruppi": "true|false",
+  "ricongiungimento_gruppi": "true|false",
+  "chiusura_scena": "true|false",
   "aggiornamenti": {
     "progressione" : "descrivi in 2-3 paragrafi la progressione della scena attuale",
     "diary": "se è avvenuto qualcosa di rilevante ai fini della storia",
