@@ -232,6 +232,16 @@ class CustodeEngine {
       const result = await this.llm('fase1a_prima_sessione.md', vars)
       await this.emitNarrative(result.narrativa)
       if (result.diary) await appendDiary(this.tableId, result.diary)
+
+      // Inizializza world_state: tutti i PG in un unico gruppo
+      worldState.groups = [{
+        groupId: 'group01',
+        sceneId: null,
+        participants: chars.map(c => c.playerID),
+        subLocation: null,
+        activity: null
+      }]
+      await saveWorldState(this.tableId, worldState)
     } else {
       await this.emitPhaseChange('fase-1b')
       const vars = {
