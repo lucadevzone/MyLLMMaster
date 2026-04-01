@@ -222,7 +222,7 @@ class CustodeEngine {
   // ── FASE 1: Apertura ──────────────────────────────────────────────────────
 
   async fase1() {
-    const { worldState, diary, chars, mod, schede_PG } = await this.buildContext()
+    const { worldState, diary, chars, mod, schede_PG, focusScene } = await this.buildContext()
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const isFirstSession = sessionNumber === 1
 
@@ -236,9 +236,7 @@ class CustodeEngine {
       await this.emitPhaseChange('fase-1b')
       const vars = {
         diary,
-        capitolo_corrente: mod.chapters[(worldState.currentChapter - 1)]?.content || '',
-        world_state: JSON.stringify(worldState),
-        schede_PG
+        scena_in_focus: focusScene ? JSON.stringify(focusScene) : ''
       }
       const result = await this.llm('fase1b_sessioni_successive.md', vars)
       await this.emitNarrative(result.narrativa)
