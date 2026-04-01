@@ -269,7 +269,7 @@ class CustodeEngine {
 
     const result = await this.llm('fase2_prepara_scena.md', {
       capitolo_corrente: capitolo,
-      suggerimento_prossima_scena: suggerimento || ''
+      suggerimento_scena: suggerimento || 'scena introduttiva'
     })
 
     // Salva scena in active_scenes
