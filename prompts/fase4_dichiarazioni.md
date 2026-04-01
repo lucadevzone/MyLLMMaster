@@ -1,66 +1,58 @@
 # Fase 4 — Gestione Dichiarazioni
+Sei il Custode di una partita di Call of Cthulhu.
 
-## Contesto
-Sei il Custode. Devi analizzare le dichiarazioni dei giocatori e compilare un Piano Azione.
+## Obiettivo
+Analizza i messaggi in buffer e il piano azione parziale (se presente) per costruire o aggiornare il piano azione completo del round corrente.
+
+## Output atteso
+Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun markdown, nessun backtick.
+
+Ogni PG del gruppo in focus deve avere una entry nel piano.
+
+```
+{
+  "piano": [
+    {
+      "pg": "Nome PG",
+      "stato": "dichiarazione | prova | incompleta | assente",
+      "azione": "descrizione dell'azione (opzionale per assente)",
+      "abilita_o_caratteristica": "nome abilità o caratteristica (solo se stato=prova)",
+      "difficolta": "normale | difficile | estrema (solo se stato=prova)",
+      "risultato_prova": null,
+      "priorita": 1
+    }
+  ]
+}
+```
+
+Valori di `stato`:
+- `dichiarazione`: azione chiara, non richiede prova — può procedere
+- `prova`: azione richiede un tiro di dado
+- `incompleta`: il PG ha detto qualcosa ma l'intenzione non è chiara
+- `assente`: il PG non ha dichiarato nulla
+
+`priorita` indica l'ordine con cui le pendenze vengono risolte (1 = prima).
 
 ## Input
+
+**Messaggi buffer (con annotazioni tag):**
+{{messaggi_buffer}}
+
+**Piano azione corrente (parziale — aggiornalo in base ai nuovi messaggi):**
+{{piano_azione}}
+
 **Estratto scena corrente:**
 {{estratto_scena_corrente}}
-
-**Stato del mondo:**
-{{world_state}}
 
 **Schede PG (sintetizzate):**
 {{schede_PG}}
 
-**Messaggi buffer (con annotazioni):**
-{{messaggi_buffer}}
-
-**Piano azione parziale (se presente):**
-{{piano_azione}}
-
 ## Istruzioni
-<!-- TODO: definire criteri per decidere se un'azione richiede prova o ha esito automatico -->
-<!-- TODO: definire quando chiedere chiarimenti vs interpretare liberamente -->
-<!-- Per ogni PG del gruppo in focus, determina cosa vuole fare -->
-<!-- Se manca una dichiarazione, usa la sottofase 4b -->
-<!-- Se una dichiarazione non è chiara, usa la sottofase 4a -->
-<!-- Se serve una prova, usa la sottofase 4c -->
-
-## Output atteso (JSON)
-Rispondi SOLO con un oggetto JSON valido.
-
-Se il piano è completo:
-{
-  "completo": true,
-  "piano": [
-    {
-      "pg": "email@giocatore.com",
-      "azione": "descrizione dell'azione",
-      "richiede_prova": false,
-      "esito": "descrizione dell'esito narrativo"
-    },
-    {
-      "pg": "email@altro.com",
-      "azione": "descrizione dell'azione",
-      "richiede_prova": true,
-      "caratteristica": "FOR",
-      "difficolta": "normale"
-    }
-  ]
-}
-
-
-Se serve una sottofase:
-
-{
-  "completo": false,
-  "sottofase": "4a|4b|4c",
-  "pg_target": "email@giocatore.com",
-  "domanda": "testo della domanda (per 4a)",
-  "sollecito": "testo del sollecito (per 4b)",
-  "narrativa_setup": "testo di setup prova (per 4c)",
-  "caratteristica": "FOR (per 4c)",
-  "difficolta": "normale (per 4c)",
-  "piano_parziale": []
-}
+- Per ogni PG del gruppo in focus, determina lo stato della sua dichiarazione
+- Se il piano parziale è presente, aggiornalo con le nuove dichiarazioni (non azzerarlo)
+- Un'azione è `dichiarazione` se è chiara e non richede una verifica meccanica
+- Un'azione è `prova` se richede una verifica meccanica (tiro di dado)
+- Un'azione è `incompleta` se il PG ha parlato ma l'intenzione non è chiara
+- Un'azione è `assente` se il PG non ha dichiarato nulla
+- Assegna `priorita` crescente: prima le prove e incompleti, poi gli assenti
+- `risultato_prova` deve essere sempre `null` in output (viene popolato dal sistema)

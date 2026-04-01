@@ -422,40 +422,50 @@ class CustodeEngine {
     svc.clearTimer(this.tableId, 'proattivita')
     svc.clearTimer(this.tableId, 'silenzio')
 
-    const msgs = this.buffer.map(m => `[${m.tag || '?'}] ${m.fromName}: ${m.text}`).join('\n')
+    const msgs = this.buffer.map(m => `[${m.tag || '?'}] ${m.fromName || m.from}: ${m.text}`).join('\n')
     const { worldState, schede_PG, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase4_dichiarazioni.md', {
       estratto_scena_corrente: JSON.stringify(focusScene),
-      world_state: JSON.stringify(worldState),
       schede_PG,
       messaggi_buffer: msgs,
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno'
     })
 
-    // Conversione nomi → email nell'output LLM
-    if (result.completo) {
-      result.piano = pianoToEmails(result.piano, pgLookup)
-    } else {
-      result.pg_target = pgLookup.toEmail[result.pg_target?.toLowerCase()] || result.pg_target
-      if (result.piano_parziale) result.piano_parziale = pianoToEmails(result.piano_parziale, pgLookup)
-    }
+    // result è l'array piano — conversione nomi → email
+    const piano = pianoToEmails(Array.isArray(result) ? result : (result.piano || []), pgLookup)
 
     // Salva piano in sessione
     const ctx = svc.getSession(this.tableId)
     if (ctx) {
-      ctx.session.pianoAzione = result
+      ctx.session.pianoAzione = piano
       await svc.saveSession(this.tableId, ctx.session)
     }
 
-    if (result.completo) {
+    // Controlla completezza
+    const isCompleto = piano.every(e =>
+      e.stato === 'dichiarazione' ||
+      (e.stato === 'prova' && e.risultato_prova != null)
+    )
+
+    if (isCompleto) {
       this.buffer = []
-      return { next: 'fase-5', piano: result.piano }
+      return { next: 'fase-5', piano }
     }
 
-    // Sottofase
-    return { next: `sottofase-${result.sottofase}`, data: result }
+    // Trova prossima entry pendente per priorità
+    const pending = piano
+      .filter(e => e.stato === 'incompleta' || e.stato === 'assente' ||
+                   (e.stato === 'prova' && e.risultato_prova == null))
+      .sort((a, b) => (a.priorita || 99) - (b.priorita || 99))[0]
+
+    if (pending.stato === 'incompleta')
+      return { next: 'sottofase-4a', data: { pg_target: pending.pg, azione_parziale: pending.azione, piano } }
+    if (pending.stato === 'assente')
+      return { next: 'sottofase-4b', data: { pg_target: pending.pg, piano } }
+    if (pending.stato === 'prova')
+      return { next: 'sottofase-4c', data: { pg_target: pending.pg, azione: pending.azione, abilita_o_caratteristica: pending.abilita_o_caratteristica, difficolta: pending.difficolta, piano } }
   }
 
   async fase4a(data) {
@@ -464,8 +474,7 @@ class CustodeEngine {
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4a_chiarimenti.md', {
       pg_target: pgNome,
-      domanda: data.domanda,
-      piano_azione: JSON.stringify(data.piano_parziale || [])
+      azione_parziale: data.azione_parziale || ''
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
@@ -477,9 +486,7 @@ class CustodeEngine {
     const { pgLookup } = await this.buildContext()
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4b_dichiarazione_assente.md', {
-      pg_target: pgNome,
-      sollecito: data.sollecito || '',
-      piano_parziale: JSON.stringify(data.piano_parziale || [])
+      pg_target: pgNome
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
@@ -493,10 +500,8 @@ class CustodeEngine {
     const result = await this.llm('fase4c_necessita_prova.md', {
       pg_target: pgNome,
       azione: data.azione || '',
-      caratteristica: data.caratteristica || '',
-      difficolta: data.difficolta || 'normale',
-      narrativa_setup: data.narrativa_setup || '',
-      piano_azione: JSON.stringify(data.piano_parziale || [])
+      abilita_o_caratteristica: data.abilita_o_caratteristica || '',
+      difficolta: data.difficolta || 'normale'
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-prova')
@@ -771,14 +776,14 @@ class CustodeEngine {
     if (!ctx || ctx.session.custodePhase !== 'fase-4c') return
 
     const esito = valore <= soglia ? 'successo' : 'fallimento'
-    const piano = ctx.session.pianoAzione
+    const piano = ctx.session.pianoAzione || []
 
-    // Aggiorna risultato nel piano
-    if (piano?.piano_parziale) {
-      const entry = piano.piano_parziale.find(p => p.pg === email)
-      if (entry) {
-        entry.risultato_prova = { valore_tiro: valore, esito }
-      }
+    // Aggiorna risultato_prova nell'entry corrispondente
+    const entry = piano.find(e => e.pg === email && e.stato === 'prova')
+    if (entry) {
+      entry.risultato_prova = { valore_tiro: valore, esito }
+      ctx.session.pianoAzione = piano
+      await svc.saveSession(this.tableId, ctx.session)
     }
 
     this.buffer.push({
