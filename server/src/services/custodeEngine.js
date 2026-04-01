@@ -294,11 +294,12 @@ class CustodeEngine {
     const focusGroup = worldState.groups.find(g => g.groupId === (worldState.focusGroupId || 'group01'))
     if (focusGroup) focusGroup.sceneId = result.id_scena
 
-    // focusScene: diventa la nuova scena solo se è l'unica scena attiva
+    // focusScene: diventa la nuova scena solo se è l'unica scena attiva,
+    // altrimenti "tbd" (custode deve scegliere il prossimo focus)
     const activeScenes = await fs.readdir(path.join(tDir(this.tableId), 'active_scenes')).catch(() => [])
-    if (activeScenes.filter(f => f.endsWith('.json')).length === 1) {
-      worldState.focusScene = result.id_scena
-    }
+    worldState.focusScene = activeScenes.filter(f => f.endsWith('.json')).length === 1
+      ? result.id_scena
+      : 'tbd'
 
     await saveWorldState(this.tableId, worldState)
 
