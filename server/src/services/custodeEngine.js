@@ -80,6 +80,18 @@ async function getScene(tableId, sceneId) {
   return null
 }
 
+async function nextSceneId(tableId) {
+  let count = 0
+  for (const dir of ['active_scenes', 'closed_scenes']) {
+    const p = path.join(tDir(tableId), dir)
+    try {
+      const files = await fs.readdir(p)
+      count += files.filter(f => f.endsWith('.json')).length
+    } catch { /* cartella assente */ }
+  }
+  return `scene_${String(count).padStart(3, '0')}`
+}
+
 async function saveScene(tableId, scene, closed = false) {
   const dir = closed ? 'closed_scenes' : 'active_scenes'
   await ensureDir(path.join(tDir(tableId), dir))
@@ -272,21 +284,16 @@ class CustodeEngine {
       suggerimento_scena: suggerimento || 'scena introduttiva'
     })
 
+    // Assegna ID progressivo (il codice sovrascrive qualsiasi id_scena della LLM)
+    result.id_scena = await nextSceneId(this.tableId)
+
     // Salva scena in active_scenes
     await saveScene(this.tableId, result)
 
-    // Aggiorna world state
-    if (!worldState.groups.length) {
-      const chars = await getCharacters(this.tableId)
-      worldState.groups = [{
-        groupId: 'group01',
-        sceneId: result.id_scena,
-        participants: chars.map(c => c.playerID),
-        subLocation: result.contesto_dove,
-        activity: 'Inizio scena'
-      }]
-    }
+    // Aggiorna world_state: focusScene + sceneId del gruppo in focus
     worldState.focusScene = result.id_scena
+    const focusGroup = worldState.groups.find(g => g.groupId === (worldState.focusGroupId || 'group01'))
+    if (focusGroup) focusGroup.sceneId = result.id_scena
     await saveWorldState(this.tableId, worldState)
 
     return { next: 'fase-3' }
