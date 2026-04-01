@@ -1,7 +1,7 @@
 # Fase 5c — Chiusura/Cambio Scena
 
 ## Input
-**Estratto scena corrente:** {{estratto_scena_corrente}}
+**Estratto scena corrente:** {{scena_focus}}
 **Stato del mondo:** {{world_state}}
 **Dettagli chiusura:** {{dettagli_chiusura}}
 

@@ -427,7 +427,7 @@ class CustodeEngine {
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase4_dichiarazioni.md', {
-      estratto_scena_corrente: JSON.stringify(focusScene),
+      scena_focus: JSON.stringify(focusScene),
       schede_PG,
       messaggi_buffer: msgs,
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno'
@@ -517,7 +517,7 @@ class CustodeEngine {
 
     const result = await this.llm('fase5_risoluzione.md', {
       piano_azione: JSON.stringify(piano),
-      estratto_scena_corrente: JSON.stringify(focusScene),
+      scena_focus: JSON.stringify(focusScene),
       world_state: JSON.stringify(worldState),
       schede_PG
     })
@@ -586,7 +586,7 @@ class CustodeEngine {
       .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
 
     const result = await this.llm('fase5a_divisione_gruppi.md', {
-      estratto_scena_corrente: JSON.stringify(focusScene),
+      scena_focus: JSON.stringify(focusScene),
       world_state: JSON.stringify(worldState),
       messaggi_recenti: recentMsgs,
       dettagli_divisione: JSON.stringify(data)
@@ -617,7 +617,7 @@ class CustodeEngine {
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase5c_chiusura_scena.md', {
-      estratto_scena_corrente: JSON.stringify(focusScene),
+      scena_focus: JSON.stringify(focusScene),
       world_state: JSON.stringify(worldState),
       dettagli_chiusura: JSON.stringify(data)
     })

@@ -8,7 +8,7 @@ Sei il Custode. Devi convertire il Piano Azione in narrativa e far reagire il mo
 {{piano_azione}}
 
 **Estratto scena corrente:**
-{{estratto_scena_corrente}}
+{{scena_focus}}
 
 **Stato del mondo:**
 {{world_state}}

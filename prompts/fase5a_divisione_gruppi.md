@@ -1,7 +1,7 @@
 # Fase 5a — Divisione Gruppi
 
 ## Input
-**Estratto scena:** {{estratto_scena_corrente}}
+**Estratto scena:** {{scena_focus}}
 **Stato del mondo:** {{world_state}}
 **Messaggi recenti:** {{messaggi_recenti}}
 **Dettagli divisione:** {{dettagli_divisione}}

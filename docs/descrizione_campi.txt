@@ -1,6 +1,6 @@
 CAMPI DISPONIBILI NEI PROMPT LLM
 =================================
-Ultimo aggiornamento: 2026-04-01
+Ultimo aggiornamento: 2026-04-02
 
 Tutti i campi vengono iniettati nel prompt tramite la sintassi {{nome_campo}}.
 La conversione email <-> nome PG avviene automaticamente al confine col layer LLM.
@@ -42,11 +42,7 @@ Disponibili in tutte le fasi che chiamano buildContext().
 {{scena_focus}}
   JSON completo della scena attualmente in focus (da active_scenes/).
   Include tutti i campi della scena + il campo progressione.
-  Usato in fase3b.
-
-{{estratto_scena_corrente}}
-  JSON della scena in focus. Semanticamente equivalente a scena_focus,
-  usato con questo nome in fase4, fase5, fase5a/b/c.
+  Usato in fase3b, fase4, fase5, fase5a/b/c.
 
 {{scene_attive}}
   Array JSON di tutte le scene in active_scenes/.
