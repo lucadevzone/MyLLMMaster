@@ -9,7 +9,6 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 Ogni PG del gruppo in focus deve avere una entry nel piano.
 
-```
 {
   "piano": [
     {
@@ -23,7 +22,6 @@ Ogni PG del gruppo in focus deve avere una entry nel piano.
     }
   ]
 }
-```
 
 Valori di `stato`:
 - `dichiarazione`: azione chiara, non richiede prova — può procedere
