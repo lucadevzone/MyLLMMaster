@@ -1,6 +1,6 @@
 CAMPI DISPONIBILI NEI PROMPT LLM
 =================================
-Ultimo aggiornamento: 2026-04-02
+Ultimo aggiornamento: 2026-04-03
 
 Tutti i campi vengono iniettati nel prompt tramite la sintassi {{nome_campo}}.
 La conversione email <-> nome PG avviene automaticamente al confine col layer LLM.

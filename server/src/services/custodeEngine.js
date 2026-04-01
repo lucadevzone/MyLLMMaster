@@ -482,11 +482,14 @@ class CustodeEngine {
 
   async fase4a(data) {
     await this.emitPhaseChange('fase-4a')
-    const { pgLookup } = await this.buildContext()
+    const { worldState, pgLookup } = await this.buildContext()
+    const focusScene = await getScene(this.tableId, worldState.focusScene)
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4a_chiarimenti.md', {
       pg_target: pgNome,
-      richiesta_chiarimenti: JSON.stringify(data.richiesta_chiarimenti)
+      richiesta_chiarimenti: JSON.stringify(data.richiesta_chiarimenti),
+      scena_focus: JSON.stringify(focusScene),
+      world_state: JSON.stringify(worldState)
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
@@ -495,11 +498,14 @@ class CustodeEngine {
 
   async fase4b(data) {
     await this.emitPhaseChange('fase-4b')
-    const { pgLookup } = await this.buildContext()
+    const { worldState, pgLookup } = await this.buildContext()
+    const focusScene = await getScene(this.tableId, worldState.focusScene)
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4b_dichiarazione_assente.md', {
       pg_target: pgNome,
-      richiesta_dichiarazione: JSON.stringify(data.richiesta_dichiarazione)
+      richiesta_dichiarazione: JSON.stringify(data.richiesta_dichiarazione),
+      scena_focus: JSON.stringify(focusScene),
+      world_state: JSON.stringify(worldState)
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
@@ -508,11 +514,14 @@ class CustodeEngine {
 
   async fase4c(data) {
     await this.emitPhaseChange('fase-4c')
-    const { pgLookup } = await this.buildContext()
+    const { worldState, pgLookup } = await this.buildContext()
+    const focusScene = await getScene(this.tableId, worldState.focusScene)
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4c_necessita_prova.md', {
       pg_target: pgNome,
-      richiesta_prova: JSON.stringify(data.richiesta_prova)
+      richiesta_prova: JSON.stringify(data.richiesta_prova),
+      scena_focus: JSON.stringify(focusScene),
+      world_state: JSON.stringify(worldState)
     })
     await this.emitNarrative(result.narrativa)
     await this.setPlayerTurn(data.pg_target, 'mio-turno-prova')
@@ -529,6 +538,7 @@ class CustodeEngine {
     const result = await this.llm('fase5_risoluzione.md', {
       piano_azione: JSON.stringify(piano),
       scena_focus: JSON.stringify(focusScene),
+      progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       world_state: JSON.stringify(worldState),
       schede_PG
     })
@@ -552,26 +562,30 @@ class CustodeEngine {
       await svc.saveSession(this.tableId, ctx.session)
     }
 
-    // Aggiorna progressione della scena con il riassunto delle conseguenze
-    if (result.progressione && focusScene) {
+    const agg = result.aggiornamenti || {}
+
+    // Aggiorna progressione della scena (append)
+    if (agg.progressione && focusScene) {
       const prev = focusScene.progressione || ''
-      focusScene.progressione = prev ? `${prev}\n${result.progressione}` : result.progressione
+      focusScene.progressione = prev ? `${prev}\n${agg.progressione}` : agg.progressione
       await saveScene(this.tableId, focusScene)
     }
 
-    // Aggiorna world state
-    if (result.aggiornamenti?.world_state) {
+    // Aggiorna diario
+    if (agg.diary) await appendDiary(this.tableId, agg.diary)
+
+    // Aggiorna npcs e items nel world state
+    if (agg.npcs?.length || agg.items?.length) {
       const ws = await getWorldState(this.tableId)
-      const upd = result.aggiornamenti.world_state
-      if (upd.npcs?.length) {
-        upd.npcs.forEach(n => {
+      if (agg.npcs?.length) {
+        agg.npcs.forEach(n => {
           const existing = ws.npcs.find(x => x.name === n.name)
           if (existing) Object.assign(existing, n)
           else ws.npcs.push(n)
         })
       }
-      if (upd.items?.length) {
-        upd.items.forEach(i => {
+      if (agg.items?.length) {
+        agg.items.forEach(i => {
           const existing = ws.items.find(x => x.name === i.name)
           if (existing) Object.assign(existing, i)
           else ws.items.push(i)
@@ -580,11 +594,9 @@ class CustodeEngine {
       await saveWorldState(this.tableId, ws)
     }
 
-    const cons = result.conseguenze || {}
-
-    if (cons.divisione_gruppi) return { next: 'fase-5a', data: result.dettagli_divisione }
-    if (cons.ricongiungimento_gruppi) return { next: 'fase-5b', data: result.dettagli_ricongiungimento }
-    if (cons.chiusura_scena) return { next: 'fase-5c', data: result.dettagli_chiusura }
+    if (result.divisione_gruppi) return { next: 'fase-5a' }
+    if (result.ricongiungimento_gruppi) return { next: 'fase-5b' }
+    if (result.chiusura_scena) return { next: 'fase-5c' }
 
     return { next: 'fase-3' }
   }
