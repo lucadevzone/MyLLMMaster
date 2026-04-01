@@ -1,0 +1,131 @@
+CAMPI DISPONIBILI NEI PROMPT LLM
+=================================
+Ultimo aggiornamento: 2026-04-01
+
+Tutti i campi vengono iniettati nel prompt tramite la sintassi {{nome_campo}}.
+La conversione email <-> nome PG avviene automaticamente al confine col layer LLM.
+
+
+── DA buildContext() ─────────────────────────────────────────────────────────
+Disponibili in tutte le fasi che chiamano buildContext().
+
+{{schede_PG}}
+  Sintesi testuale di tutti i PG del tavolo.
+  Formato: "Nome (Professione, eta): FOR## COS## ... PF#/# SAN##"
+  Aggiunto il campo descrizionePersonale se presente.
+
+{{diary}}
+  Testo grezzo del file diary.txt.
+  Contiene il diario narrativo accumulato sessione per sessione.
+  Aggiornato da fase1a e da fase5 (tramite result.diary).
+
+
+── DA worldState ─────────────────────────────────────────────────────────────
+
+{{world_state}}
+  JSON grezzo di world_state.json.
+  Contiene: currentChapter, focusScene, groups (con participants come email),
+  npcs, items.
+  Usato in fase4, fase5, fase5a/b/c.
+
+{{narrative_groups}}
+  Versione narrativa leggibile dei gruppi attivi.
+  Generato da buildNarrativeGroups() — converte email -> nome PG.
+  Esempio: "Ci sono 2 gruppi di PG. Il gruppo 1 (group01) si trova in
+  Museo di Storia Naturale [scene_000] (Esaminano la vetrina).
+  Partecipanti: Alice, Bob."
+  Usato in fase3a.
+
+
+── DA SCENE ──────────────────────────────────────────────────────────────────
+
+{{scena_focus}}
+  JSON completo della scena attualmente in focus (da active_scenes/).
+  Include tutti i campi della scena + il campo progressione.
+  Usato in fase3b.
+
+{{estratto_scena_corrente}}
+  JSON della scena in focus. Semanticamente equivalente a scena_focus,
+  usato con questo nome in fase4, fase5, fase5a/b/c.
+
+{{scene_attive}}
+  Array JSON di tutte le scene in active_scenes/.
+  Usato in fase3a per permettere alla LLM di scegliere il focus.
+
+{{progressione}}
+  Campo estratto da focusScene.progressione.
+  Testo accumulato che descrive cosa e' successo finora nella scena corrente.
+  Aggiornato da fase5 tramite result.progressione (append, non sovrascrittura).
+  Usato in fase3b.
+  NOTA: e' un segnaposto — viene popolato solo dopo il primo ciclo fase4/5.
+
+
+── DA SESSIONE ───────────────────────────────────────────────────────────────
+
+{{storia_recente}}
+  Ultimi 10 messaggi in chat, formato testo: "NomeGiocatore: testo".
+  Disponibile ma non usato attivamente nei prompt attuali.
+
+{{messaggi_buffer}}
+  Messaggi raccolti nel buffer di gioco libero, con annotazioni tag LLM.
+  Formato: "[tag] NomeGiocatore: testo"
+  Usato in fase4.
+
+{{engagement}}
+  Contatore per nome PG (gia' convertito da email a nome).
+  Indica quante volte ogni PG e' apparso in un piano azione durante la sessione.
+  Esempio: {"Alice": 3, "Bob": 1}
+  Usato in fase3a, fase3b.
+
+{{piano_azione}}
+  Piano azione corrente o parziale (JSON).
+  Usato in fase4 (piano parziale da iterazione precedente).
+
+
+── SPECIFICI PER FASE ────────────────────────────────────────────────────────
+
+{{primo_capitolo}}          [fase1a]
+  Testo del primo capitolo del modulo avventura.
+
+{{capitolo_corrente}}       [fase2]
+  Testo del capitolo corrente (worldState.currentChapter).
+
+{{suggerimento_scena}}      [fase2]
+  Hint testuale per guidare l'estrazione della scena dal capitolo.
+  Default: "scena introduttiva" alla prima sessione.
+  Nelle sessioni successive: generato da fase5c (result.suggerimento_prossima_scena).
+
+{{scena_in_focus}}          [fase1b]
+  JSON della scena attualmente in focus.
+  Usato in fase1b per riprendere la sessione dal punto corretto.
+
+{{pg_target}}               [fase4a, fase4b, fase4c]
+  Nome del PG a cui il custode si sta rivolgendo direttamente.
+  Convertito da email a nome prima di passare alla LLM,
+  e riconvertito in email dopo l'output LLM.
+
+
+── CONVERSIONE EMAIL <-> NOME PG ─────────────────────────────────────────────
+
+Il sistema mantiene internamente gli identificatori come email (es. alice@x.com).
+Verso la LLM i riferimenti ai PG usano il nome del personaggio (es. "Alice").
+
+Conversioni automatiche applicate:
+  - engagement:       email -> nome (prima della LLM)
+  - piano[].pg:       nome  -> email (dopo output LLM, in fase4)
+  - pg_target:        email -> nome (prima della LLM in 4a/4b/4c)
+                      nome  -> email (dopo output fase4 per routing sottofasi)
+  - sussurri.target:  nome  -> email (dopo output LLM, in fase3b e fase5)
+  - narrative_groups: email -> nome (nella generazione del testo)
+
+Funzioni coinvolte (custodeEngine.js):
+  buildPgLookup(chars)          -> { toName, toEmail }
+  engagementForLlm(eng, lookup) -> engagement con chiavi nome
+  pianoToEmails(piano, lookup)  -> piano con pg come email
+
+
+── CAMPI AGGIUNGIBILI FACILMENTE ─────────────────────────────────────────────
+Non ancora passati in nessun prompt, ma disponibili senza modifiche al codice:
+
+{{modulo_titolo}}     -> table.moduleId / mod.title
+{{session_number}}    -> session.sessionNumber
