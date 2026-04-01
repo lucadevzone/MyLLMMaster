@@ -22,11 +22,8 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 **Schede PG:**
 {{schede_PG}}
 
-**Coinvolgimento PG (numero di volte nel piano azione durante questa sessione):**
-{{engagement}}
-
-**Ultimi messaggi in chat:**
-{{storia_recente}}
+**Cosa è successo finora in questa scena:**
+{{progressione}}
 
 ## Istruzioni
 - Descrivi cosa succede nella scena e cosa vedono/sentono i PG

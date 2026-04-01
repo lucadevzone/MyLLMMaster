@@ -381,6 +381,7 @@ class CustodeEngine {
 
     const result = await this.llm('fase3b_narrazione.md', {
       scena_focus: JSON.stringify(focusScene),
+      progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       schede_PG,
       engagement: JSON.stringify(engagement),
       storia_recente: recentMsgs
