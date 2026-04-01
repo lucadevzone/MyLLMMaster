@@ -386,10 +386,18 @@ class CustodeEngine {
       storia_recente: recentMsgs
     })
 
+    // Aggiorna focusScene se la LLM l'ha confermata/cambiata
+    if (result.focus_scene && result.focus_scene !== worldState.focusScene) {
+      worldState.focusScene = result.focus_scene
+      await saveWorldState(this.tableId, worldState)
+    }
+
     await this.emitNarrative(result.narrativa)
 
+    // Sussurri: target è nome PG → converti in email
     for (const s of result.sussurri || []) {
-      await this.emitNarrative(s.testo, { whisper: true, to: s.target, type: 'whisper' })
+      const targetEmail = pgLookup.toEmail[s.target?.toLowerCase()] || s.target
+      await this.emitNarrative(s.testo, { whisper: true, to: targetEmail, type: 'whisper' })
     }
 
     // Imposta tutti i PG del gruppo in focus a gioco-libero
@@ -498,7 +506,7 @@ class CustodeEngine {
 
   async fase5(piano) {
     await this.emitPhaseChange('fase-5')
-    const { worldState, schede_PG } = await this.buildContext()
+    const { worldState, schede_PG, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase5_risoluzione.md', {
@@ -511,7 +519,8 @@ class CustodeEngine {
     await this.emitNarrative(result.narrativa)
 
     for (const s of result.sussurri || []) {
-      await this.emitNarrative(s.testo, { whisper: true, to: s.target, type: 'whisper' })
+      const targetEmail = pgLookup.toEmail[s.target?.toLowerCase()] || s.target
+      await this.emitNarrative(s.testo, { whisper: true, to: targetEmail, type: 'whisper' })
     }
 
     // Aggiorna engagement: incrementa i PG presenti nel piano

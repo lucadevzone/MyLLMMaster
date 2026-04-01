@@ -8,8 +8,11 @@ Porta avanti la scena in focus, coinvolgendo i PG presenti e dando spazio a chi 
 Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun markdown, nessun backtick.
 
 {
-  "narrativa": "2-4 frasi narrative rivolte ai giocatori",
-  "sussurri": []
+  "focus_scene": "id della scena che stai narrando",
+  "narrativa": "testo descrittivo della scena da mostrare in chat",
+  "sussurri": [
+    { "target": "Nome PG destinatario", "testo": "informazione privata per questo PG" }
+  ]
 }
 
 ## Input
