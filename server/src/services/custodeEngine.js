@@ -221,23 +221,28 @@ class CustodeEngine {
   // ── FASE 1: Apertura ──────────────────────────────────────────────────────
 
   async fase1() {
-    await this.emitPhaseChange('fase-1')
     const { worldState, diary, chars, mod, schede_PG } = await this.buildContext()
-    const isFirstSession = !diary.trim()
+    const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
+    const isFirstSession = sessionNumber === 1
 
-    const vars = isFirstSession
-      ? { primo_capitolo: mod.chapters[0]?.content || '', schede_PG }
-      : {
-          diary,
-          capitolo_corrente: mod.chapters[(worldState.currentChapter - 1)]?.content || '',
-          world_state: JSON.stringify(worldState),
-          schede_PG
-        }
-
-    const result = await this.llm('fase1_apertura.md', vars)
-    await this.emitNarrative(result.narrativa)
-
-    if (result.diary) await appendDiary(this.tableId, result.diary)
+    if (isFirstSession) {
+      await this.emitPhaseChange('fase-1a')
+      const vars = { primo_capitolo: mod.chapters[0]?.content || '', schede_PG }
+      const result = await this.llm('fase1a_prima_sessione.md', vars)
+      await this.emitNarrative(result.narrativa)
+      if (result.diary) await appendDiary(this.tableId, result.diary)
+    } else {
+      await this.emitPhaseChange('fase-1b')
+      const vars = {
+        diary,
+        capitolo_corrente: mod.chapters[(worldState.currentChapter - 1)]?.content || '',
+        world_state: JSON.stringify(worldState),
+        schede_PG
+      }
+      const result = await this.llm('fase1b_sessioni_successive.md', vars)
+      await this.emitNarrative(result.narrativa)
+      if (result.diary) await appendDiary(this.tableId, result.diary)
+    }
 
     // Prossima fase
     const hasActiveScene = worldState.focusScene &&
