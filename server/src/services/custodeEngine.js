@@ -290,10 +290,16 @@ class CustodeEngine {
     // Salva scena in active_scenes
     await saveScene(this.tableId, result)
 
-    // Aggiorna world_state: focusScene + sceneId del gruppo in focus
-    worldState.focusScene = result.id_scena
+    // Aggiorna world_state: sceneId del gruppo in focus
     const focusGroup = worldState.groups.find(g => g.groupId === (worldState.focusGroupId || 'group01'))
     if (focusGroup) focusGroup.sceneId = result.id_scena
+
+    // focusScene: diventa la nuova scena solo se è l'unica scena attiva
+    const activeScenes = await fs.readdir(path.join(tDir(this.tableId), 'active_scenes')).catch(() => [])
+    if (activeScenes.filter(f => f.endsWith('.json')).length === 1) {
+      worldState.focusScene = result.id_scena
+    }
+
     await saveWorldState(this.tableId, worldState)
 
     return { next: 'fase-3' }
