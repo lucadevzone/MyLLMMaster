@@ -731,41 +731,28 @@ class CustodeEngine {
     if (!ctx) return
     const phase = ctx.session.custodePhase
 
-    // Modalità turno singolo: riprendi da fase 4
-    if (phase === 'fase-4a' || phase === 'fase-4b') {
-      const pianoData = ctx.session.pianoAzione
-      this.buffer.push({ ...message, tag: 'dichiarazione' })
-      await this.runLoop('fase-4', pianoData)
-      return
-    }
+    // Dopo tiro dado: gestito interamente da onDiceRoll
+    if (phase === 'fase-4c') return
 
-    // Dopo tiro dado: riprendi da fase 4
-    if (phase === 'fase-4c') {
-      // Il dado è già stato tirato via socket — viene gestito da onDiceRoll
+    // Turno singolo (dopo 4a o 4b): accumula senza tagging, timer silenzio
+    if (phase === 'fase-4a' || phase === 'fase-4b') {
+      this.buffer.push({ ...message, tag: 'dichiarazione' })
+      svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
+        this.flushBuffer('turno-singolo')
+      })
       return
     }
 
     // Gioco libero: accumula nel buffer
     if (!this.bufferActive) return
     this.buffer.push(message)
-
-    // Tagging asincrono
     this.tagMessageAsync(message)
 
-    // Trigger immediato per mio-turno-libero
-    const player = svc.getPlayer(ctx, message.from)
-    if (player?.playerState === 'mio-turno-libero') {
-      this.flushBuffer('turno-libero')
-      return
-    }
-
-    // Trigger: buffer pieno
     if (this.buffer.length >= MSG_BUFFER_SIZE) {
       this.flushBuffer('buffer-pieno')
       return
     }
 
-    // Avvia/resetta timer silenzio
     svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
       this.flushBuffer('timer-silenzio')
     })
@@ -800,7 +787,13 @@ class CustodeEngine {
     svc.clearTimer(this.tableId, 'silenzio')
     console.log(`[Custode] Buffer flush: ${reason} (${this.buffer.length} msgs)`)
     this.bufferActive = false
-    this.runLoop('fase-4', null).catch(console.error)
+    // In turno singolo passa il piano parziale corrente, altrimenti null (round fresco)
+    const ctx = svc.getSession(this.tableId)
+    const phase = ctx?.session?.custodePhase
+    const piano = (phase === 'fase-4a' || phase === 'fase-4b')
+      ? (ctx?.session?.pianoAzione || null)
+      : null
+    this.runLoop('fase-4', piano).catch(console.error)
   }
 
   async tagMessageAsync(message) {
