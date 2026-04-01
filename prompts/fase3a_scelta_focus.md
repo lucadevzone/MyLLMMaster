@@ -8,18 +8,14 @@ Scegli quale scena portare avanti, tenendo conto di dove si trovano i PG e di ch
 Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun markdown, nessun backtick.
 
 {
-  "focus_scene": "id della scena scelta",
-  "motivazione": "breve motivazione della scelta"
+  "focus_scene": "id della scena scelta"
 }
 
 ## Input
-**Stato del mondo:**
-{{world_state}}
+**Gruppi e scene attive:**
+{{narrative_groups}}
 
-**Schede PG:**
-{{schede_PG}}
-
-**Coinvolgimento PG (numero di volte nel piano azione durante questa sessione):**
+**Coinvolgimento PG:**
 {{engagement}}
 
 **Scene attive:**

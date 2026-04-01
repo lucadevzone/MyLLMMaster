@@ -92,6 +92,22 @@ async function nextSceneId(tableId) {
   return `scene_${String(count).padStart(3, '0')}`
 }
 
+async function buildNarrativeGroups(tableId, worldState) {
+  if (!worldState.groups?.length) return 'Nessun gruppo attivo.'
+  const parts = await Promise.all(worldState.groups.map(async (g, i) => {
+    const scene = g.sceneId ? await getScene(tableId, g.sceneId) : null
+    const location = scene?.contesto_dove || scene?.location || g.sceneId || 'posizione sconosciuta'
+    const players = g.participants?.join(', ') || '—'
+    const activity = g.activity ? ` (${g.activity})` : ''
+    const ordinal = worldState.groups.length === 1 ? 'L\'unico gruppo' : `Il gruppo ${i + 1} (${g.groupId})`
+    return `${ordinal} si trova in ${location} [${g.sceneId || 'nessuna scena'}]${activity}. Partecipanti: ${players}.`
+  }))
+  const intro = worldState.groups.length === 1
+    ? 'C\'è 1 gruppo di PG.'
+    : `Ci sono ${worldState.groups.length} gruppi di PG.`
+  return `${intro} ${parts.join(' ')}`
+}
+
 async function saveScene(tableId, scene, closed = false) {
   const dir = closed ? 'closed_scenes' : 'active_scenes'
   await ensureDir(path.join(tDir(tableId), dir))
@@ -325,9 +341,9 @@ class CustodeEngine {
         activeSceneFiles.filter(f => f.endsWith('.json'))
           .map(f => readJSON(path.join(tDir(this.tableId), 'active_scenes', f)))
       )
+      const narrativeGroups = await buildNarrativeGroups(this.tableId, worldState)
       const result3a = await this.llm('fase3a_scelta_focus.md', {
-        world_state: JSON.stringify(worldState),
-        schede_PG,
+        narrative_groups: narrativeGroups,
         engagement: JSON.stringify(engagement),
         scene_attive: JSON.stringify(activeScenes)
       }, true)  // light LLM
