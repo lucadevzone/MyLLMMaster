@@ -171,7 +171,7 @@ async function save() {
           <div class="card" style="margin-bottom:1rem">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
               <h3 class="section-title" style="margin-bottom:0">Caratteristiche</h3>
-              <button v-if="!readOnly" class="btn btn-secondary btn-sm" @click="rollStats; updateDerived()">
+              <button v-if="!readOnly" class="btn btn-secondary btn-sm" @click="rollStats()">
                 🎲 Rigenera
               </button>
             </div>

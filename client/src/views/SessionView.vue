@@ -176,6 +176,7 @@ function leaveSession() {
 const BUBBLE_COLORS = ['#bfdbfe','#bbf7d0','#fde68a','#fecaca','#e9d5ff','#fbcfe8','#a7f3d0','#fed7aa']
 
 function bubbleColor(email) {
+  if (email === 'custode') return '#e5e7eb'
   const myColor = sess.session?.players?.find(p => p.email === email)?.bubbleColor
   if (myColor) return myColor
   // Fallback deterministico
@@ -228,14 +229,6 @@ function msgBadge(msg) {
 
         <!-- Chat -->
         <div class="chat-area" ref="chatEl">
-          <!-- Indicatore di scrittura del Custode -->
-          <div v-if="sess.custodeTyping" class="bubble bubble-other bubble-typing">
-            <div class="bubble-header">
-              <span class="bubble-author">Custode</span>
-            </div>
-            <div class="typing-dots"><span /><span /><span /></div>
-          </div>
-
           <div v-for="msg in sess.messages" :key="msg.id"
             :class="['bubble', isMe(msg.from) ? 'bubble-me' : 'bubble-other',
                      msg.type === 'whisper' ? 'bubble-whisper' : '']"
@@ -251,6 +244,14 @@ function msgBadge(msg) {
             <div class="bubble-text" :style="msg.type === 'whisper' ? 'font-style:italic' : ''">
               {{ msg.text }}
             </div>
+          </div>
+
+          <!-- Indicatore di scrittura del Custode -->
+          <div v-if="sess.custodeTyping" class="bubble bubble-other bubble-typing">
+            <div class="bubble-header">
+              <span class="bubble-author">Custode</span>
+            </div>
+            <div class="typing-dots"><span /><span /><span /></div>
           </div>
         </div>
 
@@ -670,7 +671,7 @@ function msgBadge(msg) {
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-8px); }
 
 /* Typing indicator */
-.bubble-typing { background: #f3f4f6; padding: 0.5rem 0.75rem; }
+.bubble-typing { background: #e5e7eb; padding: 0.5rem 0.75rem; }
 
 .typing-dots {
   display: flex;

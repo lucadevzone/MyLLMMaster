@@ -249,7 +249,7 @@ router.post('/:id/characters', authMiddleware, playerOnly, async (req, res) => {
   const allCreated = activePlayers.every(email => charOwners.includes(email))
   if (allCreated && table.state === 'active') {
     const now = new Date()
-    table.state = 'open'
+    table.state = 'ready'
     table.plannedSession = {
       date: now.toISOString().slice(0, 10),
       time: now.toTimeString().slice(0, 5),
