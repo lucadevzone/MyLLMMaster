@@ -48,11 +48,14 @@ async function callOllama(model, prompt, expectJson = true, phase = '?') {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
+      const body = { model, prompt, stream: false }
+      if (expectJson) body.format = 'json'
+
       const res = await fetch(`${OLLAMA_URL}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({ model, prompt, stream: false })
+        body: JSON.stringify(body)
       })
       clearTimeout(timer)
 
