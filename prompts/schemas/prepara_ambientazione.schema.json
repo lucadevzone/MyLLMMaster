@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "required": ["ambientazione"],
+  "properties": {
+    "ambientazione": { "type": "string" }
+  },
+  "additionalProperties": true
+}

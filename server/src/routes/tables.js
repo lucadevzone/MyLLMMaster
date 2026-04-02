@@ -173,6 +173,8 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
   // Init diary
   await fs.writeFile(path.join(tableDir, 'diary.txt'), '')
 
+  custodeEngine.prepareSessionBootstrapInBackground(tableId, { force: true })
+
   res.status(201).json(table)
 })
 
@@ -194,11 +196,18 @@ router.patch('/:id', authMiddleware, adminOnly, async (req, res) => {
   for (const key of allowed) {
     if (req.body[key] !== undefined) table[key] = req.body[key]
   }
+  const shouldRefreshBootstrap = req.body.moduleId !== undefined || req.body['heavy-llmModel'] !== undefined
+  if (shouldRefreshBootstrap) {
+    table.custodeStarted = false
+  }
   if (req.body.invitedPlayers !== undefined) {
     table.state = await reconcileTableState(table)
   }
   table.updatedAt = new Date().toISOString()
   await writeJSON(filePath, table)
+  if (shouldRefreshBootstrap) {
+    custodeEngine.prepareSessionBootstrapInBackground(table.id, { force: true })
+  }
   res.json(table)
 })
 
@@ -251,6 +260,11 @@ router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
     try { await fs.unlink(path.join(tableDir, file)) } catch { /* già assente */ }
   }
 
+  // Cancella materiale pre-elaborato del Custode
+  for (const file of ['ambientazione.txt', 'avviare_la_sessione.txt']) {
+    try { await fs.unlink(path.join(tableDir, file)) } catch { /* già assente */ }
+  }
+
   // Cancella i log LLM generati finora
   try {
     const logFiles = await fs.readdir(LOGS_DIR)
@@ -264,8 +278,11 @@ router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
   // Riporta table.state a 'open'
   const table = await readJSON(tablePath)
   table.state = 'open'
+  table.custodeStarted = false
   table.updatedAt = new Date().toISOString()
   await writeJSON(tablePath, table)
+
+  custodeEngine.prepareSessionBootstrapInBackground(tableId, { force: true })
 
   res.json({ message: 'Tavolo resettato', table })
 })

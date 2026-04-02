@@ -17,6 +17,10 @@ const SILENCE_TIMER_MS = parseInt(process.env.SILENCE_TIMER_MS || String(30 * 10
 const EARLY_FLUSH_IDLE_MS = parseInt(process.env.EARLY_FLUSH_IDLE_MS || '5000')
 const PLAYER_TYPING_TTL_MS = parseInt(process.env.PLAYER_TYPING_TTL_MS || '4000')
 const PROACTIVITY_TIMER_MS = parseInt(process.env.PROACTIVITY_TIMER_MS || String(5 * 60 * 1000))
+const PREP_FILES = {
+  ambientazione: 'ambientazione.txt',
+  avvio: 'avviare_la_sessione.txt'
+}
 
 // ── Helpers filesystem ────────────────────────────────────────────────────────
 
@@ -52,6 +56,15 @@ async function getDiary(tableId) {
 async function appendDiary(tableId, entry) {
   const p = path.join(tDir(tableId), 'diary.txt')
   await fs.appendFile(p, '\n\n' + entry)
+}
+
+async function readPreparedFile(tableId, filename) {
+  const p = path.join(tDir(tableId), filename)
+  try { return await fs.readFile(p, 'utf-8') } catch { return '' }
+}
+
+async function writePreparedFile(tableId, filename, content) {
+  await fs.writeFile(path.join(tDir(tableId), filename), content || '')
 }
 
 async function getCharacters(tableId) {
@@ -179,6 +192,53 @@ function normalizeNarrativeText(text) {
   if (typeof text === 'string') return text.trim()
   if (text == null) return ''
   return String(text).trim()
+}
+
+async function prepareSessionBootstrap(tableId, options = {}) {
+  const { force = false } = options
+  const table = await getTable(tableId)
+  const mod = await getModule(table.moduleId)
+  const heavyModel = table['heavy-llmModel']
+
+  if (!heavyModel) return false
+
+  const [existingAmbientazione, existingAvvio] = await Promise.all([
+    readPreparedFile(tableId, PREP_FILES.ambientazione),
+    readPreparedFile(tableId, PREP_FILES.avvio)
+  ])
+
+  if (!force && table.custodeStarted && existingAmbientazione && existingAvvio) {
+    return true
+  }
+
+  const primoCapitolo = mod.chapters[0]?.content || ''
+  if (!primoCapitolo.trim()) return false
+
+  const [ambientazioneResult, avvioResult] = await Promise.all([
+    ollama.runPhase(heavyModel, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo }),
+    ollama.runPhase(heavyModel, 'prepara_avviare_la_sessione.md', { primo_capitolo: primoCapitolo })
+  ])
+
+  await Promise.all([
+    writePreparedFile(tableId, PREP_FILES.ambientazione, normalizeNarrativeText(ambientazioneResult.ambientazione)),
+    writePreparedFile(tableId, PREP_FILES.avvio, normalizeNarrativeText(avvioResult.avviare_la_sessione))
+  ])
+
+  table.custodeStarted = true
+  table.updatedAt = new Date().toISOString()
+  await writeJSON(path.join(tDir(tableId), 'table.json'), table)
+  return true
+}
+
+async function ensureSessionBootstrap(tableId) {
+  const ready = await prepareSessionBootstrap(tableId).catch(() => false)
+  return ready
+}
+
+function prepareSessionBootstrapInBackground(tableId, options = {}) {
+  prepareSessionBootstrap(tableId, options).catch(err => {
+    console.error(`[Custode] Errore preparando bootstrap tavolo ${tableId}:`, err.message)
+  })
 }
 
 // ── Custode per tavolo ────────────────────────────────────────────────────────
@@ -312,7 +372,9 @@ class CustodeEngine {
 
     if (isFirstSession) {
       await this.emitPhaseChange('fase-1a')
-      const vars = { primo_capitolo: mod.chapters[0]?.content || '', schede_PG }
+      await ensureSessionBootstrap(this.tableId)
+      const ambientazionePreparata = await readPreparedFile(this.tableId, PREP_FILES.ambientazione)
+      const vars = { primo_capitolo: ambientazionePreparata || mod.chapters[0]?.content || '', schede_PG }
       const result = await this.llm('fase1a_prima_sessione.md', vars)
       if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
@@ -351,7 +413,9 @@ class CustodeEngine {
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
     const { worldState, mod } = await this.buildContext()
-    const capitolo = mod.chapters[(worldState.currentChapter - 1)]?.content || ''
+    await ensureSessionBootstrap(this.tableId)
+    const materialeAvvio = await readPreparedFile(this.tableId, PREP_FILES.avvio)
+    const capitolo = materialeAvvio || mod.chapters[(worldState.currentChapter - 1)]?.content || ''
 
     const result = await this.llm('fase2_prepara_scena.md', {
       capitolo_corrente: capitolo,
@@ -1002,4 +1066,4 @@ function destroy(tableId) {
   engines.delete(tableId)
 }
 
-module.exports = { getOrCreate, pause, destroy }
+module.exports = { getOrCreate, pause, destroy, prepareSessionBootstrap, prepareSessionBootstrapInBackground }
