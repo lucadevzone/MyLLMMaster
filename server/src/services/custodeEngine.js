@@ -14,6 +14,7 @@ const ollama = require('./ollamaService')
 
 const MSG_BUFFER_SIZE = parseInt(process.env.MSG_BUFFER_SIZE || '20')
 const SILENCE_TIMER_MS = parseInt(process.env.SILENCE_TIMER_MS || String(30 * 1000))
+const EARLY_FLUSH_IDLE_MS = parseInt(process.env.EARLY_FLUSH_IDLE_MS || '5000')
 const PROACTIVITY_TIMER_MS = parseInt(process.env.PROACTIVITY_TIMER_MS || String(5 * 60 * 1000))
 
 // ── Helpers filesystem ────────────────────────────────────────────────────────
@@ -146,18 +147,22 @@ async function closeScene(tableId, sceneId, riepilogo) {
   try { await fs.unlink(src) } catch {}
 }
 
-// ── Placeholder trigger annotazioni ──────────────────────────────────────────
+const USEFUL_TAGS = new Set(['dichiarazione', 'domanda al custode', 'discutendo tra PG'])
 
-/**
- * TODO: definire la logica che valuta le annotazioni della light LLM
- * e decide se i giocatori hanno finito di dichiarare.
- *
- * @param {Array} annotatedMessages - messaggi con tag
- * @returns {boolean}
- */
-function shouldProcessByAnnotations(annotatedMessages) {
-  // PLACEHOLDER — implementa la logica basandoti sui tag
-  return false
+function shouldProcessByAnnotations(messages, focusParticipants = []) {
+  if (!Array.isArray(messages) || !messages.length) return false
+  if (!Array.isArray(focusParticipants) || !focusParticipants.length) return false
+
+  const usefulMessages = messages.filter(m =>
+    m?.from &&
+    focusParticipants.includes(m.from) &&
+    USEFUL_TAGS.has(m.tag)
+  )
+  if (!usefulMessages.length) return false
+
+  const activePlayers = new Set(usefulMessages.map(m => m.from))
+  const threshold = Math.ceil(focusParticipants.length / 2)
+  return activePlayers.size >= threshold && usefulMessages.length >= threshold
 }
 
 // ── Custode per tavolo ────────────────────────────────────────────────────────
@@ -169,6 +174,8 @@ class CustodeEngine {
     this.buffer = []         // messaggi gioco-libero in attesa
     this.running = false
     this.paused = false
+    this.bufferActive = false
+    this.flushInProgress = false
   }
 
   get room() { return `table:${this.tableId}` }
@@ -776,6 +783,7 @@ class CustodeEngine {
 
   startBuffer() {
     this.bufferActive = true
+    this.flushInProgress = false
   }
 
   async onPlayerMessage(message) {
@@ -808,6 +816,9 @@ class CustodeEngine {
     svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
       this.flushBuffer('timer-silenzio')
     })
+    svc.setTimer(this.tableId, 'early-flush', EARLY_FLUSH_IDLE_MS, () => {
+      this.evaluateEarlyFlush().catch(console.error)
+    })
   }
 
   async onDiceRoll(email, valore, soglia, caratteristica) {
@@ -835,8 +846,10 @@ class CustodeEngine {
   }
 
   flushBuffer(reason) {
-    if (!this.buffer.length) return
+    if (!this.buffer.length || this.flushInProgress) return
+    this.flushInProgress = true
     svc.clearTimer(this.tableId, 'silenzio')
+    svc.clearTimer(this.tableId, 'early-flush')
     console.log(`[Custode] Buffer flush: ${reason} (${this.buffer.length} msgs)`)
     this.bufferActive = false
     // In turno singolo passa il piano parziale corrente, altrimenti null (round fresco)
@@ -845,7 +858,11 @@ class CustodeEngine {
     const piano = (phase === 'fase-4a' || phase === 'fase-4b')
       ? (ctx?.session?.pianoAzione || null)
       : null
-    this.runLoop('fase-4', piano).catch(console.error)
+    this.runLoop('fase-4', piano)
+      .catch(console.error)
+      .finally(() => {
+        this.flushInProgress = false
+      })
   }
 
   async tagMessageAsync(message) {
@@ -854,8 +871,15 @@ class CustodeEngine {
     if (!lightModel) return
 
     try {
+      const recentContext = this.buffer
+        .filter(m => m.id !== message.id)
+        .slice(-5)
+        .map(m => `${m.fromName || m.from}: ${m.text}`)
+        .join('\n') || '(nessun contesto recente)'
+
       const result = await ollama.runTagging(lightModel, 'tagging_buffer.md', {
-        messaggi: JSON.stringify([{ id: message.id, testo: message.text }])
+        messaggio_corrente: JSON.stringify({ id: message.id, testo: message.text }),
+        contesto_recente: recentContext
       })
 
       const ann = result.annotazioni?.find(a => a.id === message.id)
@@ -864,12 +888,24 @@ class CustodeEngine {
         if (msg) msg.tag = ann.tag
       }
 
-      // Placeholder: controlla se le annotazioni indicano fine
-      if (shouldProcessByAnnotations(this.buffer) && this.bufferActive) {
-        this.flushBuffer('annotazioni')
-      }
+      await this.evaluateEarlyFlush()
     } catch {
       // Il tagging è best-effort, non blocca il gioco
+    }
+  }
+
+  async evaluateEarlyFlush() {
+    if (!this.bufferActive || this.flushInProgress || !this.buffer.length) return
+
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx || ctx.session.custodePhase !== 'fase-3') return
+
+    const worldState = await getWorldState(this.tableId)
+    const focusGroup = worldState.groups?.find(g => g.sceneId === worldState.focusScene)
+    const focusParticipants = focusGroup?.participants || []
+
+    if (shouldProcessByAnnotations(this.buffer, focusParticipants)) {
+      this.flushBuffer('annotazioni')
     }
   }
 
@@ -917,7 +953,6 @@ class CustodeEngine {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
-function shouldProcessByAnnotations(msgs) { return false }  // placeholder
 
 // ── Registro engine attivi ────────────────────────────────────────────────────
 
