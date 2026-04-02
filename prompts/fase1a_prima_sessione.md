@@ -25,8 +25,8 @@ Prima di rispondere, ricava mentalmente solo questi due elementi:
 Scarta tutto il resto.
 
 ## Input (prima sessione)
-**Primo capitolo del modulo:**
-{{primo_capitolo}}
+**Ambientazione preparata:**
+{{ambientazione}}
 
 **Schede PG:**
 {{schede_PG}}
@@ -39,4 +39,4 @@ Questa è la prima sessione:
 - Non svelare nulla della trama e dei misteri
 - Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori
 - Non copiare né trasformare in output i campi strutturati del materiale di input
-- Se l'input contiene materiale molto lungo o disomogeneo, usa solo la parte che serve ad aprire la sessione
+- Usa come base solo l'ambientazione preparata qui sopra, che e' gia' una sintesi del primo capitolo

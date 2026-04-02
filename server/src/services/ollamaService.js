@@ -235,6 +235,11 @@ async function runPhase(model, promptFile, vars) {
   return callOllama(model, prompt, true, promptFile, schema)
 }
 
+async function runTextPhase(model, promptFile, vars) {
+  const prompt = await loadPrompt(promptFile, vars)
+  return callOllama(model, prompt, false, promptFile, null)
+}
+
 async function runTagging(model, promptFile, vars) {
   const [prompt, schema] = await Promise.all([
     loadPrompt(promptFile, vars),
@@ -243,4 +248,4 @@ async function runTagging(model, promptFile, vars) {
   return callOllama(model, prompt, true, promptFile, schema)
 }
 
-module.exports = { runPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, LOG_FILE, LOGS_DIR }
+module.exports = { runPhase, runTextPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, LOG_FILE, LOGS_DIR }

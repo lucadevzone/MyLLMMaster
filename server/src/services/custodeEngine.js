@@ -215,13 +215,13 @@ async function prepareSessionBootstrap(tableId, options = {}) {
   if (!primoCapitolo.trim()) return false
 
   const [ambientazioneResult, avvioResult] = await Promise.all([
-    ollama.runPhase(heavyModel, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo }),
-    ollama.runPhase(heavyModel, 'prepara_avviare_la_sessione.md', { primo_capitolo: primoCapitolo })
+    ollama.runTextPhase(heavyModel, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo }),
+    ollama.runTextPhase(heavyModel, 'prepara_avviare_la_sessione.md', { primo_capitolo: primoCapitolo })
   ])
 
   await Promise.all([
-    writePreparedFile(tableId, PREP_FILES.ambientazione, normalizeNarrativeText(ambientazioneResult.ambientazione)),
-    writePreparedFile(tableId, PREP_FILES.avvio, normalizeNarrativeText(avvioResult.avviare_la_sessione))
+    writePreparedFile(tableId, PREP_FILES.ambientazione, normalizeNarrativeText(ambientazioneResult)),
+    writePreparedFile(tableId, PREP_FILES.avvio, normalizeNarrativeText(avvioResult))
   ])
 
   table.custodeStarted = true
@@ -374,7 +374,7 @@ class CustodeEngine {
       await this.emitPhaseChange('fase-1a')
       await ensureSessionBootstrap(this.tableId)
       const ambientazionePreparata = await readPreparedFile(this.tableId, PREP_FILES.ambientazione)
-      const vars = { primo_capitolo: ambientazionePreparata || mod.chapters[0]?.content || '', schede_PG }
+      const vars = { ambientazione: ambientazionePreparata, schede_PG }
       const result = await this.llm('fase1a_prima_sessione.md', vars)
       if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
@@ -412,13 +412,12 @@ class CustodeEngine {
 
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
-    const { worldState, mod } = await this.buildContext()
+    const { worldState } = await this.buildContext()
     await ensureSessionBootstrap(this.tableId)
-    const materialeAvvio = await readPreparedFile(this.tableId, PREP_FILES.avvio)
-    const capitolo = materialeAvvio || mod.chapters[(worldState.currentChapter - 1)]?.content || ''
+    const avvioSessione = await readPreparedFile(this.tableId, PREP_FILES.avvio)
 
     const result = await this.llm('fase2_prepara_scena.md', {
-      capitolo_corrente: capitolo,
+      avvio_sessione: avvioSessione,
       suggerimento_scena: suggerimento || 'scena introduttiva'
     })
     if (this.abortIfPaused()) return null

@@ -1,8 +1,0 @@
-{
-  "type": "object",
-  "required": ["avviare_la_sessione"],
-  "properties": {
-    "avviare_la_sessione": { "type": "string" }
-  },
-  "additionalProperties": true
-}

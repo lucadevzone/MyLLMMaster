@@ -2,7 +2,7 @@
 Sei il Custode di una partita di Call of Cthulhu.
 
 ## Contesto
-Devi estrarre dal capitolo corrente una scena relativa al contesto: {{suggerimento_scena}}
+Devi preparare una scena relativa al contesto: {{suggerimento_scena}}
 
 ## Output atteso (JSON)
 Rispondi SOLO con un oggetto JSON valido:
@@ -18,8 +18,8 @@ Rispondi SOLO con un oggetto JSON valido:
 }
 
 ## Input
-**Capitolo corrente:**
-{{capitolo_corrente}}
+**Materiale preparato per avviare la sessione:**
+{{avvio_sessione}}
 
 
 ## Istruzioni
@@ -27,3 +27,4 @@ Rispondi SOLO con un oggetto JSON valido:
 - Descrizione dettagliata della location
 - Descrizione dettagliata dei personaggi non giocanti (PNG)
 - Elenco delle opportunità, delle minacce e degli indizi (con eventuali prove da afforntare e difficoltà)
+- Usa come base solo il materiale preparato qui sopra, che e' gia' una sintesi operativa del primo capitolo
