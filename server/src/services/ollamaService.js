@@ -243,4 +243,4 @@ async function runTagging(model, promptFile, vars) {
   return callOllama(model, prompt, true, promptFile, schema)
 }
 
-module.exports = { runPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, LOG_FILE }
+module.exports = { runPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, LOG_FILE, LOGS_DIR }

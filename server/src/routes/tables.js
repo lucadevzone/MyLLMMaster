@@ -10,6 +10,7 @@ const sessionService = require('../services/sessionService')
 const custodeEngine = require('../services/custodeEngine')
 const { getIO } = require('../socket/runtime')
 const { validateInvitedPlayersForModule, reconcileTableState } = require('../services/tableRules')
+const { LOGS_DIR } = require('../services/ollamaService')
 
 const TABLES_DIR = path.join(DATA_DIR, 'tables')
 
@@ -248,6 +249,16 @@ router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
   // Cancella world_state e diary
   for (const file of ['world_state.json', 'diary.txt']) {
     try { await fs.unlink(path.join(tableDir, file)) } catch { /* già assente */ }
+  }
+
+  // Cancella i log LLM generati finora
+  try {
+    const logFiles = await fs.readdir(LOGS_DIR)
+    for (const file of logFiles.filter(name => name.startsWith('LLM_log_') && name.endsWith('.txt'))) {
+      await fs.unlink(path.join(LOGS_DIR, file))
+    }
+  } catch {
+    // nessuna cartella log o nessun file da rimuovere
   }
 
   // Riporta table.state a 'open'
