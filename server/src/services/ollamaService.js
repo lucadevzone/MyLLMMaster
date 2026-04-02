@@ -8,6 +8,50 @@ const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000')
 const PROMPTS_DIR = path.join(__dirname, '../../../prompts')
 const LOG_FILE = path.join(__dirname, '../../../LLM_log.txt')
 
+const PHASE_VALIDATORS = {
+  'fase1a_prima_sessione.md': (data) => validateObjectFields(data, {
+    narrativa: 'string',
+    diary: 'string'
+  }),
+  'fase1b_sessioni_successive.md': (data) => validateObjectFields(data, {
+    narrativa: 'string'
+  }),
+  'fase3a_scelta_focus.md': (data) => validateObjectFields(data, {
+    focus_scene: 'string'
+  }),
+  'fase3b_narrazione.md': (data) => validateObjectFields(data, {
+    narrativa: 'string'
+  }),
+  'fase4_dichiarazioni.md': (data) => {
+    if (Array.isArray(data)) return true
+    return validateObjectFields(data, { piano: 'array' })
+  },
+  'fase4a_chiarimenti.md': (data) => validateObjectFields(data, {
+    narrativa: 'string'
+  }),
+  'fase4b_dichiarazione_assente.md': (data) => validateObjectFields(data, {
+    narrativa: 'string'
+  }),
+  'fase4c_necessita_prova.md': (data) => validateObjectFields(data, {
+    narrativa: 'string'
+  }),
+  'fase5_risoluzione.md': (data) => validateObjectFields(data, {
+    narrativa: 'string'
+  }),
+  'fase5a_divisione_gruppi.md': (data) => validateObjectFields(data, {
+    narrativa: 'string'
+  }),
+  'fase5b_ricongiungimento.md': (data) => validateObjectFields(data, {
+    narrativa: 'string'
+  }),
+  'fase5c_chiusura_scena.md': (data) => validateObjectFields(data, {
+    narrativa: 'string'
+  }),
+  'tagging_buffer.md': (data) => validateObjectFields(data, {
+    annotazioni: 'array'
+  })
+}
+
 // ── LLM logger ────────────────────────────────────────────────────────────────
 
 function llmLog(entry) {
@@ -72,6 +116,11 @@ async function callOllama(model, prompt, expectJson = true, phase = '?') {
       // Estrai JSON dalla risposta (il modello potrebbe aggiungere testo intorno)
       const parsed = extractJSON(raw)
       if (parsed !== null) {
+        const schemaError = validatePhaseResponse(phase, parsed)
+        if (schemaError) {
+          llmLog({ model, phase, attempt, prompt, response: raw, error: schemaError })
+          throw new Error(`${schemaError} (tentativo ${attempt})`)
+        }
         llmLog({ model, phase, attempt, prompt, response: raw })
         return parsed
       }
@@ -112,6 +161,27 @@ function extractJSON(text) {
   }
   if (end === -1) return null
   try { return JSON.parse(text.slice(start, end + 1)) } catch { return null }
+}
+
+function validateObjectFields(data, spec) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false
+
+  for (const [field, type] of Object.entries(spec)) {
+    if (!(field in data)) return false
+
+    if (type === 'array' && !Array.isArray(data[field])) return false
+    if (type === 'string' && typeof data[field] !== 'string') return false
+  }
+
+  return true
+}
+
+function validatePhaseResponse(phase, parsed) {
+  const validator = PHASE_VALIDATORS[phase]
+  if (!validator) return null
+  return validator(parsed)
+    ? null
+    : `Schema risposta non valido per ${phase}`
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
