@@ -1,11 +1,13 @@
-BUG: fase4_dichiarazioni.md usa {{world_state}} ma fase4() non lo passa:
+BUG: fase4_dichiarazioni.md usa {{world_state}} ma fase4() non lo passa.
+PATCH: Ho corretto il passaggio di world_state a fase4_dichiarazioni in server/src/services/custodeEngine.js (line 438), così il prompt prompts/fase4_dichiarazioni.md ora riceve davvero tutti i placeholder che usa.
 	
 BUG: dopo # Fase 4b — Dichiarazione Assente
 in cui la LLM ha generato
 {
   "narrativa": "Marcel, guardi, la scena è in fermento. L'asta sta per iniziare e la sala è gremita di persone provenienti da tutto il mondo. Sembra che tutti siano alla ricerca di qualcosa. Il Tavoletta con script non identificato è appena stato venduto a Sophia Hapgood, ma potrebbe esserci più dietro questo acquisto... Cosa fai?"
 }
-il sistema non ha dato correttamente il turno al giocatore perchè la LLM ha avuto una allucinazione (Marcel non esiste); tuttavia la parte procedurale che ha invocato la sottofase dovrebbe sapere che Marcel non esiste e quindi evitare di dare il turno ad un giocatore che non c'è
+il sistema non ha dato correttamente il turno al giocatore perchè la LLM ha avuto una allucinazione (Marcel non esiste); tuttavia la parte procedurale che ha invocato la sottofase dovrebbe sapere che Marcel non esiste e quindi evitare di dare il turno ad un giocatore che non c'è.
+PATCH: Ho aggiunto una validazione centrale del target in server/src/services/custodeEngine.js (line 869): setPlayerTurn() ora restituisce false se il target non corrisponde a nessun PG reale. Nelle sottofasi fase4a, fase4b e fase4c, se il target è invalido il sistema non assegna il turno a un PG inesistente e riporta invece il gruppo in focus a gioco-libero
 
 SPEC: L’accesso alla sessione deve essere vincolato allo stato open e al ruolo player: 
 Al momento il join socket controlla solo che l’utente sia invitato, non che il tavolo sia open, che il player abbia creato il PG o che l’utente non sia admin. 
@@ -16,10 +18,229 @@ SPEC: Il passaggio del tavolo a stato playing non è implementato: quando parte 
 OTTIMIZZAZIONE: lo stato custodeStarted a true può fare iniziare alcune operazioni di background al custode, come ad esempio Fase 1a o Fase1b, e Fase2 (in questo modo quando tutti i giocatori sono pronti il custode possiede già il materiale per iniziare a giocare. 
 
 BUG: Il recupero dei messaggi persi alla riconnessione è rotto: missedSince viene azzerato prima di calcolare missed, quindi il player non riceve mai davvero i messaggi “da recuperare” (sebbene al momento li riceve come messaggi normali (come se non si fosse mai disconnesso)
+PATCH: Ho corretto il recupero dei messaggi persi in server/src/services/sessionService.js (line 132): ora playerConnected() salva il vecchio missedSince prima di azzerarlo e usa quel timestamp per filtrare i messaggi “da recuperare”.
 
 BUG: La pausa sessione non mette davvero “in pausa” i timer come richiesto: vengono cancellati, non sospesi/ripresi. Alla riconnessione si torna subito a sessione-iniziata, ma i timer silenzio/proattività non vengono ripristinati con lo stato precedente
+PATCH: La modifica fatta è questa: 1) i timer di sessione ora conservano remainingMs, startedAt e callback; 2) alla pausa uso pauseAllTimers() invece di cancellarli; 3) alla ripresa uso resumeAllTimers() prima di tornare a sessione-iniziata.
+NOTA: 
+Nel codice attuale la sessione entra in pausa in due casi.
+Il primo caso è quando tutti i player risultano disconnessi mentre la sessione è già in stato sessione-iniziata. 
+Il secondo caso è un problema tecnico lato Custode/LLM. Se manca il modello configurato oppure una chiamata LLM fallisce con errore marcato isLlmError.
+Poichè questi due casi sono diversi ho deciso di separare lo stato paused in 
+player-paused: quando tutti i player si disconnettono
+technical-pause: quando il Custode entra in errore tecnico/LLM
+Adesso, ogni ingresso in pausa mette davvero il Custode in stato paused
+i timer vengono sospesi e poi ripresi con il tempo residuo
+il rientro da player-paused avviene automaticamente al join del primo player
+il rientro da technical-pause avviene solo con session:riprendi-custode (a tal proposito ho aggiunto un pulsante "Riprendi Custode" a Manage Tables in modo da rendere lì gestibile lo sblocco admin).
+se una fase era in attesa della LLM mentre arriva la pausa, il risultato non produce più effetti collaterali: la fase resta sospesa e verrà ritentata dalla custodePhase alla ripresa.
+Per supportare il "Riprendi Custode", ho aggiunto:
+un endpoint admin POST /api/tables/:id/resume-custode in server/src/routes/tables.js
+un piccolo runtime condiviso per accedere a io dal backend in server/src/socket/runtime.js
+l’esposizione dei metadati sessione nei tavoli admin
+
 
 SPEC: Il trigger “annotazioni dei messaggi indicano che i giocatori hanno finito” non è implementato.
+NOTA:
+	Step 1
+
+Obiettivo: far funzionare il trigger annotazioni senza ancora introdurre il typing player-side, ma preparando una logica compatibile con esso.
+
+Regole di classificazione “utile”:
+
+dichiarazione
+domanda al custode
+frase diretta a un PG
+Qui c’è una piccola nota importante: il prompt attuale ha i tag:
+
+dichiarazione
+domanda al custode
+discutendo tra PG
+fuori ruolo
+Quindi “frase diretta a un PG” oggi ricadrebbe naturalmente in discutendo tra PG, a meno che non vogliamo introdurre un nuovo tag. Per lo step 1 io non introdurrei un nuovo tag: considererei utile anche discutendo tra PG, ma solo quando il messaggio è effettivamente in-fiction o chiaramente rivolto a un altro PG. Se invece il tagging non distingue bene questi casi, per la V1 possiamo semplificare e considerare utile tutto ciò che non è fuori ruolo.
+
+Decisione procedurale V1
+La funzione che decide il flush anticipato dovrebbe lavorare così:
+
+Il silence timer lungo resta la regola principale.
+In parallelo esiste un controllo di early flush.
+L’early flush può scattare solo se:
+il buffer contiene almeno un numero minimo di messaggi “utili”
+il numero di player unici del gruppo che hanno scritto almeno un messaggio utile è almeno metà dei player del gruppo in focus
+nessun nuovo messaggio arriva per una finestra breve, per esempio 5 secondi
+il buffer non è già in flush
+siamo in fase-3 / gioco-libero
+Come calcolare “almeno metà dei player del gruppo”
+
+recuperi dal worldState.focusScene il gruppo in focus
+leggi group.participants
+conti quanti player distinti nel buffer hanno almeno un messaggio con tag utile
+soglia = Math.ceil(numeroPlayerGruppo / 2)
+Questa regola è buona perché:
+
+non obbliga tutti a parlare
+evita flush troppo aggressivi quando ha parlato una sola persona
+si adatta automaticamente a gruppi da 1, 2, 3, 4 giocatori
+Tag utili in V1
+Ti propongo due opzioni.
+
+Opzione prudente:
+
+utili = dichiarazione, domanda al custode
+Opzione più aderente a quello che hai detto:
+
+utili = dichiarazione, domanda al custode, discutendo tra PG
+Io, da come l’hai descritto, sceglierei la seconda.
+
+ENV da introdurre
+
+SILENCE_TIMER_MS
+già esiste, lo lasciamo
+EARLY_FLUSH_IDLE_MS
+default: 5000
+EARLY_FLUSH_MIN_ACTIVE_RATIO
+opzionale, default 0.5
+In pratica però per ora basta:
+
+EARLY_FLUSH_IDLE_MS=5000
+Per la soglia “metà del gruppo” non serve ENV, è una regola chiara.
+
+Correzione prompt tagging
+Lo step 1 deve anche allineare il prompt al codice.
+
+Il prompt di tagging dovrebbe ricevere:
+
+messaggio_corrente
+contesto_recente
+E l’output deve rimanere:
+
+{
+  "annotazioni": [
+    { "id": "message-id", "tag": "..." }
+  ]
+}
+Quindi:
+
+il codice passa il messaggio corrente con id e testo
+passa anche gli ultimi 5 messaggi già presenti nel buffer come contesto testuale
+il prompt classifica solo il messaggio corrente
+Logica temporale V1
+La terrei così:
+
+quando arriva un nuovo messaggio in gioco-libero:
+
+lo aggiungi al buffer
+lanci tagging async
+resetti il timer lungo di silenzio
+resetti anche un timer breve di early flush
+quando scade il timer breve:
+
+controlli se le annotazioni del buffer soddisfano la regola “almeno metà del gruppo ha scritto un messaggio utile”
+se sì, flush annotazioni
+se no, non fai nulla e lasci vivere il timer lungo
+Questo è importante: il timer breve non decide da solo, decide solo se c’è abbastanza materiale nel buffer.
+
+Step 2
+
+Obiettivo: evitare flush anticipati mentre un player sta ancora scrivendo.
+
+Idea generale
+Aggiungere un indicatore di typing dei player, separato da quello del Custode.
+
+Flusso:
+
+il client emette typing-start quando l’utente comincia a digitare
+il client emette typing-stop quando l’utente smette o invia il messaggio
+il server mantiene uno stato typingPlayers per tavolo/sessione
+l’early flush non scatta mai se almeno un player del gruppo in focus sta scrivendo
+Lato client
+Nella SessionView:
+
+osservi messageInput
+quando da vuoto passa a non vuoto, invii session:typing-start
+quando torna vuoto o il messaggio viene inviato, invii session:typing-stop
+Per evitare spam:
+
+mantieni uno stato locale isTyping
+invii typing-start una sola volta
+invii typing-stop solo quando davvero smette
+Meglio ancora:
+
+su ogni pressione tasto rinnovi un debounce locale
+se per esempio per 2 secondi non scrive più, mandi typing-stop
+Lato server
+Nel socket:
+
+aggiungi handler:
+session:typing-start
+session:typing-stop
+memorizzi per tavolo una mappa email -> timestamp ultimo typing
+Per robustezza:
+
+anche se il client non manda typing-stop, il server considera typing scaduto dopo un timeout
+per esempio PLAYER_TYPING_TTL_MS = 4000
+Quindi il server non si fida ciecamente del client.
+
+Dove tenere lo stato
+Puoi tenerlo:
+
+nel ctx di sessione in-memory, ad esempio ctx.typingPlayers = { [email]: lastTypingAt }
+oppure
+direttamente nel CustodeEngine
+Io lo terrei nel contesto sessione in-memory, perché è stato di sessione, non solo del Custode.
+
+Come usare il typing nella decisione
+La funzione di early flush deve ignorare il buffer se:
+
+almeno un player del gruppo in focus ha un typing ancora valido
+Formula:
+
+prendi typingPlayers
+tieni solo quelli appartenenti al gruppo in focus
+considera attivi quelli con Date.now() - lastTypingAt < PLAYER_TYPING_TTL_MS
+se ce n’è almeno uno, shouldProcessByAnnotations() restituisce false
+UI opzionale
+Non è indispensabile per la logica, ma puoi anche mostrare:
+
+“Alice sta scrivendo...”
+oppure
+una piccola indicazione di typing player-side
+Questo però è secondario. Se vuoi tenere lo step 2 pragmatico, puoi implementare il typing come segnale invisibile usato solo dalla logica.
+
+ENV utili per step 2
+
+PLAYER_TYPING_TTL_MS=4000
+eventualmente PLAYER_TYPING_DEBOUNCE_MS=1500 lato client, ma questo può anche restare hardcoded inizialmente
+Regola finale dopo step 2
+L’early flush scatterà solo se:
+
+almeno metà del gruppo ha scritto un messaggio utile
+è passato EARLY_FLUSH_IDLE_MS
+nessuno del gruppo in focus sta scrivendo
+non siamo già in una sottofase o in flush
+Questa secondo me è una base molto buona.
+
+Riassunto operativo per il prossimo turno
+Step 1 da implementare:
+
+rendere coerente il prompt tagging_buffer.md con il codice
+far passare al prompt:
+messaggio corrente
+ultimi 5 messaggi come contesto
+introdurre timer breve EARLY_FLUSH_IDLE_MS
+implementare shouldProcessByAnnotations() con regola:
+almeno metà del gruppo in focus ha scritto un messaggio utile
+tag utili = dichiarazione, domanda al custode, discutendo tra PG
+nessun nuovo messaggio nel breve intervallo
+Step 2 da fare dopo:
+
+aggiungere session:typing-start / session:typing-stop
+mantenere typingPlayers lato server con TTL
+bloccare l’early flush se qualcuno del gruppo in focus sta scrivendo
+Quando torni, posso partire direttamente dallo step 1.
+
+
+
 
 SPEC: La gestione multi-gruppo/multi-scena al momento è implementato in maniera parziale: divisione e ricongiungimento hanno TODO, e setPlayerTurn mette tutti gli altri in fuori-turno senza distinzione fuori-scena
 
