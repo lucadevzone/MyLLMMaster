@@ -14,10 +14,12 @@ const tableId = route.params.tableId
 
 const professions = ref([])
 const existingChar = ref(null)
+const table = ref(null)
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const saveMsg = ref('')
+const infoMsg = ref('')
 
 // Form fields
 const charName = ref('')
@@ -32,7 +34,9 @@ const fortuna = ref(0)
 const derived = ref({})
 const abilita = ref({ comuni: {}, specialistiche: [] })
 
-const readOnly = computed(() => !!existingChar.value)
+const canCreate = computed(() => table.value?.state === 'active' && !existingChar.value)
+const readOnly = computed(() => !!existingChar.value || !canCreate.value)
+const pageTitle = computed(() => (readOnly.value ? 'Scheda Personaggio' : 'Crea il tuo Personaggio'))
 
 const currentProfession = computed(() =>
   professions.value.find(p => p.nome === selectedProfession.value)
@@ -52,13 +56,21 @@ const ABILIA_COMUNI_LABELS = {
 
 onMounted(async () => {
   try {
-    professions.value = await api.get('/professions')
+    const [profList, tableData] = await Promise.all([
+      api.get('/professions'),
+      api.get(`/tables/${tableId}`)
+    ])
+    professions.value = profList
+    table.value = tableData
     try {
       existingChar.value = await api.get(`/tables/${tableId}/characters/mine`)
       loadFromChar(existingChar.value)
     } catch {
-      // No existing character - generate fresh
-      rollStats()
+      if (table.value?.state === 'active') {
+        rollStats()
+      } else {
+        infoMsg.value = 'La creazione del personaggio è disponibile solo quando il tavolo è in stato attivo.'
+      }
     }
   } catch (e) {
     error.value = e.message
@@ -103,6 +115,10 @@ function onProfessionChange() {
 async function save() {
   error.value = ''
   saveMsg.value = ''
+  if (!canCreate.value) {
+    error.value = 'Non puoi creare un personaggio in questo stato del tavolo'
+    return
+  }
   if (!charName.value.trim()) { error.value = 'Il nome è obbligatorio'; return }
   if (!selectedProfession.value) { error.value = 'Scegli una professione'; return }
   if (!Object.keys(characteristics.value).length) { error.value = 'Genera le caratteristiche'; return }
@@ -138,7 +154,7 @@ async function save() {
       <div class="container" style="max-width:800px">
 
         <div class="sub-header">
-          <h2>{{ readOnly ? 'Scheda Personaggio' : 'Crea il tuo Personaggio' }}</h2>
+          <h2>{{ pageTitle }}</h2>
           <button class="btn btn-secondary" @click="router.push({ name: 'lobby' })">← Lobby</button>
         </div>
 
@@ -147,6 +163,7 @@ async function save() {
         <template v-else>
           <div v-if="error" class="alert alert-error">{{ error }}</div>
           <div v-if="saveMsg" class="alert alert-success">{{ saveMsg }}</div>
+          <div v-if="infoMsg" class="alert alert-success">{{ infoMsg }}</div>
 
           <!-- Info base -->
           <div class="card" style="margin-bottom:1rem">
@@ -174,12 +191,12 @@ async function save() {
           <div class="card" style="margin-bottom:1rem">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
               <h3 class="section-title" style="margin-bottom:0">Caratteristiche</h3>
-              <button v-if="!readOnly" class="btn btn-secondary btn-sm" @click="rollStats()">
+              <button v-if="canCreate" class="btn btn-secondary btn-sm" @click="rollStats()">
                 🎲 Rigenera
               </button>
             </div>
 
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem">
+            <div v-if="Object.keys(characteristics).length" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem">
               <div v-for="(val, key) in characteristics" :key="key"
                 style="text-align:center;padding:0.75rem;background:var(--color-bg);border-radius:var(--radius);border:1px solid var(--color-border)">
                 <div style="font-size:0.75rem;color:var(--color-text-light);font-weight:600;text-transform:uppercase">{{ key }}</div>
@@ -190,6 +207,9 @@ async function save() {
                 <div style="font-size:0.75rem;color:#92400e;font-weight:600;text-transform:uppercase">FORTUNA</div>
                 <div style="font-size:1.5rem;font-weight:700;color:var(--color-text)">{{ fortuna }}</div>
               </div>
+            </div>
+            <div v-else style="color:var(--color-text-light);font-size:0.9rem">
+              Nessuna scheda disponibile da mostrare in questo momento.
             </div>
 
             <div v-if="Object.keys(derived).length" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.75rem">
@@ -252,7 +272,7 @@ async function save() {
               <label>Descrizione fisica <span style="color:var(--color-text-light)">(opzionale, max 300 caratteri)</span></label>
               <textarea v-model="descrizionePersonale" class="form-control" rows="3" :disabled="readOnly"
                 maxlength="300" placeholder="Età apparente, corporatura, capelli, abbigliamento…"></textarea>
-              <div v-if="!readOnly" style="font-size:0.75rem;color:var(--color-text-light);text-align:right">{{ descrizionePersonale.length }}/300</div>
+              <div v-if="canCreate" style="font-size:0.75rem;color:var(--color-text-light);text-align:right">{{ descrizionePersonale.length }}/300</div>
             </div>
           </div>
 
@@ -263,12 +283,12 @@ async function save() {
               <label>Storia personale <span style="color:var(--color-text-light)">(opzionale, max 500 caratteri)</span></label>
               <textarea v-model="background" class="form-control" rows="4" :disabled="readOnly"
                 maxlength="500" placeholder="Chi sei? Da dove vieni? Cosa ti ha portato qui?"></textarea>
-              <div v-if="!readOnly" style="font-size:0.75rem;color:var(--color-text-light);text-align:right">{{ background.length }}/500</div>
+              <div v-if="canCreate" style="font-size:0.75rem;color:var(--color-text-light);text-align:right">{{ background.length }}/500</div>
             </div>
           </div>
 
           <!-- Footer -->
-          <div v-if="!readOnly" style="display:flex;gap:0.75rem;justify-content:flex-end">
+          <div v-if="canCreate" style="display:flex;gap:0.75rem;justify-content:flex-end">
             <button class="btn btn-secondary" @click="router.push({ name: 'lobby' })">Annulla</button>
             <button class="btn btn-success" :disabled="saving" @click="save">
               {{ saving ? 'Salvataggio...' : 'Entra al Tavolo' }}

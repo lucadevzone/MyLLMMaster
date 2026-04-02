@@ -314,7 +314,7 @@ router.post('/:id/characters', authMiddleware, playerOnly, async (req, res) => {
   if (!table.invitedPlayers.includes(req.user.email)) {
     return res.status(403).json({ error: 'Non sei invitato a questo tavolo' })
   }
-  if (table.state !== 'active' && table.state !== 'ready') {
+  if (table.state !== 'active') {
     return res.status(400).json({ error: 'Non puoi creare personaggi in questo stato del tavolo' })
   }
 
