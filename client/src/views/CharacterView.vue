@@ -27,6 +27,8 @@ const eta = ref(35)
 const selectedProfession = ref('')
 const background = ref('')
 const descrizionePersonale = ref('')
+const armiECombattimento = ref([])
+const equipaggiamento = ref([])
 
 // CoC stats
 const characteristics = ref({})
@@ -89,6 +91,35 @@ function loadFromChar(char) {
   fortuna.value = char.Fortuna
   derived.value = { ...char.derivedAttributes }
   abilita.value = { ...char.abilita }
+  armiECombattimento.value = (char.armiECombattimento || []).map(arma => ({ ...arma }))
+  equipaggiamento.value = (char.equipaggiamento || []).map(item => ({ ...item }))
+}
+
+function addWeapon() {
+  armiECombattimento.value.push({
+    nome: '',
+    abilita: '',
+    danno: '',
+    gittata: '',
+    colpi: null,
+    malfunzionamento: ''
+  })
+}
+
+function removeWeapon(index) {
+  armiECombattimento.value.splice(index, 1)
+}
+
+function addEquipment() {
+  equipaggiamento.value.push({
+    nome: '',
+    quantita: 1,
+    descrizione: ''
+  })
+}
+
+function removeEquipment(index) {
+  equipaggiamento.value.splice(index, 1)
 }
 
 function rollStats() {
@@ -134,7 +165,24 @@ async function save() {
       Fortuna: fortuna.value,
       characteristics: characteristics.value,
       derivedAttributes: derived.value,
-      abilita: abilita.value
+      abilita: abilita.value,
+      armiECombattimento: armiECombattimento.value
+        .filter(arma => arma.nome?.trim() && arma.abilita?.trim() && arma.danno?.trim())
+        .map(arma => ({
+          nome: arma.nome.trim(),
+          abilita: arma.abilita.trim(),
+          danno: arma.danno.trim(),
+          gittata: arma.gittata?.trim() || '',
+          colpi: arma.colpi ? Number(arma.colpi) : null,
+          malfunzionamento: arma.malfunzionamento?.trim() || ''
+        })),
+      equipaggiamento: equipaggiamento.value
+        .filter(item => item.nome?.trim())
+        .map(item => ({
+          nome: item.nome.trim(),
+          quantita: Number(item.quantita) || 1,
+          descrizione: item.descrizione?.trim() || ''
+        }))
     }
     await api.post(`/tables/${tableId}/characters`, payload)
     saveMsg.value = 'Personaggio salvato!'
@@ -262,6 +310,69 @@ async function save() {
                   {{ ab.nome }} <strong>{{ ab.valore }}%</strong>
                 </span>
               </div>
+            </div>
+          </div>
+
+          <!-- Armi e combattimento -->
+          <div class="card" style="margin-bottom:1rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+              <h3 class="section-title" style="margin-bottom:0">Armi e Combattimento</h3>
+              <button v-if="canCreate" class="btn btn-secondary btn-sm" @click="addWeapon">+ Aggiungi Arma</button>
+            </div>
+
+            <div v-if="armiECombattimento.length === 0" style="color:var(--color-text-light);font-size:0.9rem">
+              Nessuna arma inserita.
+            </div>
+
+            <div v-for="(arma, index) in armiECombattimento" :key="index" class="card" style="margin-bottom:0.75rem;background:var(--color-bg)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+                <div style="font-size:0.8rem;font-weight:600;color:var(--color-text-light)">Arma {{ index + 1 }}</div>
+                <button v-if="canCreate" class="btn btn-danger btn-sm" @click="removeWeapon(index)">Rimuovi</button>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:0.75rem">
+                <input v-model="arma.nome" class="form-control" :disabled="readOnly" placeholder="Nome arma" />
+                <input v-model="arma.abilita" class="form-control" :disabled="readOnly" placeholder="Abilità associata" />
+                <input v-model="arma.danno" class="form-control" :disabled="readOnly" placeholder="Danno" />
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem">
+                <input v-model="arma.gittata" class="form-control" :disabled="readOnly" placeholder="Gittata" />
+                <input v-model.number="arma.colpi" type="number" class="form-control" :disabled="readOnly" min="0" placeholder="Colpi" />
+                <input v-model="arma.malfunzionamento" class="form-control" :disabled="readOnly" placeholder="Malfunzionamento" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Equipaggiamento -->
+          <div class="card" style="margin-bottom:1rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+              <h3 class="section-title" style="margin-bottom:0">Equipaggiamento</h3>
+              <button v-if="canCreate" class="btn btn-secondary btn-sm" @click="addEquipment">+ Aggiungi Oggetto</button>
+            </div>
+
+            <div v-if="equipaggiamento.length === 0" style="color:var(--color-text-light);font-size:0.9rem">
+              Nessun oggetto inserito.
+            </div>
+
+            <div v-for="(item, index) in equipaggiamento" :key="index" class="card" style="margin-bottom:0.75rem;background:var(--color-bg)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+                <div style="font-size:0.8rem;font-weight:600;color:var(--color-text-light)">Oggetto {{ index + 1 }}</div>
+                <button v-if="canCreate" class="btn btn-danger btn-sm" @click="removeEquipment(index)">Rimuovi</button>
+              </div>
+
+              <div style="display:grid;grid-template-columns:2fr 1fr;gap:0.75rem;margin-bottom:0.75rem">
+                <input v-model="item.nome" class="form-control" :disabled="readOnly" placeholder="Nome oggetto" />
+                <input v-model.number="item.quantita" type="number" class="form-control" :disabled="readOnly" min="1" placeholder="Quantità" />
+              </div>
+
+              <textarea
+                v-model="item.descrizione"
+                class="form-control"
+                rows="2"
+                :disabled="readOnly"
+                placeholder="Descrizione opzionale"
+              />
             </div>
           </div>
 

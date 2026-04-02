@@ -7,6 +7,8 @@ import AppHeader from '../components/AppHeader.vue'
 const router = useRouter()
 const tables = ref([])
 const playerNames = ref({})  // email → name
+const diaryByTable = ref({})
+const openDiaryTableId = ref(null)
 const loading = ref(true)
 const error = ref('')
 
@@ -38,6 +40,18 @@ onMounted(async () => {
     const modMap = Object.fromEntries(allModules.map(m => [m.id, m]))
     tables.value = allTables.map(t => ({ ...t, module: modMap[t.moduleId] }))
     playerNames.value = Object.fromEntries(names.map(n => [n.email, n.name]))
+
+    const diaries = await Promise.all(
+      tables.value.map(async (table) => {
+        try {
+          const result = await api.get(`/session/${table.id}/diary`)
+          return [table.id, result.content || '']
+        } catch {
+          return [table.id, '']
+        }
+      })
+    )
+    diaryByTable.value = Object.fromEntries(diaries)
   } catch (e) {
     error.value = e.message
   } finally {
@@ -51,6 +65,14 @@ function goToCharacter(tableId) {
 
 function enterSession(tableId) {
   router.push({ name: 'session', params: { tableId } })
+}
+
+function hasDiary(tableId) {
+  return Boolean(diaryByTable.value[tableId]?.trim())
+}
+
+function toggleDiary(tableId) {
+  openDiaryTableId.value = openDiaryTableId.value === tableId ? null : tableId
 }
 </script>
 
@@ -90,12 +112,26 @@ function enterSession(tableId) {
                   Personaggio
                 </button>
                 <button
+                  v-if="hasDiary(table.id)"
+                  class="btn btn-secondary btn-sm"
+                  @click="toggleDiary(table.id)"
+                >
+                  {{ openDiaryTableId === table.id ? 'Nascondi Diario' : 'Leggi Diario' }}
+                </button>
+                <button
                   v-if="table.state === 'open' || table.state === 'playing'"
                   class="btn btn-success btn-sm"
                   @click="enterSession(table.id)"
                 >
                   Entra in Sessione
                 </button>
+              </div>
+            </div>
+
+            <div v-if="openDiaryTableId === table.id" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--color-border)">
+              <div style="font-size:0.8rem;font-weight:600;color:var(--color-text-light);margin-bottom:0.5rem">Diario</div>
+              <div style="white-space:pre-wrap;font-size:0.9rem;line-height:1.5;color:var(--color-text)">
+                {{ diaryByTable[table.id] }}
               </div>
             </div>
           </div>
