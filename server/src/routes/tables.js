@@ -9,6 +9,7 @@ const { authMiddleware, adminOnly, playerOnly } = require('../middleware/auth')
 const sessionService = require('../services/sessionService')
 const custodeEngine = require('../services/custodeEngine')
 const { getIO } = require('../socket/runtime')
+const { validateInvitedPlayersForModule } = require('../services/tableRules')
 
 const TABLES_DIR = path.join(DATA_DIR, 'tables')
 
@@ -128,6 +129,12 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
     return res.status(400).json({ error: 'Dati tavolo incompleti' })
   }
 
+  try {
+    await validateInvitedPlayersForModule(moduleId, invitedPlayers)
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message })
+  }
+
   const tableId = `tbl_${uuidv4().replace(/-/g, '').slice(0, 8)}`
   const tableDir = path.join(TABLES_DIR, tableId)
 
@@ -174,6 +181,14 @@ router.patch('/:id', authMiddleware, adminOnly, async (req, res) => {
   if (!await fileExists(filePath)) return res.status(404).json({ error: 'Tavolo non trovato' })
 
   const table = await readJSON(filePath)
+  if (req.body.invitedPlayers !== undefined) {
+    try {
+      await validateInvitedPlayersForModule(table.moduleId, req.body.invitedPlayers)
+    } catch (err) {
+      return res.status(err.status || 500).json({ error: err.message })
+    }
+  }
+
   const allowed = ['invitedPlayers', 'plannedSession', 'state', 'heavy-llmModel', 'light-llmModel']
   for (const key of allowed) {
     if (req.body[key] !== undefined) table[key] = req.body[key]

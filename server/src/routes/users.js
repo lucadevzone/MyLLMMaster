@@ -6,6 +6,7 @@ const fs = require('fs').promises
 const { readJSON, writeJSON } = require('../utils/fileStore')
 const { FILES, DATA_DIR } = require('../utils/dataInit')
 const { authMiddleware, adminOnly, playerOnly } = require('../middleware/auth')
+const { tableShouldBeDisabled } = require('../services/tableRules')
 
 const TABLES_DIR = path.join(DATA_DIR, 'tables')
 
@@ -24,6 +25,8 @@ async function disableTablesForPlayer(email) {
       const table = await readJSON(tablePath)
       if (!table.invitedPlayers?.includes(email)) continue
       if (table.state === 'archived' || table.state === 'disabled') continue
+      const shouldDisable = await tableShouldBeDisabled(table)
+      if (!shouldDisable) continue
 
       table.state = 'disabled'
       table.updatedAt = new Date().toISOString()

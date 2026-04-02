@@ -50,6 +50,12 @@ module.exports = function setupSocket(io) {
     socket.on('session:join', async (tableId) => {
       const table = await getTable(tableId)
       if (!table) return socket.emit('session:error', 'Tavolo non trovato')
+      if (table.state === 'disabled') {
+        return socket.emit('session:error', 'Questo tavolo è disabilitato')
+      }
+      if (table.state === 'archived') {
+        return socket.emit('session:error', 'Questo tavolo è archiviato')
+      }
       if (!table.invitedPlayers.includes(email)) {
         return socket.emit('session:error', 'Non sei invitato a questo tavolo')
       }
