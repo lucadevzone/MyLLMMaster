@@ -41,10 +41,18 @@ async function tableShouldBeDisabled(table) {
   return activePlayers < mod.minPlayers
 }
 
+async function reconcileTableState(table) {
+  const shouldDisable = await tableShouldBeDisabled(table)
+  if (shouldDisable) return 'disabled'
+  if (table.state === 'disabled') return 'active'
+  return table.state
+}
+
 module.exports = {
   getModuleById,
   getAllUsers,
   countActiveInvitedPlayers,
   validateInvitedPlayersForModule,
-  tableShouldBeDisabled
+  tableShouldBeDisabled,
+  reconcileTableState
 }

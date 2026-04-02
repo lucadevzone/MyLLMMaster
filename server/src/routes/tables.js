@@ -9,7 +9,7 @@ const { authMiddleware, adminOnly, playerOnly } = require('../middleware/auth')
 const sessionService = require('../services/sessionService')
 const custodeEngine = require('../services/custodeEngine')
 const { getIO } = require('../socket/runtime')
-const { validateInvitedPlayersForModule } = require('../services/tableRules')
+const { validateInvitedPlayersForModule, reconcileTableState } = require('../services/tableRules')
 
 const TABLES_DIR = path.join(DATA_DIR, 'tables')
 
@@ -192,6 +192,9 @@ router.patch('/:id', authMiddleware, adminOnly, async (req, res) => {
   const allowed = ['invitedPlayers', 'plannedSession', 'state', 'heavy-llmModel', 'light-llmModel']
   for (const key of allowed) {
     if (req.body[key] !== undefined) table[key] = req.body[key]
+  }
+  if (req.body.invitedPlayers !== undefined) {
+    table.state = await reconcileTableState(table)
   }
   table.updatedAt = new Date().toISOString()
   await writeJSON(filePath, table)

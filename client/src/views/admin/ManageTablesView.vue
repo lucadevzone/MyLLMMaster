@@ -18,6 +18,10 @@ const createPlayers = ref([])
 const createHeavyModel = ref('')
 const createLightModel = ref('')
 const createError = ref('')
+const editPlayersTableId = ref(null)
+const editPlayersSelection = ref([])
+const editPlayersError = ref('')
+const savingPlayers = ref(false)
 
 const showSessionPlan = ref(null)  // tableId
 const planDate = ref('')
@@ -76,7 +80,7 @@ onMounted(async () => {
     ])
     tables.value = t.filter(t => t.state !== 'archived')
     modules.value = m
-    players.value = p.filter(p => p.accountState === 'attivo')
+    players.value = p
     playerNames.value = Object.fromEntries(names.map(n => [n.email, n.name]))
     ollamaModels.value = om
   } catch (e) {
@@ -92,6 +96,34 @@ function getModule(moduleId) {
 
 function getPlayerState(email) {
   return players.value.find(p => p.email === email)?.accountState || 'invited'
+}
+
+function activePlayersOnly() {
+  return players.value.filter(p => p.accountState === 'attivo')
+}
+
+function getEditablePlayers(table) {
+  const currentInvited = table.invitedPlayers
+    .map(email => players.value.find(p => p.email === email))
+    .filter(Boolean)
+
+  const activePlayers = activePlayersOnly()
+  const merged = [...currentInvited]
+  for (const player of activePlayers) {
+    if (!merged.some(p => p.email === player.email)) merged.push(player)
+  }
+
+  return merged.sort((a, b) => a.name.localeCompare(b.name, 'it'))
+}
+
+function canSelectPlayer(table, player) {
+  return player.accountState === 'attivo' || editPlayersSelection.value.includes(player.email)
+}
+
+function playerOptionHelp(table, player) {
+  if (player.accountState === 'attivo') return player.email
+  if (table.invitedPlayers.includes(player.email)) return `${player.email} · non più attivo`
+  return `${player.email} · non selezionabile`
 }
 
 async function createTable() {
@@ -187,6 +219,42 @@ function togglePlayer(email) {
   if (idx === -1) createPlayers.value.push(email)
   else createPlayers.value.splice(idx, 1)
 }
+
+function openEditPlayers(table) {
+  editPlayersTableId.value = table.id
+  editPlayersSelection.value = [...table.invitedPlayers]
+  editPlayersError.value = ''
+}
+
+function cancelEditPlayers() {
+  editPlayersTableId.value = null
+  editPlayersSelection.value = []
+  editPlayersError.value = ''
+}
+
+function toggleEditPlayer(email) {
+  const idx = editPlayersSelection.value.indexOf(email)
+  if (idx === -1) editPlayersSelection.value.push(email)
+  else editPlayersSelection.value.splice(idx, 1)
+}
+
+async function savePlayers(table) {
+  editPlayersError.value = ''
+  savingPlayers.value = true
+  try {
+    const updated = await api.patch(`/tables/${table.id}`, {
+      invitedPlayers: editPlayersSelection.value
+    })
+    const idx = tables.value.findIndex(t => t.id === table.id)
+    if (idx !== -1) tables.value[idx] = updated
+    actionMsg.value = 'Giocatori del tavolo aggiornati'
+    cancelEditPlayers()
+  } catch (e) {
+    editPlayersError.value = e.message
+  } finally {
+    savingPlayers.value = false
+  }
+}
 </script>
 
 <template>
@@ -221,7 +289,7 @@ function togglePlayer(email) {
           <div class="form-group">
             <label>Giocatori (solo account attivi)</label>
             <div style="display:flex;flex-wrap:wrap;gap:0.5rem;padding:0.5rem 0">
-              <label v-for="p in players" :key="p.email"
+              <label v-for="p in activePlayersOnly()" :key="p.email"
                 style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.875rem;padding:0.3rem 0.6rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-bg)"
                 :style="createPlayers.includes(p.email) ? 'border-color:var(--color-primary);background:rgba(96,165,250,0.1)' : ''">
                 <input type="checkbox" :checked="createPlayers.includes(p.email)" @change="togglePlayer(p.email)" />
@@ -284,6 +352,9 @@ function togglePlayer(email) {
                 </div>
               </div>
               <div style="display:flex;flex-direction:column;gap:0.4rem;align-items:flex-end">
+                <button class="btn btn-secondary btn-sm" @click="openEditPlayers(table)">
+                  Gestisci Giocatori
+                </button>
                 <button v-if="table.state === 'ready'" class="btn btn-primary btn-sm" @click="openPlanSession(table.id)">
                   Pianifica Sessione
                 </button>
@@ -292,6 +363,35 @@ function togglePlayer(email) {
                 </button>
                 <button class="btn btn-warning btn-sm" @click="resetTable(table.id)" title="Cancella sessione e scene, mantieni i PG">Reset</button>
                 <button class="btn btn-danger btn-sm" @click="archiveTable(table.id)">Archivia</button>
+              </div>
+            </div>
+
+            <div v-if="editPlayersTableId === table.id" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--color-border)">
+              <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.75rem">Invitati al tavolo</div>
+              <div v-if="editPlayersError" class="alert alert-error" style="margin-bottom:0.75rem">{{ editPlayersError }}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem">
+                <label v-for="player in getEditablePlayers(table)" :key="player.email"
+                  style="display:flex;align-items:center;gap:0.45rem;padding:0.45rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);font-size:0.85rem;background:var(--color-bg)"
+                  :style="editPlayersSelection.includes(player.email) ? 'border-color:var(--color-primary);background:rgba(96,165,250,0.1)' : ''">
+                  <input
+                    type="checkbox"
+                    :checked="editPlayersSelection.includes(player.email)"
+                    :disabled="!canSelectPlayer(table, player)"
+                    @change="toggleEditPlayer(player.email)"
+                  />
+                  <span>{{ player.name }}</span>
+                  <span style="color:var(--color-text-light)">{{ playerOptionHelp(table, player) }}</span>
+                  <span :class="['badge', PLAYER_BADGE[player.accountState] || 'badge-gray']">{{ player.accountState }}</span>
+                </label>
+              </div>
+              <div style="font-size:0.8rem;color:var(--color-text-light);margin-bottom:0.75rem">
+                Dopo il salvataggio il backend ricontrolla i vincoli min/max del modulo e aggiorna automaticamente lo stato del tavolo.
+              </div>
+              <div style="display:flex;gap:0.5rem">
+                <button class="btn btn-primary btn-sm" :disabled="savingPlayers" @click="savePlayers(table)">
+                  {{ savingPlayers ? 'Salvataggio...' : 'Salva Giocatori' }}
+                </button>
+                <button class="btn btn-secondary btn-sm" @click="cancelEditPlayers">Annulla</button>
               </div>
             </div>
 
