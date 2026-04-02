@@ -493,7 +493,10 @@ class CustodeEngine {
       world_state: JSON.stringify(worldState)
     })
     await this.emitNarrative(result.narrativa)
-    await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
+    const assigned = await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
+    if (!assigned) {
+      await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
+    }
     return null
   }
 
@@ -509,7 +512,10 @@ class CustodeEngine {
       world_state: JSON.stringify(worldState)
     })
     await this.emitNarrative(result.narrativa)
-    await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
+    const assigned = await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
+    if (!assigned) {
+      await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
+    }
     return null
   }
 
@@ -525,7 +531,10 @@ class CustodeEngine {
       world_state: JSON.stringify(worldState)
     })
     await this.emitNarrative(result.narrativa)
-    await this.setPlayerTurn(data.pg_target, 'mio-turno-prova')
+    const assigned = await this.setPlayerTurn(data.pg_target, 'mio-turno-prova')
+    if (!assigned) {
+      await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
+    }
     return null
   }
 
@@ -860,7 +869,12 @@ class CustodeEngine {
 
   async setPlayerTurn(email, playerState) {
     const ctx = svc.getSession(this.tableId)
-    if (!ctx) return
+    if (!ctx) return false
+    const targetExists = ctx.session.players.some(p => p.email === email)
+    if (!targetExists) {
+      console.warn(`[Custode] Target turno non valido: ${email}`)
+      return false
+    }
     // Tutti gli altri: fuori-turno
     for (const p of ctx.session.players) {
       const state = p.email === email ? playerState : 'fuori-turno'
@@ -869,6 +883,7 @@ class CustodeEngine {
         email: p.email, connected: p.connected, playerState: state
       })
     }
+    return true
   }
 
   async getActiveScenes() {
