@@ -240,6 +240,13 @@ function msgBadge(msg) {
   if (msg.toRecover) return { text: 'da recuperare', css: 'badge-yellow' }
   return null
 }
+
+function weaponSummary(weapon) {
+  const parts = [weapon.nome, weapon.danno]
+  if (weapon.abilita) parts.push(weapon.abilita)
+  if (weapon.munizioni != null) parts.push(`Mun ${weapon.munizioni}`)
+  return parts.filter(Boolean).join(' · ')
+}
 </script>
 
 <template>
@@ -386,6 +393,29 @@ function msgBadge(msg) {
                   style="font-size:0.75rem;padding:0.15rem 0.5rem;background:rgba(96,165,250,0.1);border:1px solid var(--color-primary);border-radius:99px">
                   {{ ab.nome }} {{ ab.valore }}%
                 </span>
+              </div>
+
+              <hr class="divider" />
+              <div style="font-size:0.75rem;font-weight:600;color:var(--color-text-light);margin-bottom:0.5rem">ARMI</div>
+              <div v-if="myChar.armiECombattimento?.length" style="display:flex;flex-direction:column;gap:0.35rem;margin-bottom:0.75rem">
+                <div v-for="weapon in myChar.armiECombattimento" :key="weapon.nome"
+                  style="font-size:0.8rem;padding:0.35rem 0.5rem;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius)">
+                  {{ weaponSummary(weapon) }}
+                </div>
+              </div>
+              <div v-else style="font-size:0.8rem;color:var(--color-text-light);margin-bottom:0.75rem">
+                Nessuna arma registrata.
+              </div>
+
+              <div style="font-size:0.75rem;font-weight:600;color:var(--color-text-light);margin-bottom:0.5rem">EQUIPAGGIAMENTO</div>
+              <div v-if="myChar.equipaggiamento?.length" style="display:flex;flex-wrap:wrap;gap:0.3rem">
+                <span v-for="item in myChar.equipaggiamento" :key="item.nome"
+                  style="font-size:0.75rem;padding:0.15rem 0.5rem;background:var(--color-bg);border:1px solid var(--color-border);border-radius:99px">
+                  {{ item.nome }}
+                </span>
+              </div>
+              <div v-else style="font-size:0.8rem;color:var(--color-text-light)">
+                Nessun equipaggiamento registrato.
               </div>
             </template>
           </div>
