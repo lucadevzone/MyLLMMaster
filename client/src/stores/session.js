@@ -106,11 +106,21 @@ export const useSessionStore = defineStore('session', () => {
     messages.value = []
     toasts.value = []
     timerMs.value = null
+    custodeTyping.value = false
+    custodePhase.value = null
   }
 
   // ── Azioni ─────────────────────────────────────────────────────────────────
   function sendMessage(text, type = 'normal', to = null) {
     socket?.emit('session:message', { text, type, to })
+  }
+
+  function startTyping() {
+    socket?.emit('session:typing-start')
+  }
+
+  function stopTyping() {
+    socket?.emit('session:typing-stop')
   }
 
   function rollDice(caratteristica, soglia) {
@@ -144,6 +154,6 @@ export const useSessionStore = defineStore('session', () => {
     custodeTyping, custodePhase,
     myState, sessionState,
     connect, disconnect, sendMessage, rollDice, voteTardi, setColor,
-    riprendiCustode, addToast
+    riprendiCustode, startTyping, stopTyping, addToast
   }
 })

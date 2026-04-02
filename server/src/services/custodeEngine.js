@@ -15,6 +15,7 @@ const ollama = require('./ollamaService')
 const MSG_BUFFER_SIZE = parseInt(process.env.MSG_BUFFER_SIZE || '20')
 const SILENCE_TIMER_MS = parseInt(process.env.SILENCE_TIMER_MS || String(30 * 1000))
 const EARLY_FLUSH_IDLE_MS = parseInt(process.env.EARLY_FLUSH_IDLE_MS || '5000')
+const PLAYER_TYPING_TTL_MS = parseInt(process.env.PLAYER_TYPING_TTL_MS || '4000')
 const PROACTIVITY_TIMER_MS = parseInt(process.env.PROACTIVITY_TIMER_MS || String(5 * 60 * 1000))
 
 // ── Helpers filesystem ────────────────────────────────────────────────────────
@@ -163,6 +164,15 @@ function shouldProcessByAnnotations(messages, focusParticipants = []) {
   const activePlayers = new Set(usefulMessages.map(m => m.from))
   const threshold = Math.ceil(focusParticipants.length / 2)
   return activePlayers.size >= threshold && usefulMessages.length >= threshold
+}
+
+function hasActiveTypingInFocus(typingPlayers, focusParticipants = []) {
+  if (!typingPlayers || !focusParticipants.length) return false
+  const now = Date.now()
+  return focusParticipants.some(email => {
+    const lastTypingAt = typingPlayers[email]
+    return lastTypingAt && (now - lastTypingAt) < PLAYER_TYPING_TTL_MS
+  })
 }
 
 // ── Custode per tavolo ────────────────────────────────────────────────────────
@@ -903,6 +913,9 @@ class CustodeEngine {
     const worldState = await getWorldState(this.tableId)
     const focusGroup = worldState.groups?.find(g => g.sceneId === worldState.focusScene)
     const focusParticipants = focusGroup?.participants || []
+    const typingPlayers = svc.getTypingPlayers(this.tableId)
+
+    if (hasActiveTypingInFocus(typingPlayers, focusParticipants)) return
 
     if (shouldProcessByAnnotations(this.buffer, focusParticipants)) {
       this.flushBuffer('annotazioni')

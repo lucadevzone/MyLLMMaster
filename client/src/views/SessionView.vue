@@ -20,7 +20,10 @@ const myNotes = ref('')
 const chatEl = ref(null)
 const whisperTarget = ref(null)
 const timerDisplay = ref('')
+const TYPING_DEBOUNCE_MS = 1500
 let timerInterval = null
+let typingStopTimeout = null
+const isTyping = ref(false)
 
 // ── Stato sessione: label e colori ────────────────────────────────────────────
 const SESSION_LABELS = {
@@ -94,6 +97,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (timerInterval) clearInterval(timerInterval)
+  stopTypingSignal()
   sess.disconnect()
 })
 
@@ -131,6 +135,7 @@ watch(() => sess.custodeTyping, async () => {
 function sendMessage() {
   const text = messageInput.value.trim()
   if (!text) return
+  stopTypingSignal()
   if (whisperTarget.value) {
     sess.sendMessage(text, 'whisper', whisperTarget.value)
     whisperTarget.value = null
@@ -141,10 +146,52 @@ function sendMessage() {
 }
 
 function onKeydown(e) {
+  refreshTypingSignal()
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     sendMessage()
   }
+}
+
+watch(messageInput, (value) => {
+  if (!canType.value) {
+    stopTypingSignal()
+    return
+  }
+  if (!value.trim()) {
+    stopTypingSignal()
+    return
+  }
+  refreshTypingSignal()
+})
+
+watch(canType, (enabled) => {
+  if (!enabled) stopTypingSignal()
+})
+
+function refreshTypingSignal() {
+  if (!canType.value) return
+  if (!messageInput.value.trim()) return
+
+  if (!isTyping.value) {
+    isTyping.value = true
+    sess.startTyping()
+  }
+
+  if (typingStopTimeout) clearTimeout(typingStopTimeout)
+  typingStopTimeout = setTimeout(() => {
+    stopTypingSignal()
+  }, TYPING_DEBOUNCE_MS)
+}
+
+function stopTypingSignal() {
+  if (typingStopTimeout) {
+    clearTimeout(typingStopTimeout)
+    typingStopTimeout = null
+  }
+  if (!isTyping.value) return
+  isTyping.value = false
+  sess.stopTyping()
 }
 
 function rollDice() {

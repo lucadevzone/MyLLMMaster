@@ -132,6 +132,7 @@ module.exports = function setupSocket(io) {
     socket.on('session:message', async ({ text, type = 'normal', to = null }) => {
       const tableId = socket.tableId
       if (!tableId) return
+      await svc.clearPlayerTyping(tableId, email)
 
       const playerName = await getPlayerName(email)
       const msg = await svc.addMessage(tableId, { type, from: email, fromName: playerName, to, text })
@@ -152,6 +153,19 @@ module.exports = function setupSocket(io) {
         const engine = custodeEngine.getOrCreate(tableId, io)
         if (engine.running) engine.onPlayerMessage(msg).catch(console.error)
       }
+    })
+
+    // ── session:typing-start / session:typing-stop ─────────────────────────
+    socket.on('session:typing-start', async () => {
+      const tableId = socket.tableId
+      if (!tableId) return
+      await svc.setPlayerTyping(tableId, email)
+    })
+
+    socket.on('session:typing-stop', async () => {
+      const tableId = socket.tableId
+      if (!tableId) return
+      await svc.clearPlayerTyping(tableId, email)
     })
 
     // ── session:dice-roll ─────────────────────────────────────────────────────
@@ -252,6 +266,7 @@ module.exports = function setupSocket(io) {
       const tableId = socket.tableId
       if (!tableId) return
 
+      await svc.clearPlayerTyping(tableId, email)
       await svc.playerDisconnected(tableId, email)
       const ctx = svc.getSession(tableId)
       if (!ctx) return

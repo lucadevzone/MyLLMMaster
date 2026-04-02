@@ -4,7 +4,7 @@ const fs = require('fs').promises
 const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileStore')
 const { DATA_DIR } = require('../utils/dataInit')
 
-// In-memory active sessions: tableId → { session, messages, timers }
+// In-memory active sessions: tableId → { session, messages, timers, typingPlayers }
 const activeSessions = new Map()
 
 // Lock per getOrCreateSession: evita che join concorrenti creino ctx duplicati
@@ -112,7 +112,7 @@ async function getOrCreateSession(tableId, invitedPlayers) {
     await appendLog(tableId, session.sessionId, { event: 'session-created', sessionNumber })
   }
 
-  const ctx = { session, messages, timers: {} }
+  const ctx = { session, messages, timers: {}, typingPlayers: {} }
   activeSessions.set(tableId, ctx)
   sessionLocks.delete(tableId)
   resolveLock(ctx)
@@ -169,9 +169,31 @@ async function playerDisconnected(tableId, email) {
   player.connected = false
   player.missedSince = new Date().toISOString()
   player.lastSeen = new Date().toISOString()
+  if (ctx.typingPlayers) delete ctx.typingPlayers[email]
 
   await saveSession(tableId, session)
   await appendLog(tableId, session.sessionId, { event: 'player-disconnected', email })
+}
+
+async function setPlayerTyping(tableId, email) {
+  const ctx = getSession(tableId)
+  if (!ctx) return
+  ctx.typingPlayers[email] = Date.now()
+  await appendLog(tableId, ctx.session.sessionId, { event: 'player-typing-start', email })
+}
+
+async function clearPlayerTyping(tableId, email) {
+  const ctx = getSession(tableId)
+  if (!ctx) return
+  if (ctx.typingPlayers[email]) {
+    delete ctx.typingPlayers[email]
+    await appendLog(tableId, ctx.session.sessionId, { event: 'player-typing-stop', email })
+  }
+}
+
+function getTypingPlayers(tableId) {
+  const ctx = getSession(tableId)
+  return ctx?.typingPlayers || {}
 }
 
 // ── Messaggi ─────────────────────────────────────────────────────────────────
@@ -326,6 +348,9 @@ module.exports = {
   getPlayer,
   playerConnected,
   playerDisconnected,
+  setPlayerTyping,
+  clearPlayerTyping,
+  getTypingPlayers,
   addMessage,
   getMessagesSince,
   updateSessionState,
