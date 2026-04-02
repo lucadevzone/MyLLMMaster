@@ -1,10 +1,41 @@
 const express = require('express')
 const router = express.Router()
 const bcrypt = require('bcrypt')
-const { v4: uuidv4 } = require('uuid')
+const path = require('path')
+const fs = require('fs').promises
 const { readJSON, writeJSON } = require('../utils/fileStore')
-const { FILES } = require('../utils/dataInit')
+const { FILES, DATA_DIR } = require('../utils/dataInit')
 const { authMiddleware, adminOnly, playerOnly } = require('../middleware/auth')
+
+const TABLES_DIR = path.join(DATA_DIR, 'tables')
+
+async function disableTablesForPlayer(email) {
+  let tableDirs = []
+  try {
+    tableDirs = await fs.readdir(TABLES_DIR)
+  } catch {
+    return 0
+  }
+
+  let updatedCount = 0
+  for (const dir of tableDirs) {
+    const tablePath = path.join(TABLES_DIR, dir, 'table.json')
+    try {
+      const table = await readJSON(tablePath)
+      if (!table.invitedPlayers?.includes(email)) continue
+      if (table.state === 'archived' || table.state === 'disabled') continue
+
+      table.state = 'disabled'
+      table.updatedAt = new Date().toISOString()
+      await writeJSON(tablePath, table)
+      updatedCount++
+    } catch {
+      // Ignora tavoli malformati o incompleti senza bloccare l'operazione utente
+    }
+  }
+
+  return updatedCount
+}
 
 // GET /api/users/names  (tutti gli autenticati - mappa email→nome per UI)
 router.get('/names', authMiddleware, async (req, res) => {
@@ -46,7 +77,11 @@ router.delete('/me', authMiddleware, playerOnly, async (req, res) => {
 
   users[idx].accountState = 'disabilitato'
   await writeJSON(FILES.users, users)
-  res.json({ message: 'Account eliminato' })
+  const disabledTables = await disableTablesForPlayer(req.user.email)
+  res.json({
+    message: 'Account eliminato',
+    disabledTables
+  })
 })
 
 // --- ADMIN ROUTES ---
@@ -101,7 +136,11 @@ router.delete('/:email', authMiddleware, adminOnly, async (req, res) => {
 
   users[idx].accountState = 'eliminato'
   await writeJSON(FILES.users, users)
-  res.json({ message: 'Utente eliminato' })
+  const disabledTables = await disableTablesForPlayer(email)
+  res.json({
+    message: 'Utente eliminato',
+    disabledTables
+  })
 })
 
 module.exports = router
