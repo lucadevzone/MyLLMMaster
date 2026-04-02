@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": ["annotazioni"],
+  "properties": {
+    "annotazioni": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "tag"],
+        "properties": {
+          "id": { "type": "string" },
+          "tag": {
+            "type": "string",
+            "enum": ["dichiarazione", "domanda al custode", "discutendo tra PG", "fuori ruolo"]
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

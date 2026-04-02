@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "required": ["focus_scene"],
+  "properties": {
+    "focus_scene": { "type": "string" }
+  },
+  "additionalProperties": true
+}

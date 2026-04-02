@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "required": ["narrativa", "riepilogo_scena", "suggerimento_prossima_scena", "aggiornamenti"],
+  "properties": {
+    "narrativa": { "type": "string" },
+    "riepilogo_scena": { "type": "string" },
+    "suggerimento_prossima_scena": { "type": "string" },
+    "aggiornamenti": {
+      "type": "object",
+      "required": ["diary", "scena_chiusa"],
+      "properties": {
+        "diary": { "type": "string" },
+        "scena_chiusa": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

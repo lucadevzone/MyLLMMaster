@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["narrativa", "diary"],
+  "properties": {
+    "narrativa": { "type": "string" },
+    "diary": { "type": "string" }
+  },
+  "additionalProperties": true
+}

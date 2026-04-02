@@ -6,51 +6,9 @@ const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 const MAX_RETRIES = parseInt(process.env.LLM_MAX_RETRIES || '3')
 const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000')
 const PROMPTS_DIR = path.join(__dirname, '../../../prompts')
+const PROMPT_SCHEMAS_DIR = path.join(PROMPTS_DIR, 'schemas')
 const LOG_FILE = path.join(__dirname, '../../../LLM_log.txt')
-
-const PHASE_VALIDATORS = {
-  'fase1a_prima_sessione.md': (data) => validateObjectFields(data, {
-    narrativa: 'string',
-    diary: 'string'
-  }),
-  'fase1b_sessioni_successive.md': (data) => validateObjectFields(data, {
-    narrativa: 'string'
-  }),
-  'fase3a_scelta_focus.md': (data) => validateObjectFields(data, {
-    focus_scene: 'string'
-  }),
-  'fase3b_narrazione.md': (data) => validateObjectFields(data, {
-    narrativa: 'string'
-  }),
-  'fase4_dichiarazioni.md': (data) => {
-    if (Array.isArray(data)) return true
-    return validateObjectFields(data, { piano: 'array' })
-  },
-  'fase4a_chiarimenti.md': (data) => validateObjectFields(data, {
-    narrativa: 'string'
-  }),
-  'fase4b_dichiarazione_assente.md': (data) => validateObjectFields(data, {
-    narrativa: 'string'
-  }),
-  'fase4c_necessita_prova.md': (data) => validateObjectFields(data, {
-    narrativa: 'string'
-  }),
-  'fase5_risoluzione.md': (data) => validateObjectFields(data, {
-    narrativa: 'string'
-  }),
-  'fase5a_divisione_gruppi.md': (data) => validateObjectFields(data, {
-    narrativa: 'string'
-  }),
-  'fase5b_ricongiungimento.md': (data) => validateObjectFields(data, {
-    narrativa: 'string'
-  }),
-  'fase5c_chiusura_scena.md': (data) => validateObjectFields(data, {
-    narrativa: 'string'
-  }),
-  'tagging_buffer.md': (data) => validateObjectFields(data, {
-    annotazioni: 'array'
-  })
-}
+const schemaCache = new Map()
 
 // ── LLM logger ────────────────────────────────────────────────────────────────
 
@@ -83,9 +41,27 @@ async function loadPrompt(filename, vars = {}) {
   return text
 }
 
+async function loadPromptSchema(filename) {
+  if (schemaCache.has(filename)) return schemaCache.get(filename)
+
+  const schemaPath = path.join(PROMPT_SCHEMAS_DIR, filename.replace(/\.md$/, '.schema.json'))
+  try {
+    const raw = await fs.readFile(schemaPath, 'utf-8')
+    const schema = JSON.parse(raw)
+    schemaCache.set(filename, schema)
+    return schema
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      schemaCache.set(filename, null)
+      return null
+    }
+    throw err
+  }
+}
+
 // ── Chiamata Ollama con retry ─────────────────────────────────────────────────
 
-async function callOllama(model, prompt, expectJson = true, phase = '?') {
+async function callOllama(model, prompt, expectJson = true, phase = '?', schema = null) {
   let lastError
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -116,7 +92,7 @@ async function callOllama(model, prompt, expectJson = true, phase = '?') {
       // Estrai JSON dalla risposta (il modello potrebbe aggiungere testo intorno)
       const parsed = extractJSON(raw)
       if (parsed !== null) {
-        const schemaError = validatePhaseResponse(phase, parsed)
+        const schemaError = validateSchemaResponse(schema, parsed, phase)
         if (schemaError) {
           llmLog({ model, phase, attempt, prompt, response: raw, error: schemaError })
           throw new Error(`${schemaError} (tentativo ${attempt})`)
@@ -163,25 +139,75 @@ function extractJSON(text) {
   try { return JSON.parse(text.slice(start, end + 1)) } catch { return null }
 }
 
-function validateObjectFields(data, spec) {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return false
-
-  for (const [field, type] of Object.entries(spec)) {
-    if (!(field in data)) return false
-
-    if (type === 'array' && !Array.isArray(data[field])) return false
-    if (type === 'string' && typeof data[field] !== 'string') return false
-  }
-
-  return true
+function validateSchemaResponse(schema, data, phase) {
+  if (!schema) return null
+  const error = validateJsonSchema(schema, data, '$')
+  return error ? `Schema risposta non valido per ${phase}: ${error}` : null
 }
 
-function validatePhaseResponse(phase, parsed) {
-  const validator = PHASE_VALIDATORS[phase]
-  if (!validator) return null
-  return validator(parsed)
-    ? null
-    : `Schema risposta non valido per ${phase}`
+function validateJsonSchema(schema, data, currentPath) {
+  if (schema.anyOf) {
+    const errors = schema.anyOf
+      .map(option => validateJsonSchema(option, data, currentPath))
+      .filter(Boolean)
+    return errors.length === schema.anyOf.length ? errors[0] : null
+  }
+
+  if (schema.type) {
+    const typeError = validateType(schema.type, data, currentPath)
+    if (typeError) return typeError
+  }
+
+  if (schema.enum && !schema.enum.includes(data)) {
+    return `${currentPath} deve essere uno tra: ${schema.enum.join(', ')}`
+  }
+
+  if (schema.type === 'object') {
+    const required = schema.required || []
+    for (const key of required) {
+      if (!(key in data)) return `${currentPath}.${key} mancante`
+    }
+
+    const properties = schema.properties || {}
+    for (const [key, value] of Object.entries(data)) {
+      if (!properties[key]) {
+        if (schema.additionalProperties === false) {
+          return `${currentPath}.${key} non è consentito`
+        }
+        continue
+      }
+      const childError = validateJsonSchema(properties[key], value, `${currentPath}.${key}`)
+      if (childError) return childError
+    }
+  }
+
+  if (schema.type === 'array') {
+    if (schema.minItems != null && data.length < schema.minItems) {
+      return `${currentPath} deve contenere almeno ${schema.minItems} elementi`
+    }
+    if (schema.items) {
+      for (let i = 0; i < data.length; i++) {
+        const childError = validateJsonSchema(schema.items, data[i], `${currentPath}[${i}]`)
+        if (childError) return childError
+      }
+    }
+  }
+
+  return null
+}
+
+function validateType(type, data, currentPath) {
+  const types = Array.isArray(type) ? type : [type]
+  const ok = types.some(singleType => matchesType(singleType, data))
+  return ok ? null : `${currentPath} deve essere di tipo ${types.join('|')}`
+}
+
+function matchesType(type, data) {
+  if (type === 'array') return Array.isArray(data)
+  if (type === 'null') return data === null
+  if (type === 'integer') return Number.isInteger(data)
+  if (type === 'object') return !!data && typeof data === 'object' && !Array.isArray(data)
+  return typeof data === type
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
@@ -189,13 +215,19 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 // ── API pubblica ───────────────────────────────────────────────────────────────
 
 async function runPhase(model, promptFile, vars) {
-  const prompt = await loadPrompt(promptFile, vars)
-  return callOllama(model, prompt, true, promptFile)
+  const [prompt, schema] = await Promise.all([
+    loadPrompt(promptFile, vars),
+    loadPromptSchema(promptFile)
+  ])
+  return callOllama(model, prompt, true, promptFile, schema)
 }
 
 async function runTagging(model, promptFile, vars) {
-  const prompt = await loadPrompt(promptFile, vars)
-  return callOllama(model, prompt, true, promptFile)
+  const [prompt, schema] = await Promise.all([
+    loadPrompt(promptFile, vars),
+    loadPromptSchema(promptFile)
+  ])
+  return callOllama(model, prompt, true, promptFile, schema)
 }
 
-module.exports = { runPhase, runTagging, loadPrompt, callOllama }
+module.exports = { runPhase, runTagging, loadPrompt, loadPromptSchema, callOllama }
