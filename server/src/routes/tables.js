@@ -78,9 +78,14 @@ function isSessionDue(table) {
 
 async function checkAndOpenTable(table) {
   if (table.state === 'ready' && isSessionDue(table)) {
-    table.state = 'open'
-    table.updatedAt = new Date().toISOString()
-    await writeJSON(path.join(TABLES_DIR, table.id, 'table.json'), table)
+    const bootstrapReady = await custodeEngine.isSessionBootstrapReady(table.id)
+    if (bootstrapReady) {
+      table.state = 'open'
+      table.updatedAt = new Date().toISOString()
+      await writeJSON(path.join(TABLES_DIR, table.id, 'table.json'), table)
+    } else {
+      custodeEngine.prepareSessionBootstrapInBackground(table.id, { force: true })
+    }
   }
   return table
 }
@@ -275,9 +280,9 @@ router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
     // nessuna cartella log o nessun file da rimuovere
   }
 
-  // Riporta table.state a 'open'
+  // Riporta il tavolo a 'ready': tornera' a 'open' solo quando il bootstrap sara' pronto
   const table = await readJSON(tablePath)
-  table.state = 'open'
+  table.state = 'ready'
   table.custodeStarted = false
   table.updatedAt = new Date().toISOString()
   await writeJSON(tablePath, table)

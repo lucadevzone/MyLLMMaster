@@ -194,6 +194,14 @@ function normalizeNarrativeText(text) {
   return String(text).trim()
 }
 
+async function isSessionBootstrapReady(tableId) {
+  const [ambientazione, avvio] = await Promise.all([
+    readPreparedFile(tableId, PREP_FILES.ambientazione),
+    readPreparedFile(tableId, PREP_FILES.avvio)
+  ])
+  return !!ambientazione.trim() && !!avvio.trim()
+}
+
 async function prepareSessionBootstrap(tableId, options = {}) {
   const { force = false } = options
   const table = await getTable(tableId)
@@ -231,8 +239,9 @@ async function prepareSessionBootstrap(tableId, options = {}) {
 }
 
 async function ensureSessionBootstrap(tableId) {
+  if (await isSessionBootstrapReady(tableId)) return true
   const ready = await prepareSessionBootstrap(tableId).catch(() => false)
-  return ready
+  return ready && await isSessionBootstrapReady(tableId)
 }
 
 function prepareSessionBootstrapInBackground(tableId, options = {}) {
@@ -1065,4 +1074,4 @@ function destroy(tableId) {
   engines.delete(tableId)
 }
 
-module.exports = { getOrCreate, pause, destroy, prepareSessionBootstrap, prepareSessionBootstrapInBackground }
+module.exports = { getOrCreate, pause, destroy, prepareSessionBootstrap, prepareSessionBootstrapInBackground, isSessionBootstrapReady }

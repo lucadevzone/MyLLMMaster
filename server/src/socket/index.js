@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken')
 const path = require('path')
-const { readJSON, fileExists } = require('../utils/fileStore')
+const { readJSON, writeJSON, fileExists } = require('../utils/fileStore')
 const { DATA_DIR } = require('../utils/dataInit')
 const svc = require('../services/sessionService')
 const custodeEngine = require('../services/custodeEngine')
@@ -298,6 +298,23 @@ module.exports = function setupSocket(io) {
 
   // ── Avvia sessione (condiviso tra timer e trigger "tutti presenti") ─────────
   async function avviaSessione(tableId) {
+    const bootstrapReady = await custodeEngine.isSessionBootstrapReady(tableId)
+    if (!bootstrapReady) {
+      const table = await getTable(tableId)
+      if (table?.state === 'open') {
+        table.state = 'ready'
+        table.updatedAt = new Date().toISOString()
+        const p = path.join(DATA_DIR, 'tables', tableId, 'table.json')
+        await writeJSON(p, table)
+      }
+      custodeEngine.prepareSessionBootstrapInBackground(tableId, { force: true })
+      io.to(`table:${tableId}`).emit('session:toast', {
+        type: 'error',
+        text: 'Il Custode sta ancora preparando il materiale iniziale'
+      })
+      return
+    }
+
     console.log(`[Session] Avvio sessione: ${tableId}`)
     await svc.updateSessionState(tableId, 'sessione-iniziata')
     // Durante fase-1 e fase-2 il Custode ha la parola: i giocatori aspettano.
