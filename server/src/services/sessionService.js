@@ -138,6 +138,7 @@ async function playerConnected(tableId, email) {
   if (!player) return null
 
   const wasConnected = player.connected
+  const missedSince = player.missedSince
   player.connected = true
   player.missedSince = null
   player.lastSeen = new Date().toISOString()
@@ -147,7 +148,7 @@ async function playerConnected(tableId, email) {
   }
 
   // Messaggi persi
-  const missed = player.missedSince
+  const missed = missedSince
     ? ctx.messages.filter(m => m.timestamp > missed)
     : []
 
