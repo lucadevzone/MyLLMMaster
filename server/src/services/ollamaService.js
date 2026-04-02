@@ -7,7 +7,9 @@ const MAX_RETRIES = parseInt(process.env.LLM_MAX_RETRIES || '3')
 const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000')
 const PROMPTS_DIR = path.join(__dirname, '../../../prompts')
 const PROMPT_SCHEMAS_DIR = path.join(PROMPTS_DIR, 'schemas')
-const LOG_FILE = path.join(__dirname, '../../../LLM_log.txt')
+const LOGS_DIR = process.env.LLM_LOG_DIR || path.join(__dirname, '../../../logs')
+const SESSION_LOG_STAMP = buildLogTimestamp(new Date())
+const LOG_FILE = path.join(LOGS_DIR, `LLM_log_${SESSION_LOG_STAMP}.txt`)
 const schemaCache = new Map()
 
 // ── LLM logger ────────────────────────────────────────────────────────────────
@@ -26,6 +28,7 @@ function llmLog(entry) {
     sep,
   ].filter(Boolean).join('\n')
 
+  fsSync.mkdirSync(LOGS_DIR, { recursive: true })
   fsSync.appendFile(LOG_FILE, line + '\n', () => {})
 }
 
@@ -210,6 +213,16 @@ function matchesType(type, data) {
   return typeof data === type
 }
 
+function buildLogTimestamp(date) {
+  const yyyy = String(date.getFullYear())
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  const mi = String(date.getMinutes()).padStart(2, '0')
+  const ss = String(date.getSeconds()).padStart(2, '0')
+  return `${yyyy}${mm}${dd}_${hh}${mi}${ss}`
+}
+
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 // ── API pubblica ───────────────────────────────────────────────────────────────
@@ -230,4 +243,4 @@ async function runTagging(model, promptFile, vars) {
   return callOllama(model, prompt, true, promptFile, schema)
 }
 
-module.exports = { runPhase, runTagging, loadPrompt, loadPromptSchema, callOllama }
+module.exports = { runPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, LOG_FILE }
