@@ -202,6 +202,28 @@ async function isSessionBootstrapReady(tableId) {
   return !!ambientazione.trim() && !!avvio.trim()
 }
 
+async function promoteTableToReadyIfPossible(tableId, table = null) {
+  const currentTable = table || await getTable(tableId)
+  if (currentTable.state !== 'active') return false
+  if (!await isSessionBootstrapReady(tableId)) return false
+
+  const chars = await getCharacters(tableId)
+  const charOwners = new Set(chars.map(c => c.playerID))
+  const allCreated = currentTable.invitedPlayers.every(email => charOwners.has(email))
+  if (!allCreated) return false
+
+  const now = new Date()
+  currentTable.state = 'ready'
+  currentTable.plannedSession = {
+    date: now.toISOString().slice(0, 10),
+    time: now.toTimeString().slice(0, 5),
+    duration: 180
+  }
+  currentTable.updatedAt = now.toISOString()
+  await writeJSON(path.join(tDir(tableId), 'table.json'), currentTable)
+  return true
+}
+
 async function prepareSessionBootstrap(tableId, options = {}) {
   const { force = false } = options
   const table = await getTable(tableId)
@@ -235,6 +257,7 @@ async function prepareSessionBootstrap(tableId, options = {}) {
   table.custodeStarted = true
   table.updatedAt = new Date().toISOString()
   await writeJSON(path.join(tDir(tableId), 'table.json'), table)
+  await promoteTableToReadyIfPossible(tableId, table)
   return true
 }
 
@@ -1074,4 +1097,4 @@ function destroy(tableId) {
   engines.delete(tableId)
 }
 
-module.exports = { getOrCreate, pause, destroy, prepareSessionBootstrap, prepareSessionBootstrapInBackground, isSessionBootstrapReady }
+module.exports = { getOrCreate, pause, destroy, prepareSessionBootstrap, prepareSessionBootstrapInBackground, isSessionBootstrapReady, promoteTableToReadyIfPossible }

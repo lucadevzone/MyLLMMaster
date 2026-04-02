@@ -377,15 +377,10 @@ router.post('/:id/characters', authMiddleware, playerOnly, async (req, res) => {
   const charOwners = chars.map(c => c.playerID)
   const allCreated = activePlayers.every(email => charOwners.includes(email))
   if (allCreated && table.state === 'active') {
-    const now = new Date()
-    table.state = 'ready'
-    table.plannedSession = {
-      date: now.toISOString().slice(0, 10),
-      time: now.toTimeString().slice(0, 5),
-      duration: 180
+    const movedToReady = await custodeEngine.promoteTableToReadyIfPossible(table.id, table)
+    if (!movedToReady) {
+      custodeEngine.prepareSessionBootstrapInBackground(table.id, { force: true })
     }
-    table.updatedAt = now.toISOString()
-    await writeJSON(tablePath, table)
   }
 
   res.status(201).json(character)
