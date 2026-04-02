@@ -439,7 +439,8 @@ class CustodeEngine {
       scena_focus: JSON.stringify(focusScene),
       schede_PG,
       messaggi_buffer: msgs,
-      piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno'
+      piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno',
+      world_state: JSON.stringify(worldState)
     })
 
     // result è l'array piano — conversione nomi → email
