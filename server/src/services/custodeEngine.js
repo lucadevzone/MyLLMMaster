@@ -30,6 +30,12 @@ async function getTable(tableId) {
   return readJSON(path.join(tDir(tableId), 'table.json'))
 }
 
+async function getTableOrNull(tableId) {
+  const p = path.join(tDir(tableId), 'table.json')
+  if (!await fileExists(p)) return null
+  return readJSON(p)
+}
+
 async function getModule(moduleId) {
   return readJSON(path.join(DATA_DIR, 'modules', `${moduleId}.json`))
 }
@@ -64,6 +70,7 @@ async function readPreparedFile(tableId, filename) {
 }
 
 async function writePreparedFile(tableId, filename, content) {
+  await ensureDir(tDir(tableId))
   await fs.writeFile(path.join(tDir(tableId), filename), content || '')
 }
 
@@ -226,7 +233,8 @@ async function promoteTableToReadyIfPossible(tableId, table = null) {
 
 async function prepareSessionBootstrap(tableId, options = {}) {
   const { force = false } = options
-  const table = await getTable(tableId)
+  const table = await getTableOrNull(tableId)
+  if (!table) return false
   const mod = await getModule(table.moduleId)
   const heavyModel = table['heavy-llmModel']
 
@@ -244,21 +252,44 @@ async function prepareSessionBootstrap(tableId, options = {}) {
   const primoCapitolo = mod.chapters[0]?.content || ''
   if (!primoCapitolo.trim()) return false
 
-  const [ambientazioneResult, avvioResult] = await Promise.all([
+  const [ambientazioneResult, avvioResult] = await Promise.allSettled([
     ollama.runTextPhase(heavyModel, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo }),
     ollama.runTextPhase(heavyModel, 'prepara_avviare_la_sessione.md', { primo_capitolo: primoCapitolo })
   ])
 
-  await Promise.all([
-    writePreparedFile(tableId, PREP_FILES.ambientazione, normalizeNarrativeText(ambientazioneResult)),
-    writePreparedFile(tableId, PREP_FILES.avvio, normalizeNarrativeText(avvioResult))
-  ])
+  const writes = []
+  const ambientazioneText = ambientazioneResult.status === 'fulfilled'
+    ? normalizeNarrativeText(ambientazioneResult.value)
+    : ''
+  const avvioText = avvioResult.status === 'fulfilled'
+    ? normalizeNarrativeText(avvioResult.value)
+    : ''
 
-  table.custodeStarted = true
+  if (ambientazioneText) {
+    writes.push(writePreparedFile(tableId, PREP_FILES.ambientazione, ambientazioneText))
+  }
+  if (avvioText) {
+    writes.push(writePreparedFile(tableId, PREP_FILES.avvio, avvioText))
+  }
+  await Promise.all(writes)
+
+  const bootstrapReady = !!ambientazioneText && !!avvioText
+
+  table.custodeStarted = bootstrapReady
   table.updatedAt = new Date().toISOString()
   await writeJSON(path.join(tDir(tableId), 'table.json'), table)
-  await promoteTableToReadyIfPossible(tableId, table)
-  return true
+  if (bootstrapReady) {
+    await promoteTableToReadyIfPossible(tableId, table)
+    return true
+  }
+
+  const firstFailure = ambientazioneResult.status === 'rejected'
+    ? ambientazioneResult.reason
+    : avvioResult.status === 'rejected'
+      ? avvioResult.reason
+      : null
+  if (firstFailure) throw firstFailure
+  return false
 }
 
 async function ensureSessionBootstrap(tableId) {
@@ -340,7 +371,11 @@ class CustodeEngine {
   // ── LLM call con gestione errori ──────────────────────────────────────────
 
   async llm(promptFile, vars, useLight = false) {
-    const table = await getTable(this.tableId)
+    const table = await getTableOrNull(this.tableId)
+    if (!table) {
+      const err = Object.assign(new Error(`Tavolo ${this.tableId} non trovato`), { isTableMissing: true })
+      throw err
+    }
     const model = useLight
       ? (table['light-llmModel'] || table['heavy-llmModel'])
       : table['heavy-llmModel']
@@ -380,11 +415,14 @@ class CustodeEngine {
 
   async buildContext() {
     const [table, worldState, diary, chars] = await Promise.all([
-      getTable(this.tableId),
+      getTableOrNull(this.tableId),
       getWorldState(this.tableId),
       getDiary(this.tableId),
       getCharacters(this.tableId)
     ])
+    if (!table) {
+      throw Object.assign(new Error(`Tavolo ${this.tableId} non trovato`), { isTableMissing: true })
+    }
     const mod = await getModule(table.moduleId)
     const schede_PG = chars.map(synthChar).join('\n')
     const pgLookup = buildPgLookup(chars)
@@ -827,6 +865,12 @@ class CustodeEngine {
 
   async start() {
     if (this.running) return
+    const table = await getTableOrNull(this.tableId)
+    if (!table) {
+      console.warn(`[Custode] Avvio annullato: tavolo ${this.tableId} non trovato`)
+      destroy(this.tableId)
+      return
+    }
     this.running = true
     this.paused = false
     console.log(`[Custode] Start — tavolo ${this.tableId}`)
@@ -836,6 +880,11 @@ class CustodeEngine {
       await this.runLoop(next)
     } catch (err) {
       this.running = false
+      if (err.isTableMissing) {
+        console.warn(`[Custode] Stop: tavolo ${this.tableId} non piu' disponibile`)
+        destroy(this.tableId)
+        return
+      }
       if (!this.paused) {
         console.error('[Custode] Errore fatale:', err)
         await this.emitError('Errore imprevisto del Custode')
