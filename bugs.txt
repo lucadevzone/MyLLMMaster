@@ -1,8 +1,43 @@
-Il problema è chiaro: fase4_dichiarazioni.md usa {{world_state}} ma fase4() non lo passa:
+BUG: fase4_dichiarazioni.md usa {{world_state}} ma fase4() non lo passa:
 	
-dopo # Fase 4b — Dichiarazione Assente
+BUG: dopo # Fase 4b — Dichiarazione Assente
 in cui la LLM ha generato
 {
   "narrativa": "Marcel, guardi, la scena è in fermento. L'asta sta per iniziare e la sala è gremita di persone provenienti da tutto il mondo. Sembra che tutti siano alla ricerca di qualcosa. Il Tavoletta con script non identificato è appena stato venduto a Sophia Hapgood, ma potrebbe esserci più dietro questo acquisto... Cosa fai?"
 }
-il sistema non ha dato correttamente il turno al giocatore (la sottofase dovrebbe sapere a quale giocatore dare il turno
+il sistema non ha dato correttamente il turno al giocatore perchè la LLM ha avuto una allucinazione (Marcel non esiste); tuttavia la parte procedurale che ha invocato la sottofase dovrebbe sapere che Marcel non esiste e quindi evitare di dare il turno ad un giocatore che non c'è
+
+SPEC: L’accesso alla sessione deve essere vincolato allo stato open e al ruolo player: 
+Al momento il join socket controlla solo che l’utente sia invitato, non che il tavolo sia open, che il player abbia creato il PG o che l’utente non sia admin. 
+Questo contrasta con i requisiti di lobby/sessione e con “admin non può entrare in sessione”
+
+SPEC: Il passaggio del tavolo a stato playing non è implementato: quando parte la sessione viene aggiornato solo lo stato della sessione a sessione-iniziata, ma table.json non viene mai portato a playing e custodeStarted resta inutilizzato.
+
+OTTIMIZZAZIONE: lo stato custodeStarted a true può fare iniziare alcune operazioni di background al custode, come ad esempio Fase 1a o Fase1b, e Fase2 (in questo modo quando tutti i giocatori sono pronti il custode possiede già il materiale per iniziare a giocare. 
+
+BUG: Il recupero dei messaggi persi alla riconnessione è rotto: missedSince viene azzerato prima di calcolare missed, quindi il player non riceve mai davvero i messaggi “da recuperare” (sebbene al momento li riceve come messaggi normali (come se non si fosse mai disconnesso)
+
+BUG: La pausa sessione non mette davvero “in pausa” i timer come richiesto: vengono cancellati, non sospesi/ripresi. Alla riconnessione si torna subito a sessione-iniziata, ma i timer silenzio/proattività non vengono ripristinati con lo stato precedente
+
+SPEC: Il trigger “annotazioni dei messaggi indicano che i giocatori hanno finito” non è implementato.
+
+SPEC: La gestione multi-gruppo/multi-scena al momento è implementato in maniera parziale: divisione e ricongiungimento hanno TODO, e setPlayerTurn mette tutti gli altri in fuori-turno senza distinzione fuori-scena
+
+DISCORDANZA: focusGroupId viene cercato nel worldState invece che nella sessione. Questo può anche andare bene (verificare tutti il codice) ma in questo caso eliminare la ridondanza con sessione.
+
+SPEC: La chiusura di sessione non è completata: esiste il voto È tardi e lo stato in-chiusura, ma non c’è un flusso che porti il custode a salutare tutti e a impostare terminata. La chiusura non deve essere repentina. Il custode ha il tempo di finire il piano azione ma non raccoglierà nuove dichiarazioni (risponderà con "questo lo vedremo la prossima volta") e poi dovrà chiudere la sessione, forse serve aggiungere una fase 6 - chiusura sessione, per salutare i giocatori.
+
+SPEC: Lo stato disabled del tavolo non viene mai applicato quando un giocatore invitato viene eliminato/disabilitato. 
+
+SPEC: La gestione tavoli richiesta agli admin è incompleta: non esiste una UI per aggiungere/sostituire giocatori a un tavolo esistente, né logica per riportare un tavolo da disabled a active aggiungendo un player. 
+
+SPEC: La creazione del personaggio è più permissiva del richiesto: il backend la consente anche in stato ready, mentre la specifica la limita a active; inoltre la lobby mostra sempre il bottone “Personaggio” indipendentemente dallo stato (questo va bene ma solo in modalità "read only").
+
+SPEC: La scheda personaggio è incompleta rispetto allo schema: non ci sono campi/gestione per armiECombattimento ed equipaggiamento. Inoltre il campo notes può apparire quando siamo in modalità "read only". Correttamente il campo notes non è parte della creazione della scheda e viene gestito solo dopo, in sessione.
+
+SPEC: L’effetto dei messaggi del custode è solo parziale: c’è l’indicatore .../typing, ma non un vero effetto “macchina da scrivere” sul testo già consegnato.
+
+SPEC: I sussurri esistono nel backend, ma nel frontend manca il controllo per scegliere il destinatario: whisperTarget è previsto ma non c’è alcuna UI che lo imposti. Tuttavia al momento sembra che i "sussurri" arrivino correttamente. Verificare se questo è davvero una mancanza o solo una discordanza rispetto alle specifiche.
+
+SPEC: Il logging è solo parziale rispetto alla specifica: aggiungere logging esplicito di buffer, eventi timer e decisioni del custode come richiesto. 
+

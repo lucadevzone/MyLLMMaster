@@ -33,11 +33,13 @@ Il sistema deve permettere agli admin di creare nuovi moduli avventura, modifica
 
 GESTIONE TAVOLI
 Il sistema deve permettere agli admin di creare un nuovo tavolo
-Durante la creazione di un tavolo, il sistema deve richiedere all'admin di selezionare un modulo avventura, di selezionare una lista di giocatori e  selezionare un modello LLM da una lista predefinita
+Durante la creazione di un tavolo, il sistema deve richiedere all'admin di selezionare un modulo avventura, di selezionare una lista di giocatori e  selezionare un modello LLM da una lista predefinita.
+Il sistema deve mostrare nella Manager Tables, per ogni tavolo, il modulo associato, lo stato del tavolo, i giocatori invitati, la pianificazione della prossima sessione e le azioni amministrative disponibili.
 Il sistema deve permettere agli admin di aggiungere o sostituire giocatori in un tavolo, di riportare un tavolo da stato "disabled" a stato "active" tramite l'aggiunta di un giocatore, o di archiviare un tavolo.
-Il sistema deve impostare come pianificazione di default la data/orario di creazione dell'ultimo personaggio
-l sistema deve permettere all'admin di impostare data, orario e durata della prossima sessione
-In fase di betatest, il sistema deve fornire una funzione per cancellare tutti i tavoli. 
+Alla creazione di un nuovo tavolo, il sistema deve impostare come pianificazione di default la data/orario di creazione dell'ultimo personaggio.
+Il sistema deve permettere all'admin di pianificare la prossima sessione di un tavolo tramite campi data, orario e durata in minuti.
+
+In fase di betatest, il sistema deve fornire una funzione per cancellare tutti i tavoli e una funzione di reset di un tavolo specifico che mantiene i personaggi creati ma cancella i dati di sessione, le scene attive e chiuse, i log di sessione, il diario e lo stato del mondo. Dopo il reset il tavolo torna nello stato open.
 
 Il sistema userà Ollama per l'accesso alla LLM. Quindi la lista dei modelli può essere ottenuta interrogando ollama con il comando list.
 
@@ -45,11 +47,15 @@ Il sistema userà Ollama per l'accesso alla LLM. Quindi la lista dei modelli pu�
 GESTIONE SALA DI ATTESA (LOBBY)
 
 Il sistema deve visualizzare nella lobby tutte le table a cui l'utente corrente è stato invitato.
+La lobby del giocatore deve mostrare, per ogni tavolo invitato: titolo del modulo avventura, stato del tavolo, lista dei giocatori invitati, data, orario e durata della prossima sessione se pianificata, azioni disponibili per Personaggio e Sessione,
+
 Il sistema deve permettere a un giocatore invitato di creare il proprio personaggio quando il tavolo è in stato "active"
-Il sistema deve permettere a un giocatore di entrare in sessione quando la data e l'orario pianficato sono giunti.
+Il sistema deve mostrare il pulsante "Entra in Sessione" quando il tavolo è in stato open oppure playing.
+Il sistema deve mettere il tavolo in stato "open" quando la data e l'orario pianificato sono giunti (ma la sessione non è in "sessione-iniziata").
 
 
 GENERAZIONE DEL PERSONAGGIO
+Il sistema deve impedire, all'interno dello stesso tavolo, la creazione di due personaggi con lo stesso nome, ignorando differenze tra maiuscole e minuscole.
 Il sistema deve permettere di generare tutte le volte che si vuole le 8 caratteristiche del personaggio (FOR, COS, etc.) più il valore di Fortuna, assegnando casualmente ad esse dei valori da un pool (40, 50, 50, 50, 60, 60, 60, 70, 80) 
 
 Il sistema calcola e mostra i valori derivati:
@@ -83,6 +89,15 @@ Il sistema può mettere in pausa la sessione quando tutti i giocatori si disconn
 Il sistema deve mantenere un registro dei presenti (non tenendo conto di eventuali ritardi o disconnessioni premature)
 Il sistema deve permettere ai giocatori di indicare la propria volontà a terminare la sessione. Se la somma dei giocatori disconnessi e di quelli ancora presenti che hanno indicato di voler terminare è almeno la metà dei presenti durante la sessione (vedi registro presenti), allora la sessione passa in stato "In chiusura". Il Custode deve procedere alla fase "Chiusura sessione".
 Il sistema deve impostare stato "Terminata" quando il Custode saluta tutti.
+Alla fine della sessione, il sistema deve pianificare in automaticio la prossima sessione di un tavolo a tra una settimana (ma con lo stesso orario della pianificazione precedente).
+
+
+Il sistema deve mantenere, per ogni scena attiva, un campo progressione che riassume in forma incrementale ciò che è avvenuto nella scena stessa. Questo campo viene usato per ottimizzare il contesto passato alle LLM.
+Il sistema deve mantenere, per un tavolo, un file diario.txt che riassume in forma incrementale ciò che è avvenuto nell'avventura.
+
+
+
+
 
 Area Chat
 Il sistema deve visualizzare nella chat solo le conversazioni tra PG e tra PG e Custode
@@ -90,7 +105,14 @@ Il sistema deve visualizzare i messaggi di connessione/disconnessione o problemi
 Il sistema deve visualizzare i risultati di un tiro di dadi come toast temporanei di media durata
 Il sistema deve fare un auto-scroll all'ultimo messaggio quando arriva nuovo messaggio
 Il sistema deve comunque garantire lo scroll manuale disponibile per leggere storia
-Il sistema deve garantire al giocatore di selezionare il proprio colore per le bolle messaggio. Il cambio colore aggiorna retroattivamente tutte bolle già in chat.
+Il sistema deve permettere la personalizzazione del colore delle bolle messaggio per ciascun giocatore durante la sessione. Il colore selezionato è persistito nello stato sessione del giocatore. Il cambio colore aggiorna retroattivamente tutte bolle già in chat.
+
+Il sistema deve mantenere un contatore interno di engagement dei personaggi durante la sessione, usato dal Custode per bilanciare il focus narrativo tra i partecipanti.
+Il sistema deve persistere separatamente, per ogni sessione, sia lo stato della sessione sia lo storico chat.
+
+
+
+
 Il sistema, per i messaggi del custode, mostra un "..." prima di scrivere il testo e poi applica un effetto macchina da scrivere
 Il sistema consegna i messaggi marcati come sussurri solo al giocatore target (sarà visibile solo nella sua area chat).
    
@@ -150,6 +172,7 @@ password: string - Password hash [obbligatorio]
 role: enum - Ruolo utente [obbligatorio] [player|admin]
 accountState: enum - Stato account [obbligatorio] [invited|attivo|disabilitato|eliminato]
 registrationDate: string - Data registrazione [obbligatorio] [ISO 8601]
+bubbleColor: string - Colore selezionato per le bolle chat [opzionale]
 
 Esempio: 
 {
@@ -206,14 +229,17 @@ STRUTTURA FILE DI UN TAVOLO
 ogni tavolo genere una cartella data/tables/{table-id}/
 che contiene:
 	- table.json (che contiene info sul tavolo)
-	- characters (con le schede dei PG)
+	- characters/ (con le schede dei PG)
 	- diary.txt (file di testo che riassume i fatti)
 	- world_state.json (che contiene lo stato corrente del mondo, le scene aperte, il focus di scena e il capitolo del modulo a cui i PG sono arrivati)
-	- una sottocartella sessions che contiene i dati di sessione
-	- una sottocartella active_scenes che contiene tutti le scene ancora attive
-	- una sottocartella closed_scenes che contiene tutti le scene chiuse
-	- una sottocartella logs che contiene tutti i file log_session
+	- sessions/ che contiene i dati di sessione
+	- active_scenes/ che contiene tutti le scene ancora attive
+	- closed_scenes/ che contiene tutti le scene chiuse
+	- logs/ che contiene tutti i file log_session
 
+La sottocartella sessions/ contiene:
+session_{session-id}.json per lo stato sessione
+chat_{session-id}.json per lo storico chat della sessione
 
 
 SCHEMA DATI PER UN TAVOLO
@@ -458,7 +484,6 @@ SCHEMA DATI PER UNA SESSIONE
 - state: enum - Stato sessione [obbligatorio] 
   [custode-pronto|primo-giocatore|sessione-iniziata|in-pausa|in-chiusura|terminata]
 - custodePhase: string - Fase corrente del ciclo Custode [opzionale] 
-  ["fase-1"|"fase-2"|"fase-3"|"fase-4"|"fase-4a"|"fase-4b"|"fase-4c"|"fase-5"|"fase-5a"|"fase-5b"|"fase-5c"|null]
 - focusGroupId: string - Gruppo attualmente in focus [opzionale]
 - startedAt: string - Timestamp inizio sessione [opzionale] [ISO 8601]
 - endedAt: string - Timestamp fine sessione [opzionale] [ISO 8601]
@@ -474,6 +499,18 @@ SCHEMA DATI PER UNA SESSIONE
 - pianoAzione: object|null - Piano azione parziale o completo della fase 4 corrente [opzionale]
 - lastMessageId: string - ID ultimo messaggio in chat (per gestione riconnessione) [opzionale]
     
+
+SCHEMA DATI FILE CHAT DI SESSIONE
+I messaggi di chat di una sessione sono persistiti in un file separato data/tables/{table-id}/sessions/chat_{session-id}.json
+
+id: string - Identificatore univoco messaggio [obbligatorio]
+timestamp: string - Timestamp messaggio [obbligatorio] [ISO 8601]
+enum - Tipo messaggio [obbligatorio] [normal|custode|whisper]
+from: string - Mittente [obbligatorio]
+fromName: string - Nome visualizzato mittente [obbligatorio]
+to: string|null - Email destinatario per i sussurri [opzionale]
+text: string - Contenuto testuale del messaggio [obbligatorio]
+tag : string [opzionale]
 
 I messaggi dei giocatori possono essere annotati con questi tag:
 [domanda al custode]
@@ -507,7 +544,7 @@ SCHEMA DATI PER UNA SCENA
       difficolta: string - Livello di difficolta [opzionale] ["facile", "normale", "difficile"]
       informazione: string - L'informazione rivelata dall'indizio [obbligatorio]
       porta_a: string - Cosa sblocca questo indizio [opzionale]
- summary: string - riepilogo della narrativa di questa scena una volta chiusa [opzionale]
+ progressione: string - Riassunto incrementale degli sviluppi della scena [opzionale]
  
 Il file scene sono persistenti nelle cartella
 data/tables/{table-id}/active_scenes se la scena è ancora attiva
@@ -716,12 +753,31 @@ Container principale (sotto la barra)
 +++Tab "Diario"
 +++Tab "Sessione"
 
-
-Varianti Label stato partita
-- Tavolo pronto: testo arancione, "Primo giocatore collegato - Aspettiamo 5 minuti e vediamo chi si collega"
-- Tutti pronti: testo verde, "Tutti pronti - Iniziamo"
+Il sistema deve mostrare nella parte alta della Sessione lo stato corrente della sessione ed eventuale countdown del timer di avvio:
+ Tavolo pronto: testo arancione, "Primo giocatore collegato - Aspettiamo 5 minuti e vediamo chi si collega"
+- Tutti pronti: testo verde, "In Sessione"
 - In chiusura: testo rosso pastello, "Si è fatto tardi - Sessione in chiusura"
-- Terminata: testo grigio, "Sessione terminata"
+- Terminata: testo grigio, "Sessione terminata, potete tornare in Lobby"
+
+La tab Statistiche deve mostrare:
+nome personaggio
+professione
+età
+caratteristiche
+Fortuna
+attributi derivati
+abilità comuni
+abilità professionali
+
+La tab Diario deve mostrare:
+diario di sessione condiviso (e sincronizzato con diary.txt)
+area note personali del giocatore modificabile e persistita nel campo notes della scheda PG
+
+La tab Sessione deve mostrare:
+lista dei presenti (formato Nome Giocatore (Nome PG) con colore scelto per i messaggi e stato di connessione (badge verde o rosso)
+indicazione dei giocatori che hanno votato "È tardi"
+selettore colore bolle messaggio (picker di 8 colori prestabiliti)
+pulsante di voto "È Tardi"
 
 
 Struttura Container chat (scroll verticale)
@@ -742,6 +798,7 @@ Struttura Container bolla Messaggio (colore distintivo per autore)
 - Sussurro: colore player + badge "sussurri", testo corsivo
 - Da recuperare: badge "da recuperare", sfondo leggermente evidenziato
 - Custode: header fisso "Custode", effetto typing, no colore personalizzato (usa colore sistema)
+Il sistema deve mostrare un indicatore di digitazione del Custode prima della comparsa dei messaggi del Custode.
 
 
 Container stato (barra orizzontale sopra textarea)
@@ -775,9 +832,6 @@ Mapping stato giocatore con gli elementi dell'interfaccia:
 - `fuori-scena`: disabilita Textarea e pulsante "Dichiara"
 
 
-Nella Tab "Statistiche" si deve mostrare la scheda del personaggio.
-Nella Tab "Diario" ci sono due aree di testo, quella in alto viene popolata dinamicamente con il contenuto del file "diario.txt" man mano che il custode l'aggiornerà. Nella textarea in basso il giocatore potrò prendere i propri appunti (da salvare nella scheda del PG)
-Nella Tab "Sessione" il sistema dovrà mostrare l'elenco dei "presenti", sotto un picker di colori prestabiliti da usare come colore personalizzato per le bolle messaggi, e infine, in basso nella scheda il tasto "E' Tardi". Con un badge rosso se non è connesso, e verde se connesso. Ad ogni presente sarà associato un icon "è tardi" qualora sia stato premuto il tasto corrispondente.
 
   
 
