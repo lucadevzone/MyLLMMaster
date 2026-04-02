@@ -40,6 +40,24 @@ const STATE_BADGE = {
   disabled: 'badge-gray',
   archived: 'badge-gray'
 }
+const SESSION_STATE_LABELS = {
+  'custode-pronto': 'Custode pronto',
+  'primo-giocatore': 'Primo giocatore',
+  'sessione-iniziata': 'Sessione in corso',
+  'player-paused': 'Pausa player',
+  'technical-pause': 'Pausa tecnica',
+  'in-chiusura': 'In chiusura',
+  'terminata': 'Terminata'
+}
+const SESSION_STATE_BADGE = {
+  'custode-pronto': 'badge-gray',
+  'primo-giocatore': 'badge-yellow',
+  'sessione-iniziata': 'badge-green',
+  'player-paused': 'badge-gray',
+  'technical-pause': 'badge-red',
+  'in-chiusura': 'badge-yellow',
+  'terminata': 'badge-gray'
+}
 const PLAYER_BADGE = {
   invited: 'badge-yellow',
   attivo: 'badge-green',
@@ -117,6 +135,17 @@ async function archiveTable(tableId) {
   try {
     await api.delete(`/tables/${tableId}`)
     tables.value = tables.value.filter(t => t.id !== tableId)
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+async function resumeCustode(tableId) {
+  try {
+    const result = await api.post(`/tables/${tableId}/resume-custode`, {})
+    const idx = tables.value.findIndex(t => t.id === tableId)
+    if (idx !== -1) tables.value[idx] = result.table
+    actionMsg.value = 'Custode ripreso'
   } catch (e) {
     error.value = e.message
   }
@@ -235,6 +264,9 @@ function togglePlayer(email) {
                 <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;flex-wrap:wrap">
                   <span style="font-weight:600">{{ getModule(table.moduleId)?.title || table.moduleId }}</span>
                   <span :class="['badge', STATE_BADGE[table.state]]">{{ STATE_LABELS[table.state] }}</span>
+                  <span v-if="table.sessionState" :class="['badge', SESSION_STATE_BADGE[table.sessionState] || 'badge-gray']">
+                    {{ SESSION_STATE_LABELS[table.sessionState] || table.sessionState }}
+                  </span>
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem">
                   <span v-for="email in table.invitedPlayers" :key="email"
@@ -247,10 +279,16 @@ function togglePlayer(email) {
                   Prossima sessione: {{ table.plannedSession.date }} {{ table.plannedSession.time }}
                   ({{ table.plannedSession.duration }} min)
                 </div>
+                <div v-if="table.custodePhase" style="font-size:0.8rem;color:var(--color-text-light);margin-top:0.25rem">
+                  Fase Custode: {{ table.custodePhase }}
+                </div>
               </div>
               <div style="display:flex;flex-direction:column;gap:0.4rem;align-items:flex-end">
                 <button v-if="table.state === 'ready'" class="btn btn-primary btn-sm" @click="openPlanSession(table.id)">
                   Pianifica Sessione
+                </button>
+                <button v-if="table.sessionState === 'technical-pause'" class="btn btn-secondary btn-sm" @click="resumeCustode(table.id)">
+                  Riprendi Custode
                 </button>
                 <button class="btn btn-warning btn-sm" @click="resetTable(table.id)" title="Cancella sessione e scene, mantieni i PG">Reset</button>
                 <button class="btn btn-danger btn-sm" @click="archiveTable(table.id)">Archivia</button>

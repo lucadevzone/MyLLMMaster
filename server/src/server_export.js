@@ -6,6 +6,7 @@ const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
 const { ensureDataDirs } = require('./utils/dataInit')
+const { setIO } = require('./socket/runtime')
 
 const app = express()
 const httpServer = http.createServer(app)
@@ -13,6 +14,7 @@ const httpServer = http.createServer(app)
 const io = new Server(httpServer, {
   cors: { origin: '*', methods: ['GET', 'POST'] }
 })
+setIO(io)
 
 app.use(cors({ origin: '*' }))
 app.use(express.json())

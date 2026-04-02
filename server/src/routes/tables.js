@@ -6,6 +6,9 @@ const fs = require('fs').promises
 const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileStore')
 const { DATA_DIR, FILES } = require('../utils/dataInit')
 const { authMiddleware, adminOnly, playerOnly } = require('../middleware/auth')
+const sessionService = require('../services/sessionService')
+const custodeEngine = require('../services/custodeEngine')
+const { getIO } = require('../socket/runtime')
 
 const TABLES_DIR = path.join(DATA_DIR, 'tables')
 
@@ -28,6 +31,41 @@ async function getAllTables() {
     }
   }
   return tables
+}
+
+async function getCurrentSessionMeta(tableId) {
+  const active = sessionService.getSession(tableId)?.session
+  if (active && active.state !== 'terminata') {
+    return {
+      sessionState: active.state,
+      custodePhase: active.custodePhase,
+      sessionNumber: active.sessionNumber
+    }
+  }
+
+  const sessionsDir = path.join(TABLES_DIR, tableId, 'sessions')
+  try {
+    const files = await fs.readdir(sessionsDir)
+    const sessionFiles = files.filter(f => f.startsWith('session_') && f.endsWith('.json'))
+    for (const file of sessionFiles) {
+      const session = await readJSON(path.join(sessionsDir, file))
+      if (session.state !== 'terminata') {
+        return {
+          sessionState: session.state,
+          custodePhase: session.custodePhase,
+          sessionNumber: session.sessionNumber
+        }
+      }
+    }
+  } catch {
+    // nessuna sessione
+  }
+
+  return { sessionState: null, custodePhase: null, sessionNumber: null }
+}
+
+async function attachSessionMeta(table) {
+  return { ...table, ...(await getCurrentSessionMeta(table.id)) }
 }
 
 function isSessionDue(table) {
@@ -66,7 +104,7 @@ router.get('/', authMiddleware, async (req, res) => {
   const raw = await getAllTables()
   const tables = await Promise.all(raw.map(checkAndOpenTable))
   if (req.user.role === 'admin') {
-    return res.json(tables)
+    return res.json(await Promise.all(tables.map(attachSessionMeta)))
   }
   const myTables = tables.filter(t =>
     t.invitedPlayers.includes(req.user.email) && t.state !== 'archived'
@@ -79,6 +117,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
   const filePath = await getTablePath(req.params.id)
   if (!await fileExists(filePath)) return res.status(404).json({ error: 'Tavolo non trovato' })
   const table = await checkAndOpenTable(await readJSON(filePath))
+  if (req.user.role === 'admin') return res.json(await attachSessionMeta(table))
   res.json(table)
 })
 
@@ -177,10 +216,8 @@ router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
   if (!await fileExists(tablePath)) return res.status(404).json({ error: 'Tavolo non trovato' })
 
   // Ferma engine e sessione in-memory
-  const custodeEngine = require('../services/custodeEngine')
-  const svc = require('../services/sessionService')
   custodeEngine.destroy(tableId)
-  svc.destroySession(tableId)
+  sessionService.destroySession(tableId)
 
   const tableDir = path.join(TABLES_DIR, tableId)
 
@@ -202,6 +239,36 @@ router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
   await writeJSON(tablePath, table)
 
   res.json({ message: 'Tavolo resettato', table })
+})
+
+// POST /api/tables/:id/resume-custode  (solo admin)
+router.post('/:id/resume-custode', authMiddleware, adminOnly, async (req, res) => {
+  const tableId = req.params.id
+  const tablePath = path.join(TABLES_DIR, tableId, 'table.json')
+  if (!await fileExists(tablePath)) return res.status(404).json({ error: 'Tavolo non trovato' })
+
+  const ctx = sessionService.getSession(tableId)
+  if (!ctx) {
+    return res.status(409).json({ error: 'Nessuna sessione attiva in memoria per questo tavolo' })
+  }
+  if (ctx.session.state !== 'technical-pause') {
+    return res.status(409).json({ error: 'Il Custode può essere ripreso solo da una pausa tecnica' })
+  }
+
+  sessionService.resumeAllTimers(tableId)
+  await sessionService.updateSessionState(tableId, 'sessione-iniziata')
+
+  const io = getIO()
+  if (io) {
+    io.to(`table:${tableId}`).emit('session:status-update', { state: 'sessione-iniziata' })
+    io.to(`table:${tableId}`).emit('session:toast', { type: 'connect', text: 'Custode ripreso' })
+  }
+
+  const engine = custodeEngine.getOrCreate(tableId, io)
+  engine.resume().catch(console.error)
+
+  const table = await attachSessionMeta(await readJSON(tablePath))
+  res.json({ message: 'Custode ripreso', table })
 })
 
 router.get('/:id/characters', authMiddleware, async (req, res) => {

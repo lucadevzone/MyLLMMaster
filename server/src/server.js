@@ -6,6 +6,7 @@ const cors = require('cors')
 const path = require('path')
 
 const { ensureDataDirs } = require('./utils/dataInit')
+const { setIO } = require('./socket/runtime')
 
 const app = express()
 const httpServer = http.createServer(app)
@@ -16,6 +17,7 @@ const io = new Server(httpServer, {
     methods: ['GET', 'POST']
   }
 })
+setIO(io)
 
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }))
 app.use(express.json())

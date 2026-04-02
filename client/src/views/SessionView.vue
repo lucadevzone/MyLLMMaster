@@ -381,21 +381,6 @@ function msgBadge(msg) {
                   cursor:'pointer'
                 }" />
             </div>
-
-            <!-- Controlli admin Custode -->
-            <template v-if="auth.user?.role === 'admin'">
-              <div style="font-size:0.75rem;font-weight:600;color:var(--color-text-light);margin-bottom:0.5rem;margin-top:1rem">
-                CUSTODE
-              </div>
-              <div v-if="sess.custodePhase" style="font-size:0.8rem;color:var(--color-text-light);margin-bottom:0.5rem">
-                Fase: {{ sess.custodePhase }}
-              </div>
-              <button class="btn btn-secondary" style="width:100%;margin-bottom:1rem"
-                @click="sess.riprendiCustode()">
-                Riprendi Custode
-              </button>
-            </template>
-
             <button class="btn btn-danger" style="width:100%"
               :disabled="sess.myState?.voteTardi"
               @click="sess.voteTardi()">
