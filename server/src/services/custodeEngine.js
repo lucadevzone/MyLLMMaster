@@ -252,26 +252,33 @@ async function prepareSessionBootstrap(tableId, options = {}) {
   const primoCapitolo = mod.chapters[0]?.content || ''
   if (!primoCapitolo.trim()) return false
 
-  const [ambientazioneResult, avvioResult] = await Promise.allSettled([
-    ollama.runTextPhase(heavyModel, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo }),
-    ollama.runTextPhase(heavyModel, 'prepara_avviare_la_sessione.md', { primo_capitolo: primoCapitolo })
-  ])
+  let ambientazioneText = ''
+  let avvioText = ''
+  let bootstrapError = null
 
-  const writes = []
-  const ambientazioneText = ambientazioneResult.status === 'fulfilled'
-    ? normalizeNarrativeText(ambientazioneResult.value)
-    : ''
-  const avvioText = avvioResult.status === 'fulfilled'
-    ? normalizeNarrativeText(avvioResult.value)
-    : ''
+  try {
+    ambientazioneText = normalizeNarrativeText(
+      await ollama.runTextPhase(heavyModel, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo })
+    )
+    if (ambientazioneText) {
+      await writePreparedFile(tableId, PREP_FILES.ambientazione, ambientazioneText)
+    }
+  } catch (err) {
+    bootstrapError = err
+  }
 
-  if (ambientazioneText) {
-    writes.push(writePreparedFile(tableId, PREP_FILES.ambientazione, ambientazioneText))
+  if (!bootstrapError) {
+    try {
+      avvioText = normalizeNarrativeText(
+        await ollama.runTextPhase(heavyModel, 'prepara_avviare_la_sessione.md', { primo_capitolo: primoCapitolo })
+      )
+      if (avvioText) {
+        await writePreparedFile(tableId, PREP_FILES.avvio, avvioText)
+      }
+    } catch (err) {
+      bootstrapError = err
+    }
   }
-  if (avvioText) {
-    writes.push(writePreparedFile(tableId, PREP_FILES.avvio, avvioText))
-  }
-  await Promise.all(writes)
 
   const bootstrapReady = !!ambientazioneText && !!avvioText
 
@@ -283,12 +290,7 @@ async function prepareSessionBootstrap(tableId, options = {}) {
     return true
   }
 
-  const firstFailure = ambientazioneResult.status === 'rejected'
-    ? ambientazioneResult.reason
-    : avvioResult.status === 'rejected'
-      ? avvioResult.reason
-      : null
-  if (firstFailure) throw firstFailure
+  if (bootstrapError) throw bootstrapError
   return false
 }
 
