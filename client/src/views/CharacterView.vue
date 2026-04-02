@@ -13,6 +13,8 @@ const auth = useAuthStore()
 const tableId = route.params.tableId
 
 const professions = ref([])
+const catalogArmi = ref([])
+const catalogEquipaggiamento = ref([])
 const existingChar = ref(null)
 const table = ref(null)
 const loading = ref(true)
@@ -29,6 +31,8 @@ const background = ref('')
 const descrizionePersonale = ref('')
 const armiECombattimento = ref([])
 const equipaggiamento = ref([])
+const selectedWeaponName = ref('')
+const selectedEquipmentName = ref('')
 
 // CoC stats
 const characteristics = ref({})
@@ -58,12 +62,16 @@ const ABILIA_COMUNI_LABELS = {
 
 onMounted(async () => {
   try {
-    const [profList, tableData] = await Promise.all([
+    const [profList, tableData, armiData, equipData] = await Promise.all([
       api.get('/professions'),
-      api.get(`/tables/${tableId}`)
+      api.get(`/tables/${tableId}`),
+      api.get('/catalog/armi'),
+      api.get('/catalog/equipaggiamento')
     ])
     professions.value = profList
     table.value = tableData
+    catalogArmi.value = armiData
+    catalogEquipaggiamento.value = equipData
     try {
       existingChar.value = await api.get(`/tables/${tableId}/characters/mine`)
       loadFromChar(existingChar.value)
@@ -96,14 +104,11 @@ function loadFromChar(char) {
 }
 
 function addWeapon() {
-  armiECombattimento.value.push({
-    nome: '',
-    abilita: '',
-    danno: '',
-    gittata: '',
-    colpi: null,
-    malfunzionamento: ''
-  })
+  if (!selectedWeaponName.value) return
+  const weapon = catalogArmi.value.find(item => item.nome === selectedWeaponName.value)
+  if (!weapon) return
+  armiECombattimento.value.push({ ...weapon })
+  selectedWeaponName.value = ''
 }
 
 function removeWeapon(index) {
@@ -111,11 +116,11 @@ function removeWeapon(index) {
 }
 
 function addEquipment() {
-  equipaggiamento.value.push({
-    nome: '',
-    quantita: 1,
-    descrizione: ''
-  })
+  if (!selectedEquipmentName.value) return
+  const item = catalogEquipaggiamento.value.find(entry => entry.nome === selectedEquipmentName.value)
+  if (!item) return
+  equipaggiamento.value.push({ nome: item.nome })
+  selectedEquipmentName.value = ''
 }
 
 function removeEquipment(index) {
@@ -173,16 +178,12 @@ async function save() {
           abilita: arma.abilita.trim(),
           danno: arma.danno.trim(),
           gittata: arma.gittata?.trim() || '',
-          colpi: arma.colpi ? Number(arma.colpi) : null,
-          malfunzionamento: arma.malfunzionamento?.trim() || ''
+          attacchi: arma.attacchi != null ? Number(arma.attacchi) : null,
+          munizioni: arma.munizioni != null && arma.munizioni !== '' ? Number(arma.munizioni) : null
         })),
       equipaggiamento: equipaggiamento.value
         .filter(item => item.nome?.trim())
-        .map(item => ({
-          nome: item.nome.trim(),
-          quantita: Number(item.quantita) || 1,
-          descrizione: item.descrizione?.trim() || ''
-        }))
+        .map(item => ({ nome: item.nome.trim() }))
     }
     await api.post(`/tables/${tableId}/characters`, payload)
     saveMsg.value = 'Personaggio salvato!'
@@ -317,7 +318,15 @@ async function save() {
           <div class="card" style="margin-bottom:1rem">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
               <h3 class="section-title" style="margin-bottom:0">Armi e Combattimento</h3>
-              <button v-if="canCreate" class="btn btn-secondary btn-sm" @click="addWeapon">+ Aggiungi Arma</button>
+              <div v-if="canCreate" style="display:flex;gap:0.5rem;align-items:center">
+                <select v-model="selectedWeaponName" class="form-control" style="min-width:240px">
+                  <option value="">Seleziona arma...</option>
+                  <option v-for="arma in catalogArmi" :key="arma.nome" :value="arma.nome">
+                    {{ arma.nome }} · {{ arma.danno }}
+                  </option>
+                </select>
+                <button class="btn btn-secondary btn-sm" @click="addWeapon">+ Aggiungi Arma</button>
+              </div>
             </div>
 
             <div v-if="armiECombattimento.length === 0" style="color:var(--color-text-light);font-size:0.9rem">
@@ -331,15 +340,15 @@ async function save() {
               </div>
 
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:0.75rem">
-                <input v-model="arma.nome" class="form-control" :disabled="readOnly" placeholder="Nome arma" />
-                <input v-model="arma.abilita" class="form-control" :disabled="readOnly" placeholder="Abilità associata" />
-                <input v-model="arma.danno" class="form-control" :disabled="readOnly" placeholder="Danno" />
+                <input :value="arma.nome" class="form-control" disabled placeholder="Nome arma" />
+                <input :value="arma.abilita" class="form-control" disabled placeholder="Abilità associata" />
+                <input :value="arma.danno" class="form-control" disabled placeholder="Danno" />
               </div>
 
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem">
-                <input v-model="arma.gittata" class="form-control" :disabled="readOnly" placeholder="Gittata" />
-                <input v-model.number="arma.colpi" type="number" class="form-control" :disabled="readOnly" min="0" placeholder="Colpi" />
-                <input v-model="arma.malfunzionamento" class="form-control" :disabled="readOnly" placeholder="Malfunzionamento" />
+                <input :value="arma.gittata || ''" class="form-control" disabled placeholder="Gittata" />
+                <input :value="arma.attacchi ?? ''" class="form-control" disabled placeholder="Attacchi" />
+                <input :value="arma.munizioni ?? ''" class="form-control" disabled placeholder="Munizioni" />
               </div>
             </div>
           </div>
@@ -348,7 +357,15 @@ async function save() {
           <div class="card" style="margin-bottom:1rem">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
               <h3 class="section-title" style="margin-bottom:0">Equipaggiamento</h3>
-              <button v-if="canCreate" class="btn btn-secondary btn-sm" @click="addEquipment">+ Aggiungi Oggetto</button>
+              <div v-if="canCreate" style="display:flex;gap:0.5rem;align-items:center">
+                <select v-model="selectedEquipmentName" class="form-control" style="min-width:240px">
+                  <option value="">Seleziona oggetto...</option>
+                  <option v-for="item in catalogEquipaggiamento" :key="item.nome" :value="item.nome">
+                    {{ item.nome }}
+                  </option>
+                </select>
+                <button class="btn btn-secondary btn-sm" @click="addEquipment">+ Aggiungi Oggetto</button>
+              </div>
             </div>
 
             <div v-if="equipaggiamento.length === 0" style="color:var(--color-text-light);font-size:0.9rem">
@@ -361,18 +378,7 @@ async function save() {
                 <button v-if="canCreate" class="btn btn-danger btn-sm" @click="removeEquipment(index)">Rimuovi</button>
               </div>
 
-              <div style="display:grid;grid-template-columns:2fr 1fr;gap:0.75rem;margin-bottom:0.75rem">
-                <input v-model="item.nome" class="form-control" :disabled="readOnly" placeholder="Nome oggetto" />
-                <input v-model.number="item.quantita" type="number" class="form-control" :disabled="readOnly" min="1" placeholder="Quantità" />
-              </div>
-
-              <textarea
-                v-model="item.descrizione"
-                class="form-control"
-                rows="2"
-                :disabled="readOnly"
-                placeholder="Descrizione opzionale"
-              />
+              <input :value="item.nome" class="form-control" disabled placeholder="Nome oggetto" />
             </div>
           </div>
 

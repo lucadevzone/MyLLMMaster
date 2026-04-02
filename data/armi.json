@@ -1,0 +1,42 @@
+[
+  {
+    "nome": "Revolver .38",
+    "abilita": "Armi da Fuoco (Pistole)",
+    "danno": "1d10",
+    "gittata": "15 m",
+    "attacchi": 1,
+    "munizioni": 6
+  },
+  {
+    "nome": "Colt M1911",
+    "abilita": "Armi da Fuoco (Pistole)",
+    "danno": "1d10+2",
+    "gittata": "15 m",
+    "attacchi": 1,
+    "munizioni": 7
+  },
+  {
+    "nome": "Fucile da caccia",
+    "abilita": "Armi da Fuoco (Fucili)",
+    "danno": "4d6/2d6",
+    "gittata": "10/20/50 m",
+    "attacchi": 1,
+    "munizioni": 2
+  },
+  {
+    "nome": "Coltello",
+    "abilita": "Combattimento (Coltello)",
+    "danno": "1d4+db",
+    "gittata": "contatto",
+    "attacchi": 1,
+    "munizioni": null
+  },
+  {
+    "nome": "Manganello",
+    "abilita": "Combattimento (Mazza/Manganello)",
+    "danno": "1d8+db",
+    "gittata": "contatto",
+    "attacchi": 1,
+    "munizioni": null
+  }
+]

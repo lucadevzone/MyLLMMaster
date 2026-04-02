@@ -24,6 +24,7 @@ app.use('/api/users', require('./routes/users'))
 app.use('/api/modules', require('./routes/modules'))
 app.use('/api/tables', require('./routes/tables'))
 app.use('/api/professions', require('./routes/professions'))
+app.use('/api/catalog', require('./routes/catalog'))
 app.use('/api/session', require('./routes/session'))
 
 require('./socket/index')(io)
