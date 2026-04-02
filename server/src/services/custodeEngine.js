@@ -175,6 +175,12 @@ function hasActiveTypingInFocus(typingPlayers, focusParticipants = []) {
   })
 }
 
+function normalizeNarrativeText(text) {
+  if (typeof text === 'string') return text.trim()
+  if (text == null) return ''
+  return String(text).trim()
+}
+
 // ── Custode per tavolo ────────────────────────────────────────────────────────
 
 class CustodeEngine {
@@ -194,17 +200,23 @@ class CustodeEngine {
 
   async emitNarrative(text, options = {}) {
     const tableId = this.tableId
+    const safeText = normalizeNarrativeText(text)
+
+    if (!safeText) {
+      console.warn(`[Custode] Messaggio narrativo vuoto per tavolo ${tableId}`)
+      return
+    }
 
     // Typing indicator
     this.io.to(this.room).emit('session:custode-typing', true)
-    await sleep(Math.min(text.length * 20, 2000))   // simula latenza
+    await sleep(Math.min(safeText.length * 20, 2000))   // simula latenza
 
     const msg = await svc.addMessage(tableId, {
       type: options.type || 'custode',
       from: 'custode',
       fromName: 'Custode',
       to: options.to || null,
-      text
+      text: safeText
     })
 
     this.io.to(this.room).emit('session:custode-typing', false)
