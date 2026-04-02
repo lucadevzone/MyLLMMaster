@@ -254,17 +254,26 @@ function setTimer(tableId, name, ms, callback) {
   const ctx = getSession(tableId)
   if (!ctx) return
   clearTimer(tableId, name)
-  ctx.timers[name] = setTimeout(() => {
+  const timer = {
+    callback,
+    remainingMs: ms,
+    startedAt: Date.now(),
+    paused: false,
+    handle: null
+  }
+  timer.handle = setTimeout(() => {
     delete ctx.timers[name]
     callback()
   }, ms)
+  ctx.timers[name] = timer
 }
 
 function clearTimer(tableId, name) {
   const ctx = getSession(tableId)
   if (!ctx) return
-  if (ctx.timers[name]) {
-    clearTimeout(ctx.timers[name])
+  const timer = ctx.timers[name]
+  if (timer) {
+    if (timer.handle) clearTimeout(timer.handle)
     delete ctx.timers[name]
   }
 }
@@ -272,8 +281,38 @@ function clearTimer(tableId, name) {
 function clearAllTimers(tableId) {
   const ctx = getSession(tableId)
   if (!ctx) return
-  Object.values(ctx.timers).forEach(t => clearTimeout(t))
+  Object.values(ctx.timers).forEach(timer => {
+    if (timer.handle) clearTimeout(timer.handle)
+  })
   ctx.timers = {}
+}
+
+function pauseAllTimers(tableId) {
+  const ctx = getSession(tableId)
+  if (!ctx) return
+  Object.values(ctx.timers).forEach(timer => {
+    if (timer.paused || !timer.handle) return
+    const elapsed = Date.now() - timer.startedAt
+    timer.remainingMs = Math.max(0, timer.remainingMs - elapsed)
+    clearTimeout(timer.handle)
+    timer.handle = null
+    timer.paused = true
+  })
+}
+
+function resumeAllTimers(tableId) {
+  const ctx = getSession(tableId)
+  if (!ctx) return
+  for (const [name, timer] of Object.entries(ctx.timers)) {
+    if (!timer.paused) continue
+    const delay = Math.max(0, timer.remainingMs)
+    timer.startedAt = Date.now()
+    timer.paused = false
+    timer.handle = setTimeout(() => {
+      delete ctx.timers[name]
+      timer.callback()
+    }, delay)
+  }
 }
 
 function destroySession(tableId) {
@@ -296,6 +335,8 @@ module.exports = {
   setTimer,
   clearTimer,
   clearAllTimers,
+  pauseAllTimers,
+  resumeAllTimers,
   destroySession,
   saveSession
 }

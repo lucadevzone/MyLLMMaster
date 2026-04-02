@@ -86,7 +86,8 @@ module.exports = function setupSocket(io) {
           timerMsForClient = TIMER_AVVIO_MS
           svc.setTimer(tableId, 'avvio', TIMER_AVVIO_MS, () => avviaSessione(tableId))
         }
-      } else if (session.state === 'in-pausa') {
+      } else if (session.state === 'player-paused') {
+        svc.resumeAllTimers(tableId)
         await svc.updateSessionState(tableId, 'sessione-iniziata')
         doResume = true
       }
@@ -223,6 +224,13 @@ module.exports = function setupSocket(io) {
       if (socket.user.role !== 'admin') {
         return socket.emit('session:error', 'Solo l\'admin può riprendere il Custode')
       }
+      const ctx = svc.getSession(tableId)
+      if (!ctx || ctx.session.state !== 'technical-pause') {
+        return socket.emit('session:error', 'Il Custode può essere ripreso solo da una pausa tecnica')
+      }
+      svc.resumeAllTimers(tableId)
+      await svc.updateSessionState(tableId, 'sessione-iniziata')
+      io.to(`table:${tableId}`).emit('session:status-update', { state: 'sessione-iniziata' })
       const engine = custodeEngine.getOrCreate(tableId, io)
       engine.resume().catch(console.error)
       io.to(`table:${tableId}`).emit('session:toast', { type: 'connect', text: 'Custode ripreso' })
@@ -259,9 +267,10 @@ module.exports = function setupSocket(io) {
       // Se tutti disconnessi → metti in pausa
       const anyConnected = ctx.session.players.some(p => p.connected)
       if (!anyConnected && ctx.session.state === 'sessione-iniziata') {
-        svc.clearAllTimers(tableId)
-        await svc.updateSessionState(tableId, 'in-pausa')
-        io.to(`table:${tableId}`).emit('session:status-update', { state: 'in-pausa' })
+        svc.pauseAllTimers(tableId)
+        custodeEngine.pause(tableId)
+        await svc.updateSessionState(tableId, 'player-paused')
+        io.to(`table:${tableId}`).emit('session:status-update', { state: 'player-paused' })
       }
     }
   })

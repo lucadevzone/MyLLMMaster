@@ -27,7 +27,8 @@ const SESSION_LABELS = {
   'custode-pronto':   { text: 'In attesa del primo giocatore…',              color: '#92400e' },
   'primo-giocatore':  { text: 'Primo giocatore collegato – Aspettiamo 5 minuti', color: '#d97706' },
   'sessione-iniziata':{ text: 'Sessione in corso',                           color: '#16a34a' },
-  'in-pausa':         { text: 'Sessione in pausa',                           color: '#6b7280' },
+  'player-paused':    { text: 'Sessione in pausa – nessun giocatore connesso', color: '#6b7280' },
+  'technical-pause':  { text: 'Sessione in pausa tecnica',                   color: '#6b7280' },
   'in-chiusura':      { text: 'Si è fatto tardi – Sessione in chiusura',     color: '#dc2626' },
   'terminata':        { text: 'Sessione terminata',                          color: '#6b7280' }
 }

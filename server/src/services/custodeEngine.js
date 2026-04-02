@@ -229,10 +229,7 @@ class CustodeEngine {
         new Error('Modello LLM non configurato sul tavolo'),
         { isLlmError: true }
       )
-      await svc.updateSessionState(this.tableId, 'in-pausa')
-      this.io.to(this.room).emit('session:status-update', { state: 'in-pausa' })
-      await this.emitError('Modello LLM non configurato – vai in Gestione Tavoli e seleziona un modello')
-      this.paused = true
+      await this.pauseForTechnicalIssue('Modello LLM non configurato – vai in Gestione Tavoli e seleziona un modello')
       throw err
     }
 
@@ -240,13 +237,22 @@ class CustodeEngine {
       return await ollama.runPhase(model, promptFile, vars)
     } catch (err) {
       if (err.isLlmError) {
-        await svc.updateSessionState(this.tableId, 'in-pausa')
-        this.io.to(this.room).emit('session:status-update', { state: 'in-pausa' })
-        await this.emitError(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
-        this.paused = true
+        await this.pauseForTechnicalIssue(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
       }
       throw err
     }
+  }
+
+  async pauseForTechnicalIssue(message) {
+    svc.pauseAllTimers(this.tableId)
+    await svc.updateSessionState(this.tableId, 'technical-pause')
+    this.io.to(this.room).emit('session:status-update', { state: 'technical-pause' })
+    await this.emitError(message)
+    this.paused = true
+  }
+
+  abortIfPaused() {
+    return this.paused
   }
 
   // ── Contesto comune ───────────────────────────────────────────────────────
@@ -279,6 +285,7 @@ class CustodeEngine {
       await this.emitPhaseChange('fase-1a')
       const vars = { primo_capitolo: mod.chapters[0]?.content || '', schede_PG }
       const result = await this.llm('fase1a_prima_sessione.md', vars)
+      if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
       if (result.diary) await appendDiary(this.tableId, result.diary)
 
@@ -298,6 +305,7 @@ class CustodeEngine {
         scena_in_focus: focusScene ? JSON.stringify(focusScene) : ''
       }
       const result = await this.llm('fase1b_sessioni_successive.md', vars)
+      if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
       if (result.diary) await appendDiary(this.tableId, result.diary)
     }
@@ -320,6 +328,7 @@ class CustodeEngine {
       capitolo_corrente: capitolo,
       suggerimento_scena: suggerimento || 'scena introduttiva'
     })
+    if (this.abortIfPaused()) return null
 
     // Assegna ID progressivo e inizializza progressione
     result.id_scena = await nextSceneId(this.tableId)
@@ -368,6 +377,7 @@ class CustodeEngine {
         engagement: JSON.stringify(engagement),
         scene_attive: JSON.stringify(activeScenes)
       }, true)  // light LLM
+      if (this.abortIfPaused()) return null
 
       worldState.focusScene = result3a.focus_scene
       await saveWorldState(this.tableId, worldState)
@@ -386,6 +396,7 @@ class CustodeEngine {
       engagement: JSON.stringify(engagement),
       storia_recente: recentMsgs
     })
+    if (this.abortIfPaused()) return null
 
     // Aggiorna focusScene se la LLM l'ha confermata/cambiata
     if (result.focus_scene && result.focus_scene !== worldState.focusScene) {
@@ -442,6 +453,7 @@ class CustodeEngine {
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno',
       world_state: JSON.stringify(worldState)
     })
+    if (this.abortIfPaused()) return null
 
     // result è l'array piano — conversione nomi → email
     const piano = pianoToEmails(Array.isArray(result) ? result : (result.piano || []), pgLookup)
@@ -492,6 +504,7 @@ class CustodeEngine {
       scena_focus: JSON.stringify(focusScene),
       world_state: JSON.stringify(worldState)
     })
+    if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
     const assigned = await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
     if (!assigned) {
@@ -511,6 +524,7 @@ class CustodeEngine {
       scena_focus: JSON.stringify(focusScene),
       world_state: JSON.stringify(worldState)
     })
+    if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
     const assigned = await this.setPlayerTurn(data.pg_target, 'mio-turno-libero')
     if (!assigned) {
@@ -530,6 +544,7 @@ class CustodeEngine {
       scena_focus: JSON.stringify(focusScene),
       world_state: JSON.stringify(worldState)
     })
+    if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
     const assigned = await this.setPlayerTurn(data.pg_target, 'mio-turno-prova')
     if (!assigned) {
@@ -552,6 +567,7 @@ class CustodeEngine {
       world_state: JSON.stringify(worldState),
       schede_PG
     })
+    if (this.abortIfPaused()) return null
 
     await this.emitNarrative(result.narrativa)
 
@@ -624,6 +640,7 @@ class CustodeEngine {
       messaggi_recenti: recentMsgs,
       dettagli_divisione: JSON.stringify(data)
     })
+    if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
     // TODO: aggiorna world_state con nuovi gruppi/scene
     return { next: 'fase-3' }
@@ -639,6 +656,7 @@ class CustodeEngine {
       world_state: JSON.stringify(worldState),
       dettagli_ricongiungimento: JSON.stringify(data)
     })
+    if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
     // TODO: aggiorna world_state unendo i gruppi
     return { next: 'fase-3' }
@@ -654,6 +672,7 @@ class CustodeEngine {
       world_state: JSON.stringify(worldState),
       dettagli_chiusura: JSON.stringify(data)
     })
+    if (this.abortIfPaused()) return null
 
     await this.emitNarrative(result.narrativa)
 
@@ -909,6 +928,11 @@ function getOrCreate(tableId, io) {
   return engines.get(tableId)
 }
 
+function pause(tableId) {
+  const engine = engines.get(tableId)
+  if (engine) engine.paused = true
+}
+
 function destroy(tableId) {
   const engine = engines.get(tableId)
   if (engine) {
@@ -918,4 +942,4 @@ function destroy(tableId) {
   engines.delete(tableId)
 }
 
-module.exports = { getOrCreate, destroy }
+module.exports = { getOrCreate, pause, destroy }
