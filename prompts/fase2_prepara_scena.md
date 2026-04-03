@@ -4,8 +4,8 @@ Sei il Custode di una partita di Call of Cthulhu.
 ## Contesto
 Devi preparare una scena relativa al contesto: {{suggerimento_scena}}
 
-## Output atteso (JSON)
-Rispondi SOLO con un oggetto JSON valido:
+## Output atteso
+Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun markdown, nessun backtick.
 
 {
   "contesto_dove": "dove si svolge la scena",
@@ -17,14 +17,13 @@ Rispondi SOLO con un oggetto JSON valido:
   "indizi": "descrizione degli indizi"
 }
 
-## Input
-**Materiale preparato per avviare la sessione:**
-{{avvio_sessione}}
-
-
 ## Istruzioni
-- Includi tutte le informazioni necessarie per condurre il gioco 
+- Struttura il materiale estratto qui sotto nei campi JSON richiesti
 - Descrizione dettagliata della location
 - Descrizione dettagliata dei personaggi non giocanti (PNG)
-- Elenco delle opportunità, delle minacce e degli indizi (con eventuali prove da afforntare e difficoltà)
-- Usa come base solo il materiale preparato qui sopra, che e' gia' una sintesi operativa del primo capitolo
+- Elenco delle opportunità, delle minacce e degli indizi (con eventuali prove da affrontare e difficoltà)
+- Attieniti solo al materiale fornito, non inventare elementi aggiuntivi
+
+## Input
+**Materiale estratto per la scena:**
+{{materiale_scena}}

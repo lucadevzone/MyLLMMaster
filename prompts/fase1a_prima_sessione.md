@@ -12,25 +12,6 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
   "diary": "sintesi della narrativa da aggiungere al diario (circa 1-2 frasi)"
 }
 
-Se nel materiale in input trovi schemi, metadati, grafi, tabelle, note di design, istruzioni per il custode, campi strutturati o altri blocchi non narrativi, IGNORALI completamente.
-Non devi riassumere la struttura del modulo.
-Non devi descrivere atti, capitoli, tag, autori, versioni, nodi o rivelazioni.
-Devi produrre solo:
-- una breve apertura narrativa atmosferica
-- una brevissima presentazione dei PG come protagonisti
-
-Prima di rispondere, ricava mentalmente solo questi due elementi:
-- atmosfera iniziale dell'avventura
-- nome, professione e aspetto dei PG
-Scarta tutto il resto.
-
-## Input (prima sessione)
-**Ambientazione preparata:**
-{{ambientazione}}
-
-**Schede PG:**
-{{schede_PG}}
-
 ## Istruzioni
 Questa è la prima sessione:
 - Introduci l'ambientazione raccontando luogo, atmosfera e anni in maniera evocativa
@@ -39,4 +20,11 @@ Questa è la prima sessione:
 - Non svelare nulla della trama e dei misteri
 - Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori
 - Non copiare né trasformare in output i campi strutturati del materiale di input
-- Usa come base solo l'ambientazione preparata qui sopra, che e' gia' una sintesi del primo capitolo
+- Usa come base solo il primo capitolo del modulo qui sotto
+
+## Input
+**Primo capitolo del modulo:**
+{{primo_capitolo}}
+
+**Schede PG:**
+{{schede_PG}}

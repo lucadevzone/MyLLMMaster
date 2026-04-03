@@ -10,8 +10,10 @@
         "properties": {
           "id": { "type": "string" },
           "tag": {
-            "type": "string",
-            "enum": ["dichiarazione", "domanda al custode", "discutendo tra PG", "fuori ruolo"]
+            "anyOf": [
+              { "type": "null" },
+              { "type": "string", "enum": ["dichiarazione", "domanda al custode", "discutendo tra PG", "fuori ruolo"] }
+            ]
           }
         },
         "additionalProperties": true

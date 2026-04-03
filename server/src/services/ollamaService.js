@@ -5,6 +5,7 @@ const path = require('path')
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 const MAX_RETRIES = parseInt(process.env.LLM_MAX_RETRIES || '3')
 const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000')
+const HEAVY_LLM_NUM_CTX = parseInt(process.env.HEAVY_LLM_NUM_CTX || '8192')
 const PROMPTS_DIR = path.join(__dirname, '../../../prompts')
 const PROMPT_SCHEMAS_DIR = path.join(PROMPTS_DIR, 'schemas')
 const LOGS_DIR = process.env.LLM_LOG_DIR || path.join(__dirname, '../../../logs')
@@ -64,7 +65,7 @@ async function loadPromptSchema(filename) {
 
 // ── Chiamata Ollama con retry ─────────────────────────────────────────────────
 
-async function callOllama(model, prompt, expectJson = true, phase = '?', schema = null) {
+async function callOllama(model, prompt, expectJson = true, phase = '?', schema = null, ollamaOptions = {}) {
   let lastError
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -73,6 +74,7 @@ async function callOllama(model, prompt, expectJson = true, phase = '?', schema 
 
       const body = { model, prompt, stream: false }
       if (expectJson) body.format = 'json'
+      if (Object.keys(ollamaOptions).length > 0) body.options = ollamaOptions
 
       const res = await fetch(`${OLLAMA_URL}/api/generate`, {
         method: 'POST',
@@ -227,17 +229,17 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 // ── API pubblica ───────────────────────────────────────────────────────────────
 
-async function runPhase(model, promptFile, vars) {
+async function runPhase(model, promptFile, vars, ollamaOptions = {}) {
   const [prompt, schema] = await Promise.all([
     loadPrompt(promptFile, vars),
     loadPromptSchema(promptFile)
   ])
-  return callOllama(model, prompt, true, promptFile, schema)
+  return callOllama(model, prompt, true, promptFile, schema, ollamaOptions)
 }
 
 async function runTextPhase(model, promptFile, vars) {
   const prompt = await loadPrompt(promptFile, vars)
-  return callOllama(model, prompt, false, promptFile, null)
+  return callOllama(model, prompt, false, promptFile, null, { num_ctx: HEAVY_LLM_NUM_CTX })
 }
 
 async function runTagging(model, promptFile, vars) {
@@ -248,4 +250,4 @@ async function runTagging(model, promptFile, vars) {
   return callOllama(model, prompt, true, promptFile, schema)
 }
 
-module.exports = { runPhase, runTextPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, LOG_FILE, LOGS_DIR }
+module.exports = { runPhase, runTextPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, LOG_FILE, LOGS_DIR, HEAVY_LLM_NUM_CTX }

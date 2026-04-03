@@ -202,11 +202,7 @@ function normalizeNarrativeText(text) {
 }
 
 async function isSessionBootstrapReady(tableId) {
-  const [ambientazione, avvio] = await Promise.all([
-    readPreparedFile(tableId, PREP_FILES.ambientazione),
-    readPreparedFile(tableId, PREP_FILES.avvio)
-  ])
-  return !!ambientazione.trim() && !!avvio.trim()
+  return true
 }
 
 async function promoteTableToReadyIfPossible(tableId, table = null) {
@@ -232,66 +228,14 @@ async function promoteTableToReadyIfPossible(tableId, table = null) {
 }
 
 async function prepareSessionBootstrap(tableId, options = {}) {
-  const { force = false } = options
   const table = await getTableOrNull(tableId)
   if (!table) return false
-  const mod = await getModule(table.moduleId)
-  const heavyModel = table['heavy-llmModel']
 
-  if (!heavyModel) return false
-
-  const [existingAmbientazione, existingAvvio] = await Promise.all([
-    readPreparedFile(tableId, PREP_FILES.ambientazione),
-    readPreparedFile(tableId, PREP_FILES.avvio)
-  ])
-
-  if (!force && table.custodeStarted && existingAmbientazione && existingAvvio) {
-    return true
-  }
-
-  const primoCapitolo = mod.chapters[0]?.content || ''
-  if (!primoCapitolo.trim()) return false
-
-  let ambientazioneText = ''
-  let avvioText = ''
-  let bootstrapError = null
-
-  try {
-    ambientazioneText = normalizeNarrativeText(
-      await ollama.runTextPhase(heavyModel, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo })
-    )
-    if (ambientazioneText) {
-      await writePreparedFile(tableId, PREP_FILES.ambientazione, ambientazioneText)
-    }
-  } catch (err) {
-    bootstrapError = err
-  }
-
-  if (!bootstrapError) {
-    try {
-      avvioText = normalizeNarrativeText(
-        await ollama.runTextPhase(heavyModel, 'prepara_avviare_la_sessione.md', { primo_capitolo: primoCapitolo })
-      )
-      if (avvioText) {
-        await writePreparedFile(tableId, PREP_FILES.avvio, avvioText)
-      }
-    } catch (err) {
-      bootstrapError = err
-    }
-  }
-
-  const bootstrapReady = !!ambientazioneText && !!avvioText
-
-  table.custodeStarted = bootstrapReady
+  table.custodeStarted = true
   table.updatedAt = new Date().toISOString()
   await writeJSON(path.join(tDir(tableId), 'table.json'), table)
-  if (bootstrapReady) {
-    await promoteTableToReadyIfPossible(tableId, table)
-    return true
-  }
-
-  if (bootstrapError) throw bootstrapError
-  return false
+  await promoteTableToReadyIfPossible(tableId, table)
+  return true
 }
 
 async function ensureSessionBootstrap(tableId) {
@@ -392,7 +336,8 @@ class CustodeEngine {
     }
 
     try {
-      return await ollama.runPhase(model, promptFile, vars)
+      const ollamaOptions = useLight ? {} : { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
+      return await ollama.runPhase(model, promptFile, vars, ollamaOptions)
     } catch (err) {
       if (err.isLlmError) {
         await this.pauseForTechnicalIssue(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
@@ -444,9 +389,8 @@ class CustodeEngine {
 
     if (isFirstSession) {
       await this.emitPhaseChange('fase-1a')
-      await ensureSessionBootstrap(this.tableId)
-      const ambientazionePreparata = await readPreparedFile(this.tableId, PREP_FILES.ambientazione)
-      const vars = { ambientazione: ambientazionePreparata, schede_PG }
+      const primo_capitolo = mod.chapters[0]?.content || ''
+      const vars = { primo_capitolo, schede_PG }
       const result = await this.llm('fase1a_prima_sessione.md', vars)
       if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
@@ -484,13 +428,21 @@ class CustodeEngine {
 
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
-    const { worldState } = await this.buildContext()
-    await ensureSessionBootstrap(this.tableId)
-    const avvioSessione = await readPreparedFile(this.tableId, PREP_FILES.avvio)
+    const { worldState, mod, table } = await this.buildContext()
+    const primo_capitolo = mod.chapters[0]?.content || ''
+    const suggerimento_scena = suggerimento || 'scena introduttiva'
+    const heavyModel = table['heavy-llmModel']
+
+    const materiale_scena = await ollama.runTextPhase(
+      heavyModel,
+      'fase2a_estrai_materiale.md',
+      { primo_capitolo, suggerimento_scena }
+    )
+    if (this.abortIfPaused()) return null
 
     const result = await this.llm('fase2_prepara_scena.md', {
-      avvio_sessione: avvioSessione,
-      suggerimento_scena: suggerimento || 'scena introduttiva'
+      materiale_scena,
+      suggerimento_scena
     })
     if (this.abortIfPaused()) return null
 

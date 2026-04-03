@@ -10,9 +10,9 @@
         "properties": {
           "pg": { "type": "string" },
           "stato": { "type": "string", "enum": ["dichiarazione", "prova", "incompleta", "assente"] },
-          "azione": { "type": "string" },
-          "abilita_o_caratteristica": { "type": "string" },
-          "difficolta": { "type": "string" },
+          "azione": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+          "abilita_o_caratteristica": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+          "difficolta": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
           "risultato_prova": {
             "anyOf": [
               { "type": "null" },
