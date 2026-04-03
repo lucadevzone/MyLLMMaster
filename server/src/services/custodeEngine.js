@@ -537,8 +537,8 @@ class CustodeEngine {
     )
     if (this.abortIfPaused()) return null
 
-    await this.emitThinking('fase-2')
-    const result = await this.llm('fase2_prepara_scena.md', {
+    await this.emitThinking('fase-2b')
+    const result = await this.llm('fase2b_prepara_scena.md', {
       materiale_scena,
       suggerimento_scena
     })
