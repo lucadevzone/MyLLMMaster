@@ -127,7 +127,12 @@ async function callOllama(model, prompt, expectJson = true, phase = '?', schema 
         lastError = new Error(`Timeout LLM (tentativo ${attempt})`)
         llmLog({ tableId, model, phase, attempt, prompt, response: '', error: lastError.message })
       }
-      console.warn(`[Ollama] ${lastError.message}`)
+      const isNetworkError = lastError.message === 'fetch failed' || lastError.cause?.code === 'ECONNREFUSED'
+      if (isNetworkError) {
+        console.warn(`[Ollama] Connessione fallita (${phase}, tentativo ${attempt}) — Ollama raggiungibile? URL: ${OLLAMA_URL}`)
+      } else {
+        console.warn(`[Ollama] ${phase} tentativo ${attempt}: ${lastError.message}`)
+      }
       if (attempt < MAX_RETRIES) await sleep(1000 * attempt)
     }
   }
