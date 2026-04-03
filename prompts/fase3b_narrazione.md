@@ -15,9 +15,12 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 }
 
 ## Istruzioni
-- Descrivi cosa succede nella scena e cosa vedono/sentono i PG
+- Descrivi il contesto: cosa sta succedendo nella scena e cosa vedono/sentono i PG
 - Tieni conto della progressione della scena per non ripetere quanto già accaduto
-- Puoi usare i sussurri per comunicare informazioni private a singoli giocatori (tuttavia usa questo strumento con parsimonia, in generale le informazioni sono pubbliche; usa il sussurro solo quando un unico PG può accedere a delle percezioni o a conoscenza pregressa.)
+- La maggior parte delle percezioni sono pubbliche, includile nella narrativa
+- Non includere informazioni/indizi/misteri che i PG ancora non conoscono (consulta diary e progressione per sicurezza)
+- Se parli di un PNG usa il nome solo se sei sicuro che i PG già ne conoscono il nome, altrimenti descrivi solo l'aspetto
+- Evita di usare i sussurri
 - Parla in italiano, in seconda persona plurale o singolare a seconda del contesto
 - Stile evocativo e atmosferico, coerente con Call of Cthulhu
 
@@ -27,6 +30,9 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 **Schede PG:**
 {{schede_PG}}
+
+**Diario delle sessioni precedenti:**
+{{diary}}
 
 **Cosa è successo finora in questa scena:**
 {{progressione}}

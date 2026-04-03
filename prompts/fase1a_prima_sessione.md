@@ -16,10 +16,11 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 Questa è la prima sessione:
 - Introduci l'ambientazione raccontando luogo, atmosfera e anni in maniera evocativa
 - Poi presenta brevente i PG come i protagonisti di questa avventura, menziona solo nome, professione e aspetto (se disponibile)
-- Il tuo stile deve essere evocativo e atmosferico
-- Non svelare nulla della trama e dei misteri
+- Prova a dare una motivazione del perchè i PG sono coinvolti
+
+- Usa uno stile evocativo e atmosferico ma senza esagerare
+- Non svelare nulla della trama, dei misteri e dei png che potrebbero incontrare
 - Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori
-- Non copiare né trasformare in output i campi strutturati del materiale di input
 - Usa come base solo l'ambientazione preparata qui sotto, che è una sintesi del primo capitolo
 
 ## Input
