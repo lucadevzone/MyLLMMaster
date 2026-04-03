@@ -77,6 +77,7 @@ function isSessionDue(table) {
 
 async function checkAndOpenTable(table) {
   if (table.state === 'ready' && isSessionDue(table) && await custodeEngine.isSessionBootstrapReady(table.id)) {
+    console.log(`[Table] Promozione ready→open: ${table.id}`)
     table.state = 'open'
     table.updatedAt = new Date().toISOString()
     await writeJSON(path.join(TABLES_DIR, table.id, 'table.json'), table)

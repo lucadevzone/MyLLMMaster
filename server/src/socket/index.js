@@ -61,7 +61,9 @@ module.exports = function setupSocket(io) {
       }
 
       // Carica / crea sessione
+      const isNewSession = !svc.getSession(tableId)
       await svc.getOrCreateSession(tableId, table.invitedPlayers)
+      if (isNewSession) console.log(`[Session] Nuova sessione creata per tavolo ${tableId}`)
 
       socket.tableId = tableId
       socket.join(`table:${tableId}`)
@@ -85,9 +87,11 @@ module.exports = function setupSocket(io) {
 
       if (session.state === 'custode-pronto' || session.state === 'primo-giocatore') {
         if (tutti) {
+          console.log(`[Session] Tutti i giocatori connessi — avvio immediato: ${tableId}`)
           svc.clearTimer(tableId, 'avvio')
           doAvvia = true
         } else if (session.state === 'custode-pronto') {
+          console.log(`[Session] Primo giocatore connesso — avvio con timer: ${tableId}`)
           await svc.updateSessionState(tableId, 'primo-giocatore')
           timerMsForClient = TIMER_AVVIO_MS
           svc.setTimer(tableId, 'avvio', TIMER_AVVIO_MS, () => avviaSessione(tableId))
@@ -300,6 +304,7 @@ module.exports = function setupSocket(io) {
   async function avviaSessione(tableId) {
     const bootstrapReady = await custodeEngine.isSessionBootstrapReady(tableId)
     if (!bootstrapReady) {
+      console.warn(`[Session] Bootstrap non pronto all'avvio — ${tableId}`)
       const table = await getTable(tableId)
       if (table?.state === 'open') {
         table.state = 'ready'

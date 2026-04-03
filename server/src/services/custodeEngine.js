@@ -481,8 +481,10 @@ class CustodeEngine {
       let result
       const cachePath = fase1aCachePath(this.tableId)
       if (await fileExists(cachePath)) {
+        console.log(`[Custode] fase1a: uso cache pre-generata per ${this.tableId}`)
         result = await readJSON(cachePath)
       } else {
+        console.log(`[Custode] fase1a: cache assente, chiamo LLM per ${this.tableId}`)
         const primo_capitolo = mod.chapters[0]?.content || ''
         const ambientazione = await ensureModuleAmbientazione(
           table.moduleId, primo_capitolo, table['heavy-llmModel'], this.tableId
