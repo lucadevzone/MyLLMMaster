@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../utils/api'
 import AppHeader from '../components/AppHeader.vue'
@@ -11,6 +11,7 @@ const diaryByTable = ref({})
 const openDiaryTableId = ref(null)
 const loading = ref(true)
 const error = ref('')
+let pollInterval = null
 
 const STATE_LABELS = {
   active: 'In attesa dei PG',
@@ -52,12 +53,35 @@ onMounted(async () => {
       })
     )
     diaryByTable.value = Object.fromEntries(diaries)
+    startPollingIfNeeded()
   } catch (e) {
     error.value = e.message
   } finally {
     loading.value = false
   }
 })
+
+onUnmounted(() => {
+  if (pollInterval) clearInterval(pollInterval)
+})
+
+function startPollingIfNeeded() {
+  if (pollInterval) return
+  if (!tables.value.some(t => t.state === 'ready')) return
+  pollInterval = setInterval(async () => {
+    try {
+      const fresh = await api.get('/tables')
+      fresh.forEach(ft => {
+        const t = tables.value.find(t => t.id === ft.id)
+        if (t) t.state = ft.state
+      })
+      if (!tables.value.some(t => t.state === 'ready')) {
+        clearInterval(pollInterval)
+        pollInterval = null
+      }
+    } catch { /* ignora errori di rete */ }
+  }, 5000)
+}
 
 function goToCharacter(tableId) {
   router.push({ name: 'character', params: { tableId } })

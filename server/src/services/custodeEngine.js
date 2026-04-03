@@ -237,14 +237,16 @@ function normalizeNarrativeText(text) {
   return String(text).trim()
 }
 
+const FASE1A_CACHE_FILE = 'fase1a_cache.json'
+function fase1aCachePath(tableId) { return path.join(tDir(tableId), FASE1A_CACHE_FILE) }
+
 async function isSessionBootstrapReady(tableId) {
-  return true
+  return fileExists(fase1aCachePath(tableId))
 }
 
 async function promoteTableToReadyIfPossible(tableId, table = null) {
   const currentTable = table || await getTable(tableId)
   if (currentTable.state !== 'active') return false
-  if (!await isSessionBootstrapReady(tableId)) return false
 
   const chars = await getCharacters(tableId)
   const charOwners = new Set(chars.map(c => c.playerID))
@@ -260,18 +262,55 @@ async function promoteTableToReadyIfPossible(tableId, table = null) {
   }
   currentTable.updatedAt = now.toISOString()
   await writeJSON(path.join(tDir(tableId), 'table.json'), currentTable)
+  prepareSessionBootstrapInBackground(tableId)
   return true
 }
 
 async function prepareSessionBootstrap(tableId, options = {}) {
+  const { force = false } = options
   const table = await getTableOrNull(tableId)
   if (!table) return false
 
-  table.custodeStarted = true
-  table.updatedAt = new Date().toISOString()
-  await writeJSON(path.join(tDir(tableId), 'table.json'), table)
-  await promoteTableToReadyIfPossible(tableId, table)
-  return true
+  if (!force && await fileExists(fase1aCachePath(tableId))) return true
+
+  const mod = await getModule(table.moduleId)
+  const heavyModel = table['heavy-llmModel']
+  if (!heavyModel) return false
+
+  const chars = await getCharacters(tableId)
+  const charOwners = new Set(chars.map(c => c.playerID))
+  const allCreated = table.invitedPlayers.every(email => charOwners.has(email))
+  if (!allCreated) return false
+
+  const primoCapitolo = mod.chapters[0]?.content || ''
+  if (!primoCapitolo.trim()) return false
+
+  const schede_PG = chars.map(synthChar).join('\n')
+  const ambientazione = await ensureModuleAmbientazione(table.moduleId, primoCapitolo, heavyModel, tableId)
+
+  let lastError
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await ollama.runPhase(
+        heavyModel,
+        'fase1a_prima_sessione.md',
+        { ambientazione, schede_PG },
+        { num_ctx: ollama.HEAVY_LLM_NUM_CTX },
+        tableId
+      )
+      await writeJSON(fase1aCachePath(tableId), result)
+      table.custodeStarted = true
+      table.updatedAt = new Date().toISOString()
+      await writeJSON(path.join(tDir(tableId), 'table.json'), table)
+      return true
+    } catch (err) {
+      lastError = err
+      console.error(`[Custode] Cache fase1a tentativo ${attempt}/3 fallito per ${tableId}:`, err.message)
+      if (attempt < 3) await sleep(5000 * attempt)
+    }
+  }
+  console.error(`[Custode] Generazione cache fase1a fallita dopo 3 tentativi per ${tableId} — intervento admin richiesto`)
+  return false
 }
 
 async function ensureSessionBootstrap(tableId) {
@@ -435,12 +474,18 @@ class CustodeEngine {
     if (isFirstSession) {
       await this.emitPhaseChange('fase-1a')
       await this.emitThinking('fase-1a')
-      const primo_capitolo = mod.chapters[0]?.content || ''
-      const ambientazione = await ensureModuleAmbientazione(
-        table.moduleId, primo_capitolo, table['heavy-llmModel'], this.tableId
-      )
-      const vars = { ambientazione, schede_PG }
-      const result = await this.llm('fase1a_prima_sessione.md', vars)
+      let result
+      const cachePath = fase1aCachePath(this.tableId)
+      if (await fileExists(cachePath)) {
+        result = await readJSON(cachePath)
+        fs.unlink(cachePath).catch(() => {})
+      } else {
+        const primo_capitolo = mod.chapters[0]?.content || ''
+        const ambientazione = await ensureModuleAmbientazione(
+          table.moduleId, primo_capitolo, table['heavy-llmModel'], this.tableId
+        )
+        result = await this.llm('fase1a_prima_sessione.md', { ambientazione, schede_PG })
+      }
       if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
       if (result.diary) await appendDiary(this.tableId, result.diary)

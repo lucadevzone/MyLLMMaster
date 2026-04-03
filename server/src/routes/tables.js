@@ -265,7 +265,7 @@ router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
   }
 
   // Cancella materiale pre-elaborato del Custode
-  for (const file of ['ambientazione.txt', 'avviare_la_sessione.txt']) {
+  for (const file of ['ambientazione.txt', 'avviare_la_sessione.txt', 'fase1a_cache.json']) {
     try { await fs.unlink(path.join(tableDir, file)) } catch { /* già assente */ }
   }
 
