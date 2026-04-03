@@ -12,7 +12,7 @@ const { DATA_DIR } = require('../utils/dataInit')
 const svc = require('./sessionService')
 const ollama = require('./ollamaService')
 
-const THINKING_MESSAGES_FILE = path.join(__dirname, '../../../../config/custode-messages.json')
+const THINKING_MESSAGES_FILE = path.join(__dirname, '../../../config/custode-messages.json')
 let thinkingMessagesCache = null
 
 async function loadThinkingMessages() {
