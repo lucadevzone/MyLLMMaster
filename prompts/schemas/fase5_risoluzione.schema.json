@@ -15,9 +15,9 @@
         "additionalProperties": true
       }
     },
-    "divisione_gruppi": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
-    "ricongiungimento_gruppi": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
-    "chiusura_scena": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+    "divisione_gruppi": { "type": "boolean" },
+    "ricongiungimento_gruppi": { "type": "boolean" },
+    "chiusura_scena": { "type": "boolean" },
     "aggiornamenti": {
       "type": "object",
       "required": ["progressione", "diary", "npcs", "items"],

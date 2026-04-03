@@ -6,7 +6,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["pg", "stato", "priorita"],
+        "required": ["pg", "stato"],
         "properties": {
           "pg": { "type": "string" },
           "stato": { "type": "string", "enum": ["dichiarazione", "prova", "incompleta", "assente"] },

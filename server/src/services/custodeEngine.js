@@ -687,7 +687,12 @@ class CustodeEngine {
     if (this.abortIfPaused()) return null
 
     // result è l'array piano — conversione nomi → email
-    const piano = pianoToEmails(Array.isArray(result) ? result : (result.piano || []), pgLookup)
+    const pianoRaw = Array.isArray(result) ? result : (result.piano || [])
+    const pianoNormalized = pianoRaw.map((entry, index) => ({
+      ...entry,
+      priorita: Number.isInteger(entry?.priorita) ? entry.priorita : (index + 1)
+    }))
+    const piano = pianoToEmails(pianoNormalized, pgLookup)
 
     // Salva piano in sessione
     const ctx = svc.getSession(this.tableId)

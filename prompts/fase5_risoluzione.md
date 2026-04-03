@@ -10,9 +10,9 @@ Tutti hanno dichiarato un azione. Devi convertire il Piano Azione in narrativa e
   "sussurri": [
     { "target": "Nome PG destinatario", "testo": "informazione privata per questo PG" }
   ],
-  "divisione_gruppi": "true|false",
-  "ricongiungimento_gruppi": "true|false",
-  "chiusura_scena": "true|false",
+  "divisione_gruppi": false,
+  "ricongiungimento_gruppi": false,
+  "chiusura_scena": false,
   "aggiornamenti": {
     "progressione" : "descrivi in 2-3 paragrafi la progressione della scena attuale",
     "diary": "se è avvenuto qualcosa di rilevante ai fini della storia",
@@ -29,6 +29,7 @@ Tutti hanno dichiarato un azione. Devi convertire il Piano Azione in narrativa e
 - Determina se il gruppo di PG si separa in due scene come conseguenza delle azioni dei singoli PG
 - Determina se due gruppi di PG si ricongiunge nella stessa scena come conseguenza delle azioni dei singoli PG
 - Determina se la scena corrente può essere considerata chiusa come conseguenza delle azioni dei singoli PG
+- I campi `divisione_gruppi`, `ricongiungimento_gruppi` e `chiusura_scena` devono essere booleani JSON reali: `true` oppure `false`, non stringhe
 - Descrivi la progressione della scena descrivendo in maniera dettagliata le azioni e reazioni
 - Scrivi l'aggiornamento del diario solo se c'è stato un effettivo avanzamento nella trama (altrimenti lascia "").
 - Parla in italiano, in seconda persona plurale o singolare a seconda del contesto
