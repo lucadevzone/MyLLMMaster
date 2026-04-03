@@ -574,7 +574,7 @@ class CustodeEngine {
   // ── FASE 3: Scena e Gioco Libero ──────────────────────────────────────────
 
   async fase3() {
-    const { worldState, schede_PG, pgLookup } = await this.buildContext()
+    const { worldState, schede_PG, pgLookup, diary } = await this.buildContext()
     const ctx = svc.getSession(this.tableId)
     const engagement = engagementForLlm(ctx?.session?.engagement || {}, pgLookup)
 
@@ -613,6 +613,7 @@ class CustodeEngine {
       scena_focus: JSON.stringify(focusScene),
       progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       schede_PG,
+      diary: diary || '(nessun diario disponibile)',
       engagement: JSON.stringify(engagement),
       storia_recente: recentMsgs
     })
