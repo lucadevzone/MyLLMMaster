@@ -247,6 +247,7 @@ async function setAllPlayersState(tableId, playerState) {
   if (!ctx) return
   ctx.session.players.forEach(p => { p.playerState = playerState })
   await saveSession(tableId, ctx.session)
+  await appendLog(tableId, ctx.session.sessionId, { event: 'all-player-state', playerState })
 }
 
 async function voteTardi(tableId, email) {

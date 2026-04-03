@@ -652,9 +652,9 @@ class CustodeEngine {
 
   async fase4(pianoParziale = null) {
     await this.emitPhaseChange('fase-4')
-    await this.emitThinking('fase-4')
     svc.clearTimer(this.tableId, 'proattivita')
     svc.clearTimer(this.tableId, 'silenzio')
+    svc.clearTimer(this.tableId, 'early-flush')
     await svc.setAllPlayersState(this.tableId, 'turno-custode')
     const ctx4 = svc.getSession(this.tableId)
     ctx4?.session.players.forEach(p => {
@@ -662,6 +662,7 @@ class CustodeEngine {
         email: p.email, connected: p.connected, playerState: 'turno-custode'
       })
     })
+    await this.emitThinking('fase-4')
 
     // Round fresco: azzera il piano residuo da round precedenti
     if (!pianoParziale) {
