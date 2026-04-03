@@ -12,6 +12,25 @@ const { DATA_DIR } = require('../utils/dataInit')
 const svc = require('./sessionService')
 const ollama = require('./ollamaService')
 
+const THINKING_MESSAGES_FILE = path.join(__dirname, '../../../../config/custode-messages.json')
+let thinkingMessagesCache = null
+
+async function loadThinkingMessages() {
+  if (thinkingMessagesCache) return thinkingMessagesCache
+  try {
+    const raw = await fs.readFile(THINKING_MESSAGES_FILE, 'utf-8')
+    thinkingMessagesCache = JSON.parse(raw)
+  } catch {
+    thinkingMessagesCache = {}
+  }
+  return thinkingMessagesCache
+}
+
+function phaseLabel(phaseKey) {
+  // "fase-1a" → "[1a]", "fase-3b" → "[3b]", ecc.
+  return phaseKey.replace('fase-', '[') + ']'
+}
+
 const MSG_BUFFER_SIZE = parseInt(process.env.MSG_BUFFER_SIZE || '20')
 const SILENCE_TIMER_MS = parseInt(process.env.SILENCE_TIMER_MS || String(30 * 1000))
 const EARLY_FLUSH_IDLE_MS = parseInt(process.env.EARLY_FLUSH_IDLE_MS || '5000')
@@ -331,6 +350,15 @@ class CustodeEngine {
     this.io.to(this.room).emit('session:toast', { type: 'error', text })
   }
 
+  async emitThinking(phaseKey) {
+    const messages = await loadThinkingMessages()
+    const list = messages[phaseKey]
+    if (!list?.length) return
+    const text = list[Math.floor(Math.random() * list.length)]
+    const label = phaseLabel(phaseKey)
+    this.io.to(this.room).emit('custode:thinking', { message: `${label} ${text}...` })
+  }
+
   // ── LLM call con gestione errori ──────────────────────────────────────────
 
   async llm(promptFile, vars, useLight = false) {
@@ -406,6 +434,7 @@ class CustodeEngine {
 
     if (isFirstSession) {
       await this.emitPhaseChange('fase-1a')
+      await this.emitThinking('fase-1a')
       const primo_capitolo = mod.chapters[0]?.content || ''
       const ambientazione = await ensureModuleAmbientazione(
         table.moduleId, primo_capitolo, table['heavy-llmModel'], this.tableId
@@ -427,6 +456,7 @@ class CustodeEngine {
       await saveWorldState(this.tableId, worldState)
     } else {
       await this.emitPhaseChange('fase-1b')
+      await this.emitThinking('fase-1b')
       const vars = {
         diary,
         scena_in_focus: focusScene ? JSON.stringify(focusScene) : ''
@@ -453,6 +483,7 @@ class CustodeEngine {
     const suggerimento_scena = suggerimento || 'scena introduttiva'
     const heavyModel = table['heavy-llmModel']
 
+    await this.emitThinking('fase-2a')
     const materiale_scena = await ollama.runTextPhase(
       heavyModel,
       'fase2a_estrai_materiale.md',
@@ -461,6 +492,7 @@ class CustodeEngine {
     )
     if (this.abortIfPaused()) return null
 
+    await this.emitThinking('fase-2')
     const result = await this.llm('fase2_prepara_scena.md', {
       materiale_scena,
       suggerimento_scena
@@ -504,6 +536,7 @@ class CustodeEngine {
 
     if (needsFocusChoice) {
       await this.emitPhaseChange('fase-3a')
+      await this.emitThinking('fase-3a')
       const activeScenes = await Promise.all(
         activeSceneFiles.filter(f => f.endsWith('.json'))
           .map(f => readJSON(path.join(tDir(this.tableId), 'active_scenes', f)))
@@ -522,6 +555,7 @@ class CustodeEngine {
 
     // ── 3b (sempre): narrazione scena ──
     await this.emitPhaseChange('fase-3b')
+    await this.emitThinking('fase-3b')
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     const recentMsgs = ctx?.messages.slice(-10)
       .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
@@ -567,6 +601,7 @@ class CustodeEngine {
 
   async fase4(pianoParziale = null) {
     await this.emitPhaseChange('fase-4')
+    await this.emitThinking('fase-4')
     svc.clearTimer(this.tableId, 'proattivita')
     svc.clearTimer(this.tableId, 'silenzio')
 
@@ -632,6 +667,7 @@ class CustodeEngine {
 
   async fase4a(data) {
     await this.emitPhaseChange('fase-4a')
+    await this.emitThinking('fase-4a')
     const { worldState, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
@@ -652,6 +688,7 @@ class CustodeEngine {
 
   async fase4b(data) {
     await this.emitPhaseChange('fase-4b')
+    await this.emitThinking('fase-4b')
     const { worldState, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
@@ -672,6 +709,7 @@ class CustodeEngine {
 
   async fase4c(data) {
     await this.emitPhaseChange('fase-4c')
+    await this.emitThinking('fase-4c')
     const { worldState, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
@@ -694,6 +732,7 @@ class CustodeEngine {
 
   async fase5(piano) {
     await this.emitPhaseChange('fase-5')
+    await this.emitThinking('fase-5')
     const { worldState, schede_PG, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
@@ -766,6 +805,7 @@ class CustodeEngine {
 
   async fase5a(data) {
     await this.emitPhaseChange('fase-5a')
+    await this.emitThinking('fase-5a')
     const { worldState } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     const recentMsgs = svc.getSession(this.tableId)?.messages.slice(-5)
@@ -785,6 +825,7 @@ class CustodeEngine {
 
   async fase5b(data) {
     await this.emitPhaseChange('fase-5b')
+    await this.emitThinking('fase-5b')
     const { worldState } = await this.buildContext()
     const activeScenes = await this.getActiveScenes()
 
@@ -801,6 +842,7 @@ class CustodeEngine {
 
   async fase5c(data) {
     await this.emitPhaseChange('fase-5c')
+    await this.emitThinking('fase-5c')
     const { worldState } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 

@@ -1,0 +1,72 @@
+{
+  "fase-1a": [
+    "Il Custode prepara l'apertura della sessione",
+    "Il Custode evoca l'atmosfera dell'avventura",
+    "Il Custode dà forma al mondo"
+  ],
+  "fase-1b": [
+    "Il Custode riannoda i fili della storia",
+    "Il Custode richiama gli eventi passati",
+    "Il Custode prepara il riassunto della sessione precedente"
+  ],
+  "fase-2a": [
+    "Il Custode consulta il manuale",
+    "Il Custode sfoglia i suoi appunti",
+    "Il Custode cerca tra le pagine dell'avventura"
+  ],
+  "fase-2": [
+    "Il Custode prepara la scena",
+    "Il Custode definisce il contesto",
+    "Il Custode allestisce il palcoscenico"
+  ],
+  "fase-3a": [
+    "Il Custode sceglie dove rivolgere l'attenzione",
+    "Il Custode valuta la situazione",
+    "Il Custode osserva il tavolo"
+  ],
+  "fase-3b": [
+    "Il Custode sta narrando",
+    "Il Custode intesse la storia",
+    "Il Custode descrive la scena"
+  ],
+  "fase-4": [
+    "Il Custode valuta le dichiarazioni",
+    "Il Custode interpreta le intenzioni dei giocatori",
+    "Il Custode pianifica il round"
+  ],
+  "fase-4a": [
+    "Il Custode chiede un chiarimento",
+    "Il Custode ha bisogno di ulteriori dettagli",
+    "Il Custode vuole capire meglio le intenzioni"
+  ],
+  "fase-4b": [
+    "Il Custode attende una risposta",
+    "Il Custode aspetta che tutti dichiarino",
+    "Il Custode sollecita i giocatori assenti"
+  ],
+  "fase-4c": [
+    "Il Custode richiede una prova",
+    "Il Custode stabilisce la difficoltà",
+    "Il Custode prepara il tiro di dado"
+  ],
+  "fase-5": [
+    "Il Custode risolve il round",
+    "Il Custode elabora gli esiti",
+    "Il Custode tesse le conseguenze delle azioni"
+  ],
+  "fase-5a": [
+    "Il Custode divide i gruppi",
+    "Il Custode gestisce la separazione dei personaggi",
+    "Il Custode organizza le scene parallele"
+  ],
+  "fase-5b": [
+    "Il Custode riunisce i gruppi",
+    "Il Custode ricongiunge i personaggi",
+    "Il Custode orchestra il ricongiungimento"
+  ],
+  "fase-5c": [
+    "Il Custode chiude la scena",
+    "Il Custode porta la scena alla conclusione",
+    "Il Custode prepara la transizione"
+  ]
+}

@@ -40,7 +40,7 @@ const statusLabel = computed(() => SESSION_LABELS[sess.sessionState] || { text: 
 
 // ── Stato giocatore: label e stili ────────────────────────────────────────────
 const PLAYER_STATE_STYLE = {
-  'turno-custode':    { bg: '#f3f4f6', text: 'Il Custode sta parlando' },
+  'turno-custode':    { bg: '#f3f4f6', text: 'Turno del Custode' },
   'gioco-libero':     { bg: '#e0f2fe', text: 'Gioco libero' },
   'mio-turno-libero': { bg: '#dcfce7', text: 'È il tuo turno di dichiarare' },
   'mio-turno-prova':  { bg: '#dcfce7', text: null },  // testo dinamico
@@ -306,7 +306,10 @@ function weaponSummary(weapon) {
             <div class="bubble-header">
               <span class="bubble-author">Custode</span>
             </div>
-            <div class="typing-dots"><span /><span /><span /></div>
+            <div class="typing-content">
+              <span v-if="sess.custodeThinking" class="thinking-message">{{ sess.custodeThinking }}</span>
+              <div class="typing-dots"><span /><span /><span /></div>
+            </div>
           </div>
         </div>
 
@@ -735,6 +738,18 @@ function weaponSummary(weapon) {
 
 /* Typing indicator */
 .bubble-typing { background: #e5e7eb; padding: 0.5rem 0.75rem; }
+
+.typing-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.thinking-message {
+  font-size: 0.85rem;
+  color: #6b7280;
+  font-style: italic;
+}
 
 .typing-dots {
   display: flex;

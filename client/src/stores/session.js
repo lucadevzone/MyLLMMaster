@@ -15,8 +15,9 @@ export const useSessionStore = defineStore('session', () => {
   const diceResult = ref(null)     // ultimo risultato dado
   const diary = ref('')
   const timerMs = ref(null)        // timer avvio sessione
-  const custodeTyping = ref(false) // indicatore di scrittura del Custode
-  const custodePhase = ref(null)   // fase corrente del Custode
+  const custodeTyping = ref(false)        // indicatore di scrittura del Custode
+  const custodeThinking = ref(null)       // messaggio "il custode sta pensando..."
+  const custodePhase = ref(null)          // fase corrente del Custode
 
   const myState = computed(() => {
     if (!session.value || !auth.user) return null
@@ -87,6 +88,12 @@ export const useSessionStore = defineStore('session', () => {
 
     socket.on('session:custode-typing', (isTyping) => {
       custodeTyping.value = isTyping
+      if (!isTyping) custodeThinking.value = null
+    })
+
+    socket.on('custode:thinking', ({ message }) => {
+      custodeThinking.value = message
+      custodeTyping.value = true
     })
 
     socket.on('session:phase-update', ({ phase }) => {
@@ -151,7 +158,7 @@ export const useSessionStore = defineStore('session', () => {
 
   return {
     connected, session, messages, toasts, diceResult, diary, timerMs,
-    custodeTyping, custodePhase,
+    custodeTyping, custodeThinking, custodePhase,
     myState, sessionState,
     connect, disconnect, sendMessage, rollDice, voteTardi, setColor,
     riprendiCustode, startTyping, stopTyping, addToast
