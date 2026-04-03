@@ -25,6 +25,23 @@ const PREP_FILES = {
 // ── Helpers filesystem ────────────────────────────────────────────────────────
 
 function tDir(tableId) { return path.join(DATA_DIR, 'tables', tableId) }
+function moduleAmbientazionePath(moduleId) {
+  return path.join(DATA_DIR, 'modules', `${moduleId}_ambientazione.txt`)
+}
+
+async function ensureModuleAmbientazione(moduleId, primoCapitolo, heavyModel, tableId) {
+  const filePath = moduleAmbientazionePath(moduleId)
+  try {
+    const existing = await fs.readFile(filePath, 'utf-8')
+    if (existing.trim()) return existing.trim()
+  } catch { /* file non ancora generato */ }
+
+  const text = normalizeNarrativeText(
+    await ollama.runTextPhase(heavyModel, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo }, tableId)
+  )
+  await fs.writeFile(filePath, text, 'utf-8')
+  return text
+}
 
 async function getTable(tableId) {
   return readJSON(path.join(tDir(tableId), 'table.json'))
@@ -383,14 +400,17 @@ class CustodeEngine {
   // ── FASE 1: Apertura ──────────────────────────────────────────────────────
 
   async fase1() {
-    const { worldState, diary, chars, mod, schede_PG, focusScene } = await this.buildContext()
+    const { table, worldState, diary, chars, mod, schede_PG, focusScene } = await this.buildContext()
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const isFirstSession = sessionNumber === 1
 
     if (isFirstSession) {
       await this.emitPhaseChange('fase-1a')
       const primo_capitolo = mod.chapters[0]?.content || ''
-      const vars = { primo_capitolo, schede_PG }
+      const ambientazione = await ensureModuleAmbientazione(
+        table.moduleId, primo_capitolo, table['heavy-llmModel'], this.tableId
+      )
+      const vars = { ambientazione, schede_PG }
       const result = await this.llm('fase1a_prima_sessione.md', vars)
       if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)

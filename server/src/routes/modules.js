@@ -2,11 +2,20 @@ const express = require('express')
 const router = express.Router()
 const { v4: uuidv4 } = require('uuid')
 const path = require('path')
+const fs = require('fs').promises
 const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileStore')
 const { DATA_DIR } = require('../utils/dataInit')
 const { authMiddleware, adminOnly } = require('../middleware/auth')
 
 const MODULES_DIR = path.join(DATA_DIR, 'modules')
+
+function ambientazioneFilePath(moduleId) {
+  return path.join(MODULES_DIR, `${moduleId}_ambientazione.txt`)
+}
+
+async function deleteAmbientazione(moduleId) {
+  try { await fs.unlink(ambientazioneFilePath(moduleId)) } catch { /* già assente */ }
+}
 
 async function getAllModules() {
   const fs = require('fs').promises
@@ -75,6 +84,7 @@ router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
     updatedAt: new Date().toISOString()
   }
   await writeJSON(filePath, updated)
+  if (chapters) await deleteAmbientazione(req.params.id)
   res.json(updated)
 })
 
@@ -82,8 +92,8 @@ router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
 router.delete('/:id', authMiddleware, adminOnly, async (req, res) => {
   const filePath = path.join(MODULES_DIR, `${req.params.id}.json`)
   if (!await fileExists(filePath)) return res.status(404).json({ error: 'Modulo non trovato' })
-  const fs = require('fs').promises
   await fs.unlink(filePath)
+  await deleteAmbientazione(req.params.id)
   res.json({ message: 'Modulo eliminato' })
 })
 

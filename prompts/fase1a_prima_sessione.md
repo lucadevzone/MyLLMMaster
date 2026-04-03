@@ -20,11 +20,11 @@ Questa è la prima sessione:
 - Non svelare nulla della trama e dei misteri
 - Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori
 - Non copiare né trasformare in output i campi strutturati del materiale di input
-- Usa come base solo il primo capitolo del modulo qui sotto
+- Usa come base solo l'ambientazione preparata qui sotto, che è una sintesi del primo capitolo
 
 ## Input
-**Primo capitolo del modulo:**
-{{primo_capitolo}}
+**Ambientazione:**
+{{ambientazione}}
 
 **Schede PG:**
 {{schede_PG}}
