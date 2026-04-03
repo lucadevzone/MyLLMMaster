@@ -76,15 +76,10 @@ function isSessionDue(table) {
 }
 
 async function checkAndOpenTable(table) {
-  if (table.state === 'ready' && isSessionDue(table)) {
-    const bootstrapReady = await custodeEngine.isSessionBootstrapReady(table.id)
-    if (bootstrapReady) {
-      table.state = 'open'
-      table.updatedAt = new Date().toISOString()
-      await writeJSON(path.join(TABLES_DIR, table.id, 'table.json'), table)
-    } else {
-      custodeEngine.prepareSessionBootstrapInBackground(table.id, { force: true })
-    }
+  if (table.state === 'ready' && isSessionDue(table) && await custodeEngine.isSessionBootstrapReady(table.id)) {
+    table.state = 'open'
+    table.updatedAt = new Date().toISOString()
+    await writeJSON(path.join(TABLES_DIR, table.id, 'table.json'), table)
   }
   return table
 }

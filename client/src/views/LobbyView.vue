@@ -142,6 +142,12 @@ function toggleDiary(tableId) {
                 >
                   {{ openDiaryTableId === table.id ? 'Nascondi Diario' : 'Leggi Diario' }}
                 </button>
+                <span
+                  v-if="table.state === 'ready'"
+                  style="font-size:0.8rem;color:var(--color-text-light);font-style:italic"
+                >
+                  Il Custode sta lavorando all'avventura…
+                </span>
                 <button
                   v-if="table.state === 'open' || table.state === 'playing'"
                   class="btn btn-success btn-sm"
