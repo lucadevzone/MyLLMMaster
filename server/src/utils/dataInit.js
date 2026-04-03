@@ -4,17 +4,20 @@ const bcrypt = require('bcrypt')
 
 const DATA_DIR = process.env.DATA_DIR_OVERRIDE || path.join(__dirname, '../../../data')
 
+const RULES_DIR = path.join(DATA_DIR, 'rules')
+
 const DIRS = [
   DATA_DIR,
   path.join(DATA_DIR, 'tables'),
   path.join(DATA_DIR, 'modules'),
+  RULES_DIR,
 ]
 
 const FILES = {
   users: path.join(DATA_DIR, 'users.json'),
-  professions: path.join(DATA_DIR, 'professions.json'),
-  armi: path.join(DATA_DIR, 'armi.json'),
-  equipaggiamento: path.join(DATA_DIR, 'equipaggiamento.json'),
+  professions: path.join(RULES_DIR, 'professions.json'),
+  armi: path.join(RULES_DIR, 'armi.json'),
+  equipaggiamento: path.join(RULES_DIR, 'equipaggiamento.json'),
 }
 
 async function ensureDataDirs() {
@@ -44,21 +47,21 @@ async function ensureDataDirs() {
     await fs.access(FILES.professions)
   } catch {
     await fs.writeFile(FILES.professions, JSON.stringify(DEFAULT_PROFESSIONS, null, 2))
-    console.log('Creato data/professions.json')
+    console.log('Creato data/rules/professions.json')
   }
 
   try {
     await fs.access(FILES.armi)
   } catch {
     await fs.writeFile(FILES.armi, JSON.stringify(DEFAULT_ARMI, null, 2))
-    console.log('Creato data/armi.json')
+    console.log('Creato data/rules/armi.json')
   }
 
   try {
     await fs.access(FILES.equipaggiamento)
   } catch {
     await fs.writeFile(FILES.equipaggiamento, JSON.stringify(DEFAULT_EQUIPAGGIAMENTO, null, 2))
-    console.log('Creato data/equipaggiamento.json')
+    console.log('Creato data/rules/equipaggiamento.json')
   }
 }
 
