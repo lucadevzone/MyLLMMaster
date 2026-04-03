@@ -1121,14 +1121,13 @@ class CustodeEngine {
         .join('\n') || '(nessun contesto recente)'
 
       const result = await ollama.runTagging(lightModel, 'tagging_buffer.md', {
-        messaggio_corrente: JSON.stringify({ id: message.id, testo: message.text }),
+        messaggio_corrente: message.text,
         contesto_recente: recentContext
       }, this.tableId)
 
-      const ann = result.annotazioni?.find(a => a.id === message.id)
-      if (ann) {
-        const msg = this.buffer.find(m => m.id === message.id)
-        if (msg) msg.tag = ann.tag
+      const msg = this.buffer.find(m => m.id === message.id)
+      if (msg && Object.prototype.hasOwnProperty.call(result, 'annotazione')) {
+        msg.tag = result.annotazione
       }
 
       await this.evaluateEarlyFlush()

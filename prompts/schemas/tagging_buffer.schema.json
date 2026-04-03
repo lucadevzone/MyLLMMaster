@@ -1,24 +1,13 @@
 {
   "type": "object",
-  "required": ["annotazioni"],
+  "required": ["annotazione"],
   "properties": {
-    "annotazioni": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id"],
-        "properties": {
-          "id": { "type": "string" },
-          "tag": {
-            "anyOf": [
-              { "type": "null" },
-              { "type": "string", "enum": ["dichiarazione", "domanda al custode", "discutendo tra PG", "fuori ruolo"] }
-            ]
-          }
-        },
-        "additionalProperties": true
-      }
+    "annotazione": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "enum": ["dichiarazione", "domanda al custode", "discutendo tra PG", "fuori ruolo"] }
+      ]
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }
