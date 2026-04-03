@@ -4,7 +4,7 @@ const bcrypt = require('bcrypt')
 
 const DATA_DIR = process.env.DATA_DIR_OVERRIDE || path.join(__dirname, '../../../data')
 
-const RULES_DIR = path.join(__dirname, '../../../../rules')
+const RULES_DIR = path.join(__dirname, '../../../rules')
 
 const DIRS = [
   DATA_DIR,
