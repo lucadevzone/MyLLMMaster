@@ -282,8 +282,6 @@ router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
   table.updatedAt = new Date().toISOString()
   await writeJSON(tablePath, table)
 
-  custodeEngine.prepareSessionBootstrapInBackground(tableId, { force: true })
-
   res.json({ message: 'Tavolo resettato', table })
 })
 
