@@ -319,10 +319,14 @@ async function ensureSessionBootstrap(tableId) {
   return ready && await isSessionBootstrapReady(tableId)
 }
 
+const bootstrapInProgress = new Set()
+
 function prepareSessionBootstrapInBackground(tableId, options = {}) {
-  prepareSessionBootstrap(tableId, options).catch(err => {
-    console.error(`[Custode] Errore preparando bootstrap tavolo ${tableId}:`, err.message)
-  })
+  if (bootstrapInProgress.has(tableId)) return
+  bootstrapInProgress.add(tableId)
+  prepareSessionBootstrap(tableId, options)
+    .catch(err => console.error(`[Custode] Errore preparando bootstrap tavolo ${tableId}:`, err.message))
+    .finally(() => bootstrapInProgress.delete(tableId))
 }
 
 // ── Custode per tavolo ────────────────────────────────────────────────────────
