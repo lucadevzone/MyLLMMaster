@@ -1081,7 +1081,7 @@ class CustodeEngine {
   }
 
   flushBuffer(reason) {
-    if (!this.buffer.length || this.flushInProgress) return
+    if (!this.running || !this.buffer.length || this.flushInProgress) return
     this.flushInProgress = true
     svc.clearTimer(this.tableId, 'silenzio')
     svc.clearTimer(this.tableId, 'early-flush')
