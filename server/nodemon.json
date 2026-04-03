@@ -1,0 +1,5 @@
+{
+  "watch": ["src", "../prompts", "../config"],
+  "ext": "js,json,md",
+  "ignore": ["../data"]
+}
