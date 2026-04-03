@@ -11,6 +11,12 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
   "focus_scene": "id della scena scelta"
 }
 
+## Istruzioni
+- Gruppi diversi di PG si trovano in scene differenti: alterna tra le scene per mantenere tensione e simultaneità
+- Dai priorità a scene che: i PG stanno affrontano un pericolo, o stanno per accedere ad indizi cruciali 
+- Cambia scena quando: è successo qualcosa di rilevante, si trovano davanti ad una scelta difficile o se la scena è un pò statica
+- Dai spazio a chi è rimasto indietro e coinvolgi i PG meno attivi (quelli con engagement più basso)
+
 ## Input
 **Gruppi e scene attive:**
 {{narrative_groups}}
@@ -20,9 +26,3 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 **Scene attive:**
 {{scene_attive}}
-
-## Istruzioni
-- Gruppi diversi di PG si trovano in scene differenti: alterna tra le scene per mantenere tensione e simultaneità
-- Dai priorità a scene che: i PG stanno affrontano un pericolo, o stanno per accedere ad indizi cruciali 
-- Cambia scena quando: è successo qualcosa di rilevante, si trovano davanti ad una scelta difficile o se la scena è un pò statica
-- Dai spazio a chi è rimasto indietro e coinvolgi i PG meno attivi (quelli con engagement più basso)

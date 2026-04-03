@@ -1,3 +1,43 @@
+MIGLIORIA: i log dei prompt al momento vengono creati in /logs/, io li sposterei in data/tables/{table-id}/logs/prompts/ e in particolare metterei ogni query alla LLM come un file separato (identificato dal timestamp ovviamente) in modo che sia più facile fare debug
+PATCH: Fatto. I log ora si trovano in data/tables/{table-id}/logs/prompts/. Ogni file contiene il prompt completo, la risposta e l'eventuale errore. Il reset sessione cancella solo i log del tavolo specifico.
+
+OTTIMIZZAZIONE: adesso ci sono molti prompt prima di poter iniziare. Proporrei di ottimizzare Fase 1 rimettendo la creazione del file di testo chiamato ambientazione.txt. Tuttavia sposterei il posto in cui questo viene creato, ovvero alla creazione del modulo. Inoltre il file lo potremmo collocare porprio nella cartella del modulo. Quindi riscriviamo prompt1 per usare ambientazione.txt. al posto del capitolo completo. Assicurati di passare al prompt l'input completo.
+PATCH: Il flusso completo ora è:
+Alla creazione del modulo (POST /api/modules):
+  - Il modulo viene salvato e la risposta HTTP torna subito al client
+  - In background parte runTextPhase('prepara_ambientazione.md', ...) con DEFAULT_HEAVY_LLM_MODEL
+  - Il risultato viene scritto in data/modules/{moduleId}_ambientazione.txt
+Alla modifica del modulo (PUT /api/modules/:id con chapters):
+  - Il vecchio file viene cancellato e la generazione riparte in background
+A fase1a (prima sessione):
+  - Se il file esiste già → lo legge direttamente, nessuna chiamata LLM
+  - Se non esiste ancora (generazione in corso o fallita) → lo genera sul momento con il modello del tavolo (fallback lazy)
+Essendo "fuori dal tavolo", la variabile DEFAULT_HEAVY_LLM_MODEL in server/.env deve essere impostata con il modello che preferisci.
+
+PER IL FUTURO: un modulo è fatto da tanti capitoli, prima o poi dovremmo gestire il "cambio" di capitolo. Ma per adesso lasciamo così.
+
+MIGLIORIA: spostiamo armi.json, equipaggiamento.json e professions.json in /data/rules/ e aggiorniamo il codice per garantire il nuovo percorso
+PATCH: I file sono stati spostati in /rules/ sul filesystem (perche la cartella proposta non è sincronizzata con fit). Ora dataInit.js punta al nuovo percorso via RULES_DIR. La directory rules/ viene creata automaticamente all'avvio del server se non esiste.
+  
+BUG: a volte capita che un giocatore entra in sessione e il sistema non se ne accorge. Poi esce in lobby, rientra, e il sistema questa volta lo vede
+
+MIGLIORIA: ii tre puntini della chat del custode potremmo farli apparire prima di interrogare la llm anzichè dopo. Oppure potremmo fare apparire frasi tipi "il custode sta pensando", "il custode sta consultando il manuale"... Invece il testo "Il Custode sta parlando" nella barra in basso lo rimpiazzerei con "Turno del Custode"
+
+BUG; [Socket] Connesso: lsabatucci+luca@gmail.com (Luca)
+[Socket] Connesso: lsabatucci+emilio@gmail.com (Emilio)
+[Session] Avvio sessione: tbl_b366c981
+[Custode] Start — tavolo tbl_b366c981
+[Custode] Errore fatale: TypeError: Cannot read properties of undefined (reading 'length')
+    at CustodeEngine.emitNarrative (/Users/luca/Documents/gamedev/MyLLMMaster/server/src/services/custodeEngine.js:200:31)
+    at CustodeEngine.fase1 (/Users/luca/Documents/gamedev/MyLLMMaster/server/src/services/custodeEngine.js:306:18)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async CustodeEngine.start (/Users/luca/Documents/gamedev/MyLLMMaster/server/src/services/custodeEngine.js:728:18)
+PATCH: Ho corretto il punto rendendo emitNarrative() difensiva: normalizza il testo, e se il contenuto è vuoto non crasha più ma logga solo un warning e salta l’invio. 
+Ho reso più robusta l’interrogazione LLM in ollamaService.js: ora, oltre al parsing JSON, viene anche validato uno JSON Schema per i vari output attesi. Se la risposta è JSON non valido va in retry automatico dentro il normale ciclo MAX_RETRIES.
+ 
+MIGLIORIA: il file LLM_log andrebbe creato nuovo per ogni sessione (mettendo il timestamp)
+PATCH: Fatto. In ollamaService.js il log LLM non va più sempre in LLM_log.txt: ora per ogni avvio/sessione applicativa viene creato un file dedicato con timestamp, nel formato LLM_log_YYYYMMDD_HHMMSS.txt, dentro la cartella logs. Inoltre, quando fai reset table, oltre a pulire sessione/scenes/diary del tavolo, il backend elimina anche tutti i file LLM_log_*.txt nella cartella logs. Quindi dopo il reset non ti restano più i vecchi log LLM e il prossimo uso ricreerà un file nuovo.
+
 BUG: fase4_dichiarazioni.md usa {{world_state}} ma fase4() non lo passa.
 PATCH: Ho corretto il passaggio di world_state a fase4_dichiarazioni in server/src/services/custodeEngine.js (line 438), così il prompt prompts/fase4_dichiarazioni.md ora riceve davvero tutti i placeholder che usa.
 	
@@ -15,7 +55,9 @@ Questo contrasta con i requisiti di lobby/sessione e con “admin non può entra
 
 SPEC: Il passaggio del tavolo a stato playing non è implementato: quando parte la sessione viene aggiornato solo lo stato della sessione a sessione-iniziata, ma table.json non viene mai portato a playing e custodeStarted resta inutilizzato.
 
-OTTIMIZZAZIONE: lo stato custodeStarted a true può fare iniziare alcune operazioni di background al custode, come ad esempio Fase 1a o Fase1b, e Fase2 (in questo modo quando tutti i giocatori sono pronti il custode possiede già il materiale per iniziare a giocare. 
+OTTIMIZZAZIONE: lo stato custodeStarted a true può fare iniziare alcune operazioni di background al custode, come ad esempio una fase preparatoria alla Fase 1a e alla Fase2 (in questo modo quando tutti i giocatori sono pronti il custode possiede già il materiale per iniziare a giocare). Nello specifico, interroga la heavyLLM e chiedi analizzare il primo capitolo e di estrarre solo: elementi di ambientazione, periodo storico, etc etc. Salviamo tutto in un file dentro il tavolo, chiamato ambientazione.txt e poi usiamo questo per la fase1a.  Per la fase 2 inveve possiamo interrogare la LLM e chiedere di estrarre elementi relativi alla prima scena, incluso dove, chi, minacce etc etc... Usiamo lo stesso approccio: salviamo tutto in un file dentro il tavolo, chiamato avviare_la_sessione.txt e poi usiamo questo per la fase2
+PATCH: Il bootstrap parte subito quando l’admin crea il tavolo, quindi ambientazione.txt e avviare_la_sessione.txt vengono generati mentre i player compilano i PG. Poi, quando viene creato l’ultimo personaggio, il tavolo passa da active a ready solo se quei due file esistono già ed hanno contenuto; altrimenti resta active e il bootstrap continua in background.
+Ho anche coperto il caso asincrono opposto: se tutti i PG sono già pronti ma i file arrivano un attimo dopo, il bootstrap promuove automaticamente il tavolo a ready appena finisce. Ho lasciato anche i controlli su ready -> open e su avviaSessione() come rete di sicurezza. 
 
 BUG: Il recupero dei messaggi persi alla riconnessione è rotto: missedSince viene azzerato prima di calcolare missed, quindi il player non riceve mai davvero i messaggi “da recuperare” (sebbene al momento li riceve come messaggi normali (come se non si fosse mai disconnesso)
 PATCH: Ho corretto il recupero dei messaggi persi in server/src/services/sessionService.js (line 132): ora playerConnected() salva il vecchio missedSince prima di azzerarlo e usa quel timestamp per filtrare i messaggi “da recuperare”.
@@ -41,206 +83,16 @@ l’esposizione dei metadati sessione nei tavoli admin
 
 
 SPEC: Il trigger “annotazioni dei messaggi indicano che i giocatori hanno finito” non è implementato.
+PATCH: Ho implementato il trigger di flush anticipato del buffer in fase-3: oltre al timer lungo di silenzio, ora esiste un timer breve che valuta se i giocatori hanno probabilmente finito di parlare. Il flush scatta solo se almeno metà del gruppo in focus ha inviato messaggi classificati come utili (dichiarazione, domanda al custode, discutendo tra PG).
+Ho allineato il prompt di tagging al flusso reale: la LLM riceve il messaggio corrente più gli ultimi 5 messaggi come contesto e classifica solo quel messaggio.
+Ho aggiunto un segnale di typing dei player end-to-end: il client invia typing-start quando si inizia a scrivere e typing-stop quando si smette o si invia il messaggio, con debounce per evitare spam. Il server mantiene questo stato in memoria con una scadenza temporale, così non dipende ciecamente dal client.
+Poi ho collegato questa informazione alla logica del Custode: l’early flush da annotazioni non può più scattare se almeno un giocatore del gruppo in focus sta ancora scrivendo.
 NOTA:
-	Step 1
-
-Obiettivo: far funzionare il trigger annotazioni senza ancora introdurre il typing player-side, ma preparando una logica compatibile con esso.
-
-Regole di classificazione “utile”:
-
-dichiarazione
-domanda al custode
-frase diretta a un PG
-Qui c’è una piccola nota importante: il prompt attuale ha i tag:
-
-dichiarazione
-domanda al custode
-discutendo tra PG
-fuori ruolo
-Quindi “frase diretta a un PG” oggi ricadrebbe naturalmente in discutendo tra PG, a meno che non vogliamo introdurre un nuovo tag. Per lo step 1 io non introdurrei un nuovo tag: considererei utile anche discutendo tra PG, ma solo quando il messaggio è effettivamente in-fiction o chiaramente rivolto a un altro PG. Se invece il tagging non distingue bene questi casi, per la V1 possiamo semplificare e considerare utile tutto ciò che non è fuori ruolo.
-
-Decisione procedurale V1
-La funzione che decide il flush anticipato dovrebbe lavorare così:
-
-Il silence timer lungo resta la regola principale.
-In parallelo esiste un controllo di early flush.
-L’early flush può scattare solo se:
-il buffer contiene almeno un numero minimo di messaggi “utili”
-il numero di player unici del gruppo che hanno scritto almeno un messaggio utile è almeno metà dei player del gruppo in focus
-nessun nuovo messaggio arriva per una finestra breve, per esempio 5 secondi
-il buffer non è già in flush
-siamo in fase-3 / gioco-libero
-Come calcolare “almeno metà dei player del gruppo”
-
-recuperi dal worldState.focusScene il gruppo in focus
-leggi group.participants
-conti quanti player distinti nel buffer hanno almeno un messaggio con tag utile
-soglia = Math.ceil(numeroPlayerGruppo / 2)
-Questa regola è buona perché:
-
-non obbliga tutti a parlare
-evita flush troppo aggressivi quando ha parlato una sola persona
-si adatta automaticamente a gruppi da 1, 2, 3, 4 giocatori
-Tag utili in V1
-Ti propongo due opzioni.
-
-Opzione prudente:
-
-utili = dichiarazione, domanda al custode
-Opzione più aderente a quello che hai detto:
-
-utili = dichiarazione, domanda al custode, discutendo tra PG
-Io, da come l’hai descritto, sceglierei la seconda.
-
-ENV da introdurre
-
-SILENCE_TIMER_MS
-già esiste, lo lasciamo
-EARLY_FLUSH_IDLE_MS
-default: 5000
-EARLY_FLUSH_MIN_ACTIVE_RATIO
-opzionale, default 0.5
-In pratica però per ora basta:
-
-EARLY_FLUSH_IDLE_MS=5000
-Per la soglia “metà del gruppo” non serve ENV, è una regola chiara.
-
-Correzione prompt tagging
-Lo step 1 deve anche allineare il prompt al codice.
-
-Il prompt di tagging dovrebbe ricevere:
-
-messaggio_corrente
-contesto_recente
-E l’output deve rimanere:
-
-{
-  "annotazioni": [
-    { "id": "message-id", "tag": "..." }
-  ]
-}
-Quindi:
-
-il codice passa il messaggio corrente con id e testo
-passa anche gli ultimi 5 messaggi già presenti nel buffer come contesto testuale
-il prompt classifica solo il messaggio corrente
-Logica temporale V1
-La terrei così:
-
-quando arriva un nuovo messaggio in gioco-libero:
-
-lo aggiungi al buffer
-lanci tagging async
-resetti il timer lungo di silenzio
-resetti anche un timer breve di early flush
-quando scade il timer breve:
-
-controlli se le annotazioni del buffer soddisfano la regola “almeno metà del gruppo ha scritto un messaggio utile”
-se sì, flush annotazioni
-se no, non fai nulla e lasci vivere il timer lungo
-Questo è importante: il timer breve non decide da solo, decide solo se c’è abbastanza materiale nel buffer.
-
-Step 2
-
-Obiettivo: evitare flush anticipati mentre un player sta ancora scrivendo.
-
-Idea generale
-Aggiungere un indicatore di typing dei player, separato da quello del Custode.
-
-Flusso:
-
-il client emette typing-start quando l’utente comincia a digitare
-il client emette typing-stop quando l’utente smette o invia il messaggio
-il server mantiene uno stato typingPlayers per tavolo/sessione
-l’early flush non scatta mai se almeno un player del gruppo in focus sta scrivendo
-Lato client
-Nella SessionView:
-
-osservi messageInput
-quando da vuoto passa a non vuoto, invii session:typing-start
-quando torna vuoto o il messaggio viene inviato, invii session:typing-stop
-Per evitare spam:
-
-mantieni uno stato locale isTyping
-invii typing-start una sola volta
-invii typing-stop solo quando davvero smette
-Meglio ancora:
-
-su ogni pressione tasto rinnovi un debounce locale
-se per esempio per 2 secondi non scrive più, mandi typing-stop
-Lato server
-Nel socket:
-
-aggiungi handler:
-session:typing-start
-session:typing-stop
-memorizzi per tavolo una mappa email -> timestamp ultimo typing
-Per robustezza:
-
-anche se il client non manda typing-stop, il server considera typing scaduto dopo un timeout
-per esempio PLAYER_TYPING_TTL_MS = 4000
-Quindi il server non si fida ciecamente del client.
-
-Dove tenere lo stato
-Puoi tenerlo:
-
-nel ctx di sessione in-memory, ad esempio ctx.typingPlayers = { [email]: lastTypingAt }
-oppure
-direttamente nel CustodeEngine
-Io lo terrei nel contesto sessione in-memory, perché è stato di sessione, non solo del Custode.
-
-Come usare il typing nella decisione
-La funzione di early flush deve ignorare il buffer se:
-
-almeno un player del gruppo in focus ha un typing ancora valido
-Formula:
-
-prendi typingPlayers
-tieni solo quelli appartenenti al gruppo in focus
-considera attivi quelli con Date.now() - lastTypingAt < PLAYER_TYPING_TTL_MS
-se ce n’è almeno uno, shouldProcessByAnnotations() restituisce false
-UI opzionale
-Non è indispensabile per la logica, ma puoi anche mostrare:
-
-“Alice sta scrivendo...”
-oppure
-una piccola indicazione di typing player-side
-Questo però è secondario. Se vuoi tenere lo step 2 pragmatico, puoi implementare il typing come segnale invisibile usato solo dalla logica.
-
-ENV utili per step 2
-
-PLAYER_TYPING_TTL_MS=4000
-eventualmente PLAYER_TYPING_DEBOUNCE_MS=1500 lato client, ma questo può anche restare hardcoded inizialmente
-Regola finale dopo step 2
-L’early flush scatterà solo se:
-
-almeno metà del gruppo ha scritto un messaggio utile
-è passato EARLY_FLUSH_IDLE_MS
-nessuno del gruppo in focus sta scrivendo
-non siamo già in una sottofase o in flush
-Questa secondo me è una base molto buona.
-
-Riassunto operativo per il prossimo turno
-Step 1 da implementare:
-
-rendere coerente il prompt tagging_buffer.md con il codice
-far passare al prompt:
-messaggio corrente
-ultimi 5 messaggi come contesto
-introdurre timer breve EARLY_FLUSH_IDLE_MS
-implementare shouldProcessByAnnotations() con regola:
-almeno metà del gruppo in focus ha scritto un messaggio utile
-tag utili = dichiarazione, domanda al custode, discutendo tra PG
-nessun nuovo messaggio nel breve intervallo
-Step 2 da fare dopo:
-
-aggiungere session:typing-start / session:typing-stop
-mantenere typingPlayers lato server con TTL
-bloccare l’early flush se qualcuno del gruppo in focus sta scrivendo
-Quando torni, posso partire direttamente dallo step 1.
-
-
-
+Il controllo passa dai giocatori (chat libersa) al Custode quando il buffer dei messaggi viene chiuso e il sistema entra in fase-4. Succede in tre casi:
+-il buffer si riempie (MSG_BUFFER_SIZE)
+-scade il timer lungo di silenzio (SILENCE_TIMER_MS)
+-almeno metà del gruppo in focus ha scritto un messaggio utile (dichiarazione, domanda al custode, discutendo tra PG), e scade il timer breve di early flush (EARLY_FLUSH_IDLE_MS), ma si tiene conto se qualcuno sta ancora scrivendo
+Nei turni singoli (fase-4a/4b) il ritorno al Custode avviene dopo la risposta del player e un breve silenzio; in fase-4c avviene appena arriva il tiro di dado.
 
 SPEC: La gestione multi-gruppo/multi-scena al momento è implementato in maniera parziale: divisione e ricongiungimento hanno TODO, e setPlayerTurn mette tutti gli altri in fuori-turno senza distinzione fuori-scena
 
@@ -249,12 +101,26 @@ DISCORDANZA: focusGroupId viene cercato nel worldState invece che nella sessione
 SPEC: La chiusura di sessione non è completata: esiste il voto È tardi e lo stato in-chiusura, ma non c’è un flusso che porti il custode a salutare tutti e a impostare terminata. La chiusura non deve essere repentina. Il custode ha il tempo di finire il piano azione ma non raccoglierà nuove dichiarazioni (risponderà con "questo lo vedremo la prossima volta") e poi dovrà chiudere la sessione, forse serve aggiungere una fase 6 - chiusura sessione, per salutare i giocatori.
 
 SPEC: Lo stato disabled del tavolo non viene mai applicato quando un giocatore invitato viene eliminato/disabilitato. 
+PATCH: Intanto, adesso il backend valida il vincolo minPlayers/maxPlayers del modulo quando si crea un tavolo e quando si aggiorna la lista invitedPlayers in tables.js, usando la logica condivisa in tableRules.js. Quindi il numero di giocatori invitati al tavolo non può più uscire dai limiti del modulo.
+Inoltre, quando un player viene disabilitato o eliminato, un tavolo va in disabled solo se i player ancora attivi tra gli invitati scendono sotto minPlayers; la logica è in users.js. In più, se un tavolo è disabled, il join socket alla sessione viene rifiutato in index.js.
 
 SPEC: La gestione tavoli richiesta agli admin è incompleta: non esiste una UI per aggiungere/sostituire giocatori a un tavolo esistente, né logica per riportare un tavolo da disabled a active aggiungendo un player. 
+PATCH: ogni tavolo ha ora Gestisci Giocatori, con possibilità di aggiungere o rimuovere invitati e di rimuovere anche player non più attivi già presenti nel tavolo.
+Dopo ogni modifica della composizione dei player, si ricontano i player attivi invitati: se il numero resta sotto minPlayers, il tavolo deve stare disabled; se il numero raggiunge o supera minPlayers, il tavolo va in active (perche i giocatori nuovi devono creare il personaggio).
 
 SPEC: La creazione del personaggio è più permissiva del richiesto: il backend la consente anche in stato ready, mentre la specifica la limita a active; inoltre la lobby mostra sempre il bottone “Personaggio” indipendentemente dallo stato (questo va bene ma solo in modalità "read only").
+PATCH: In tables.js la creazione PG ora è consentita solo se il tavolo è active. e il player ha già una scheda, la scheda resta consultabile normalmente.
 
 SPEC: La scheda personaggio è incompleta rispetto allo schema: non ci sono campi/gestione per armiECombattimento ed equipaggiamento. Inoltre il campo notes può apparire quando siamo in modalità "read only". Correttamente il campo notes non è parte della creazione della scheda e viene gestito solo dopo, in sessione.
+PATCH: Ho completato la scheda personaggio in aggiungendo le sezioni armiECombattimento ed equipaggiamento, sia in creazione sia in visualizzazione read-only. Il campo notes non è stato toccato e resta fuori da questa vista, quindi continua a vivere solo nella sessione come volevi.
+Ho aggiunto i file armi.json e equipaggiamento.json in data/, con qualche voce provvisoria. Il backend li espone tramite catalog.js su /api/catalog/armi e /api/catalog/equipaggiamento, registrati in server.js e server_export.js. In dataInit.js ho anche aggiunto l’inizializzazione automatica se i file mancano.
+In CharacterView.vue, ora:
+le armi si aggiungono da una combobox con etichetta nome · danno
+l’arma salvata include nome, abilita, danno, gittata, attacchi, munizioni
+l’equipaggiamento si aggiunge da una combobox che mostra solo il nome
+gli item selezionati restano in lista con pulsanti Rimuovi
+In Lobby ho aggiunto il pulsante Leggi Diario, mostrato solo quando il diario del tavolo ha contenuto non vuoto; il testo si apre inline nel riquadro del tavolo.
+Ho aggiornato la scheda nella sessione in SessionView.vue: nella tab Statistiche ora compaiono anche armi ed equipaggiamento.
 
 SPEC: L’effetto dei messaggi del custode è solo parziale: c’è l’indicatore .../typing, ma non un vero effetto “macchina da scrivere” sul testo già consegnato.
 

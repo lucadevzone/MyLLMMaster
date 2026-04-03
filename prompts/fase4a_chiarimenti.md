@@ -11,6 +11,13 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
   "narrativa": "testo della domanda da mostrare in chat, rivolta al PG target"
 }
 
+## Istruzioni
+- Rivolgiti direttamente al PG target usando il suo nome
+- La domanda deve sembrare naturale magari proponendo delle alternative
+- Chiedi esattamente cosa vuole fare, senza svelare la meccanica di gioco
+- Tono evocativo, coerente con Call of Cthulhu
+- Parla in italiano, in seconda persona singolare
+
 ## Input
 **Dichiarazione incompleta:**
 {{richiesta_chiarimenti}}
@@ -20,10 +27,3 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 **Stato del Mondo**
 {{world_state}}
-
-## Istruzioni
-- Rivolgiti direttamente al PG target usando il suo nome
-- La domanda deve sembrare naturale magari proponendo delle alternative
-- Chiedi esattamente cosa vuole fare, senza svelare la meccanica di gioco
-- Tono evocativo, coerente con Call of Cthulhu
-- Parla in italiano, in seconda persona singolare

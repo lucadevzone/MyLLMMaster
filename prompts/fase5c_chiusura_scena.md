@@ -1,9 +1,5 @@
 # Fase 5c — Chiusura/Cambio Scena
 
-## Input
-**Estratto scena corrente:** {{scena_focus}}
-**Stato del mondo:** {{world_state}}
-**Dettagli chiusura:** {{dettagli_chiusura}}
 
 ## Istruzioni
 <!-- TODO: come chiudere una scena con senso di completamento narrativo -->
@@ -20,3 +16,7 @@
   }
 }
 
+## Input
+**Estratto scena corrente:** {{scena_focus}}
+**Stato del mondo:** {{world_state}}
+**Dettagli chiusura:** {{dettagli_chiusura}}

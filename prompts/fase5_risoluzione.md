@@ -21,6 +21,19 @@ Tutti hanno dichiarato un azione. Devi convertire il Piano Azione in narrativa e
   }
 }
 
+
+## Istruzioni
+- Descrivi in 2-3 paragrafi la risoluzione contemporanea di tutte le dichiarazioni 
+- Includi la reazione del mondo alle azioni dei PG
+- Puoi usare i sussurri per comunicare informazioni private a singoli giocatori (tuttavia usa questo strumento con parsimonia, in generale le informazioni sono pubbliche; usa il sussurro solo quando un unico PG può accedere a delle percezioni o a conoscenza pregressa.)
+- Determina se il gruppo di PG si separa in due scene come conseguenza delle azioni dei singoli PG
+- Determina se due gruppi di PG si ricongiunge nella stessa scena come conseguenza delle azioni dei singoli PG
+- Determina se la scena corrente può essere considerata chiusa come conseguenza delle azioni dei singoli PG
+- Descrivi la progressione della scena descrivendo in maniera dettagliata le azioni e reazioni
+- Scrivi l'aggiornamento del diario solo se c'è stato un effettivo avanzamento nella trama (altrimenti lascia "").
+- Parla in italiano, in seconda persona plurale o singolare a seconda del contesto
+- Stile evocativo e atmosferico, coerente con Call of Cthulhu
+
 ## Input
 **Scena corrente:**
 {{scena_focus}}
@@ -36,15 +49,3 @@ Tutti hanno dichiarato un azione. Devi convertire il Piano Azione in narrativa e
 
 **Schede PG (sintetizzate):**
 {{schede_PG}}
-
-## Istruzioni
-- Descrivi in 2-3 paragrafi la risoluzione contemporanea di tutte le dichiarazioni 
-- Includi la reazione del mondo alle azioni dei PG
-- Puoi usare i sussurri per comunicare informazioni private a singoli giocatori (tuttavia usa questo strumento con parsimonia, in generale le informazioni sono pubbliche; usa il sussurro solo quando un unico PG può accedere a delle percezioni o a conoscenza pregressa.)
-- Determina se il gruppo di PG si separa in due scene come conseguenza delle azioni dei singoli PG
-- Determina se due gruppi di PG si ricongiunge nella stessa scena come conseguenza delle azioni dei singoli PG
-- Determina se la scena corrente può essere considerata chiusa come conseguenza delle azioni dei singoli PG
-- Descrivi la progressione della scena descrivendo in maniera dettagliata le azioni e reazioni
-- Scrivi l'aggiornamento del diario solo se c'è stato un effettivo avanzamento nella trama (altrimenti lascia "").
-- Parla in italiano, in seconda persona plurale o singolare a seconda del contesto
-- Stile evocativo e atmosferico, coerente con Call of Cthulhu

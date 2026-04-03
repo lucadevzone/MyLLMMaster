@@ -11,15 +11,15 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
   "narrativa": "circa 2-4 frasi",
 }
 
+## Istruzioni
+- Inizia con un breve "nella sessione precedente…" che riepiloga i fatti salienti del diario
+- Riporta i PG nella scena corrente: dove si trovano, cosa sta succedendo intorno a loro
+- Il tono deve essere evocativo e atmosferico, ma non svelare la trama ne misteri
+- Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori
+
 ## Input
 **Diario delle sessioni precedenti:**
 {{diary}}
 
 **Capitolo corrente del modulo:**
 {{scena_in_focus}}
-
-## Istruzioni
-- Inizia con un breve "nella sessione precedente…" che riepiloga i fatti salienti del diario
-- Riporta i PG nella scena corrente: dove si trovano, cosa sta succedendo intorno a loro
-- Il tono deve essere evocativo e atmosferico, ma non svelare la trama ne misteri
-- Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori

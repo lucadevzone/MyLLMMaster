@@ -11,6 +11,11 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
   "narrativa": "testo del sollecito rivolto al PG target"
 }
 
+## Istruzioni
+- Rivolgiti direttamente al PG target usando il suo nome
+- Descrivi brevemente quello che accade intorno a lui per dare opportunità d'azione
+- Parla in italiano, in seconda persona singolare
+
 ## Input
 **Situazione:**
 {{richiesta_dichiarazione}}
@@ -20,9 +25,3 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 **Stato del Mondo**
 {{world_state}}
-
-
-## Istruzioni
-- Rivolgiti direttamente al PG target usando il suo nome
-- Descrivi brevemente quello che accade intorno a lui per dare opportunità d'azione
-- Parla in italiano, in seconda persona singolare

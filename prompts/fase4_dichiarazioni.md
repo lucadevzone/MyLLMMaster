@@ -23,6 +23,20 @@ Ogni PG del gruppo in focus deve avere una entry nel piano.
   ]
 }
 
+
+## Istruzioni
+- Per ogni PG del gruppo in focus, determina lo stato della sua dichiarazione
+- Il piano deve essere aggiornato non azzerato. 
+- Aggiungi o modifica per rispecchiare le nuove dichiarazioni
+- Assegna un valori di `stato` con
+- `dichiarazione`: se l'azione è chiara, non richiede prova e fa avanzare la narrazione. Accetta anche un "non faccio" niente come una dichiarazione
+- `prova`: se l'azione è chiara ma richiede una prova e quindi un tiro di dado
+- `incompleta`: il giocatore ha dichiarato qualcosa ma l'intenzione non è chiara o incompleta
+- `assente`: il PG non ha ancora dichiarato nulla
+- Assegna una `priorita` secondo l'importanza in narrazione: un valore più basso va alle prima le prove e incompleti, poi gli assenti
+- `risultato_prova` può essere `null` per le prove per cui il giocatore non ha ancora tirato i dadi
+
+
 ## Input
 
 **Messaggi buffer (con annotazioni tag):**
@@ -39,15 +53,3 @@ Ogni PG del gruppo in focus deve avere una entry nel piano.
 
 **Stato del Mondo**
 {{world_state}}
-
-## Istruzioni
-- Per ogni PG del gruppo in focus, determina lo stato della sua dichiarazione
-- Il piano deve essere aggiornato non azzerato. 
-- Aggiungi o modifica per rispecchiare le nuove dichiarazioni
-- Assegna un valori di `stato` con
-- `dichiarazione`: se l'azione è chiara, non richiede prova e fa avanzare la narrazione. Accetta anche un "non faccio" niente come una dichiarazione
-- `prova`: se l'azione è chiara ma richiede una prova e quindi un tiro di dado
-- `incompleta`: il giocatore ha dichiarato qualcosa ma l'intenzione non è chiara o incompleta
-- `assente`: il PG non ha ancora dichiarato nulla
-- Assegna una `priorita` secondo l'importanza in narrazione: un valore più basso va alle prima le prove e incompleti, poi gli assenti
-- `risultato_prova` può essere `null` per le prove per cui il giocatore non ha ancora tirato i dadi
