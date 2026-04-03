@@ -1,0 +1,142 @@
+PIANO DI INTERVENTO — INTRODUZIONE RAG
+=======================================
+
+OBIETTIVO
+---------
+Sostituire il sistema attuale di sintesi monolitica (ambientazione.txt) con un sistema RAG
+(Retrieval-Augmented Generation) basato su chunking semantico LLM-assistito. Il preprocessing
+avviene offline al caricamento del modulo; in sessione il contesto viene recuperato per query,
+riducendo il numero di chiamate LLM di circa la metà.
+
+Stack tecnico scelto:
+- Vector store: vectra (JSON-based, no external service)
+- Embedding model: nomic-embed-text via Ollama (già nel stack)
+- Chunking: multi-passaggio LLM con modello leggero, output testuale (no JSON dal LLM)
+
+
+FASE 1 — Infrastruttura RAG (nessun impatto sul runtime esistente)
+-------------------------------------------------------------------
+
+1.1  Aggiungere `vectra` alle dipendenze del server.
+     Configurare il modello embedding su Ollama (nomic-embed-text).
+
+1.2  Creare server/src/services/ragService.js con:
+     - indexModule(moduleId, chapterText)    pipeline completa pass1+pass2+embedding+store
+     - queryModule(moduleId, queryText, topK) retrieval modulo
+     - deleteModuleIndex(moduleId)            pulizia indice modulo
+     - indexDiaryEntry(tableId, entry)        aggiornamento incrementale durante sessione
+     - queryTable(tableId, queryText, topK)   retrieval diary + progressi tavolo
+
+1.3  Struttura dati su filesystem:
+     data/modules/{moduleId}_rag/    indice vectra del modulo
+     data/tables/{tableId}/rag/      indice vectra diary + scene chiuse
+
+
+FASE 2 — Prompt di preprocessing
+---------------------------------
+
+2.1  prompts/rag_pass1_entita.md
+     Chiede al LLM di produrre una lista "tipo | nome" per ogni entità rilevante
+     presente nel testo del capitolo (location, NPC, oggetto, rivelazione, filone narrativo).
+     Output testuale semplice, parsato in codice con split().
+
+     Esempio output atteso:
+       location | Appartamento di Belloq
+       npc | Sophia Hapgood
+       oggetto | Amuleto di Nur-Ab-Sal
+       rivelazione | Knossos è la destinazione
+
+2.2  prompts/rag_pass2_estrai.md
+     Chiede al LLM di estrarre dal testo del modulo tutto ciò che riguarda una
+     singola entità (input: testo grezzo + nome entità). Output testuale narrativo.
+     Il JSON viene assemblato dal codice, non dal LLM:
+
+       chunks.push({
+         type:    entity.type,    // noto dal pass1
+         name:    entity.name,    // noto dal pass1
+         chapter: entity.chapter, // noto dal contesto
+         content: <output LLM>    // unica parte generata
+       })
+
+Nota: questa fase è testabile standalone senza toccare il runtime.
+
+
+FASE 3 — Integrazione in routes/modules.js
+-------------------------------------------
+
+3.1  POST (crea modulo):
+     Aggiungere ragService.indexModule() in background,
+     affiancata all'attuale generateAmbientazioneInBackground().
+     Le due coesistono: nessuna regressione.
+
+3.2  PUT (modifica modulo):
+     Cancella indice esistente e rilancia l'indicizzazione.
+
+3.3  DELETE (elimina modulo):
+     Chiamare ragService.deleteModuleIndex().
+
+Il sistema esistente continua a funzionare invariato — il RAG è additivo in questa fase.
+
+
+FASE 4 — Integrazione in services/custodeEngine.js
+----------------------------------------------------
+
+Ordine di priorità (dal più impattante al meno):
+
+4.1  Fase 2b prepara_scena:
+     Query su location corrente → inietta variabile contesto_location nel prompt.
+
+4.2  Fase 3b narrazione:
+     Query su location + PNG attivi → inietta variabile contesto_scena nel prompt.
+
+4.3  appendDiary():
+     Ogni nuova voce viene anche indicizzata nel RAG del tavolo (indexDiaryEntry).
+
+4.4  Fasi 3a, 4, 5:
+     Valutare caso per caso se aggiungere retrieval in base ai risultati delle fasi precedenti.
+
+
+FASE 5 — Cleanup finale (solo dopo validazione completa del RAG)
+-----------------------------------------------------------------
+
+5.1  Fase 1a prima_sessione:
+     Sostituire la variabile ambientazione con una query RAG broad-scope sul modulo.
+
+5.2  Rimuovere:
+     - ensureModuleAmbientazione()
+     - generateAmbientazioneInBackground()
+     - la funzione moduleAmbientazionePath()
+     - i file *_ambientazione.txt su filesystem
+
+5.3  Aggiornare modules.js per non gestire più i file .txt di ambientazione.
+
+ATTENZIONE: la fase 5 è l'unica distruttiva. Le fasi 1-4 sono tutte additive e reversibili.
+
+
+ORDINE DI SVILUPPO CONSIGLIATO
+-------------------------------
+
+  Fase 1 → Fase 2 → test standalone dei prompt
+              |
+           Fase 3 → test caricamento modulo con indicizzazione
+              |
+           Fase 4.1 → test in sessione (una fase alla volta)
+           Fase 4.2
+           Fase 4.3
+              |
+           Fase 5 (solo quando tutto è validato end-to-end)
+
+
+NOTE ARCHITETTURALI
+-------------------
+- Il tempo di preprocessing (decine di chiamate LLM leggero) è accettabile perché
+  avviene offline al caricamento del modulo, non durante la sessione.
+- Il modello leggero non deve produrre JSON: produce solo testo narrativo.
+  La struttura JSON viene assemblata dal codice Node.js che conosce già type/name/chapter.
+- Il pass1 (lista entità) è parsato con semplice split() — robusto e senza dipendenze LLM
+  per la struttura. Eventuali righe malformate vengono filtrate in codice prima del pass2.
+- Il campo `related` nei chunk (collegamento tra entità) può essere aggiunto in una
+  iterazione successiva per abilitare retrieval a cascata.
+- vectra è scelto per semplicità (JSON-based, no infrastruttura esterna). Se il volume
+  dei moduli crescesse significativamente, la migrazione a Chroma/Qdrant è fattibile
+  senza cambiare l'interfaccia di ragService.js.

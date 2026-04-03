@@ -1,3 +1,12 @@
+Bug: resume() riavvia da fase1 dopo errore in runLoop
+  Quando runLoop termina per errore LLM, running=false e paused=false. resume() non distingue questo stato da "engine mai avviato" e chiama start(), rieseguendo fase1()
+  invece di riprendere dal punto di interruzione.
+
+BUG: siamo arruvati a Fase 4, ma stranamente il master sta scrivendo ma siamo in gioco libero... questo è un bug
+PATCH: Quando fase2 fallisce per timeout LLM, running restava true causando il processing dei messaggi dei giocatori via flushBuffer, che innescava fase4/5 senza una scena attiva. I giocatori si trovavano in gioco-libero con il Custode che scriveva contemporaneamente. Ora, runLoop ora imposta running=false sull'errore, bloccando qualsiasi processing successivo.
+
+BUG, il campo "diario di sessione" non si sincronizza con diary.txt durante la sessione
+
 MIGLIORIA: i log dei prompt al momento vengono creati in /logs/, io li sposterei in data/tables/{table-id}/logs/prompts/ e in particolare metterei ogni query alla LLM come un file separato (identificato dal timestamp ovviamente) in modo che sia più facile fare debug
 PATCH: Fatto. I log ora si trovano in data/tables/{table-id}/logs/prompts/. Ogni file contiene il prompt completo, la risposta e l'eventuale errore. Il reset sessione cancella solo i log del tavolo specifico.
 
@@ -22,6 +31,7 @@ PATCH: I file sono stati spostati in /rules/ sul filesystem (perche la cartella 
 BUG: a volte capita che un giocatore entra in sessione e il sistema non se ne accorge. Poi esce in lobby, rientra, e il sistema questa volta lo vede
 
 MIGLIORIA: ii tre puntini della chat del custode potremmo farli apparire prima di interrogare la llm anzichè dopo. Oppure potremmo fare apparire frasi tipi "il custode sta pensando", "il custode sta consultando il manuale"... Invece il testo "Il Custode sta parlando" nella barra in basso lo rimpiazzerei con "Turno del Custode"
+PATCH: Messaggi contestuali del Custode prima di ogni chiamata LLM, con testo casuale tra 3 opzioni per fase e prefisso [fase] per il debug. File config/custode-messages.json editabile senza toccare il codice. I tre puntini animati ora appaiono subito (prima della risposta LLM) insieme al messaggio in corsivo. Barra stato: "Il Custode sta parlando" → "Turno del Custode" 
 
 BUG; [Socket] Connesso: lsabatucci+luca@gmail.com (Luca)
 [Socket] Connesso: lsabatucci+emilio@gmail.com (Emilio)

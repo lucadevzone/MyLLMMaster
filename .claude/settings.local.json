@@ -18,7 +18,10 @@
       "Bash(pkill -f \"nodemon src/server.js\")",
       "Bash(pkill -f \"vite\")",
       "Bash(curl:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(ls -lt /Users/luca/Documents/gamedev/MyLLMMaster/data/tables/*/logs/prompts/)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3:*)"
     ]
   }
 }
