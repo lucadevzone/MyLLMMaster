@@ -6,8 +6,10 @@ const fs = require('fs').promises
 const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileStore')
 const { DATA_DIR } = require('../utils/dataInit')
 const { authMiddleware, adminOnly } = require('../middleware/auth')
+const ollama = require('../services/ollamaService')
 
 const MODULES_DIR = path.join(DATA_DIR, 'modules')
+const DEFAULT_HEAVY_LLM_MODEL = process.env.DEFAULT_HEAVY_LLM_MODEL
 
 function ambientazioneFilePath(moduleId) {
   return path.join(MODULES_DIR, `${moduleId}_ambientazione.txt`)
@@ -15,6 +17,13 @@ function ambientazioneFilePath(moduleId) {
 
 async function deleteAmbientazione(moduleId) {
   try { await fs.unlink(ambientazioneFilePath(moduleId)) } catch { /* già assente */ }
+}
+
+function generateAmbientazioneInBackground(moduleId, primoCapitolo) {
+  if (!DEFAULT_HEAVY_LLM_MODEL || !primoCapitolo?.trim()) return
+  ollama.runTextPhase(DEFAULT_HEAVY_LLM_MODEL, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo })
+    .then(text => fs.writeFile(ambientazioneFilePath(moduleId), text.trim(), 'utf-8'))
+    .catch(err => console.error(`[Modules] Errore generazione ambientazione ${moduleId}:`, err.message))
 }
 
 async function getAllModules() {
@@ -64,6 +73,7 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
 
   await ensureDir(MODULES_DIR)
   await writeJSON(path.join(MODULES_DIR, `${mod.id}.json`), mod)
+  generateAmbientazioneInBackground(mod.id, chapters[0]?.content)
   res.status(201).json(mod)
 })
 
@@ -84,7 +94,10 @@ router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
     updatedAt: new Date().toISOString()
   }
   await writeJSON(filePath, updated)
-  if (chapters) await deleteAmbientazione(req.params.id)
+  if (chapters) {
+    await deleteAmbientazione(req.params.id)
+    generateAmbientazioneInBackground(req.params.id, chapters[0]?.content)
+  }
   res.json(updated)
 })
 
