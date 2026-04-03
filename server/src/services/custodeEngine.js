@@ -482,7 +482,6 @@ class CustodeEngine {
       const cachePath = fase1aCachePath(this.tableId)
       if (await fileExists(cachePath)) {
         result = await readJSON(cachePath)
-        fs.unlink(cachePath).catch(() => {})
       } else {
         const primo_capitolo = mod.chapters[0]?.content || ''
         const ambientazione = await ensureModuleAmbientazione(
