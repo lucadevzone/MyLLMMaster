@@ -28,6 +28,8 @@ Ogni PG del gruppo in focus deve avere una entry nel piano.
 - Per ogni PG del gruppo in focus, determina lo stato della sua dichiarazione
 - Il piano deve essere aggiornato non azzerato. 
 - Aggiungi o modifica per rispecchiare le nuove dichiarazioni
+- Ogni PG del gruppo in focus deve comparire esattamente una volta nel campo `piano`
+- Ogni entry deve sempre includere tutti i campi mostrati nell'esempio JSON, inclusa `priorita`
 - Assegna un valori di `stato` con
 - `dichiarazione`: se l'azione è chiara, non richiede prova e fa avanzare la narrazione. Accetta anche un "non faccio" niente come una dichiarazione
 - `prova`: se l'azione è chiara ma richiede una prova e quindi un tiro di dado
@@ -35,6 +37,9 @@ Ogni PG del gruppo in focus deve avere una entry nel piano.
 - `assente`: il PG non ha ancora dichiarato nulla
 - Assegna una `priorita` secondo l'importanza in narrazione: un valore più basso va alle prima le prove e incompleti, poi gli assenti
 - `risultato_prova` può essere `null` per le prove per cui il giocatore non ha ancora tirato i dadi
+- Se `stato = dichiarazione` oppure `stato = incompleta` oppure `stato = assente`, allora `abilita_o_caratteristica`, `difficolta` e `risultato_prova` devono essere `null`
+- Se `stato = prova`, allora `abilita_o_caratteristica` e `difficolta` devono essere valorizzati
+- Non aggiungere chiavi extra oltre a quelle mostrate nell'esempio
 
 
 ## Input
