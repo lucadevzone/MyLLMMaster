@@ -6,7 +6,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "tag"],
+        "required": ["id"],
         "properties": {
           "id": { "type": "string" },
           "tag": {
