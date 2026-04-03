@@ -1008,6 +1008,7 @@ class CustodeEngine {
       } catch (err) {
         if (this.paused) break
         console.error(`[Custode] Errore in ${current}:`, err.message)
+        this.running = false
         break
       }
     }
