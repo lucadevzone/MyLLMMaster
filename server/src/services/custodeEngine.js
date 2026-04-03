@@ -337,7 +337,7 @@ class CustodeEngine {
 
     try {
       const ollamaOptions = useLight ? {} : { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
-      return await ollama.runPhase(model, promptFile, vars, ollamaOptions)
+      return await ollama.runPhase(model, promptFile, vars, ollamaOptions, this.tableId)
     } catch (err) {
       if (err.isLlmError) {
         await this.pauseForTechnicalIssue(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
@@ -436,7 +436,8 @@ class CustodeEngine {
     const materiale_scena = await ollama.runTextPhase(
       heavyModel,
       'fase2a_estrai_materiale.md',
-      { primo_capitolo, suggerimento_scena }
+      { primo_capitolo, suggerimento_scena },
+      this.tableId
     )
     if (this.abortIfPaused()) return null
 
@@ -1000,7 +1001,7 @@ class CustodeEngine {
       const result = await ollama.runTagging(lightModel, 'tagging_buffer.md', {
         messaggio_corrente: JSON.stringify({ id: message.id, testo: message.text }),
         contesto_recente: recentContext
-      })
+      }, this.tableId)
 
       const ann = result.annotazioni?.find(a => a.id === message.id)
       if (ann) {

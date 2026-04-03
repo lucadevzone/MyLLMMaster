@@ -1,6 +1,7 @@
 const fs = require('fs').promises
 const fsSync = require('fs')
 const path = require('path')
+const { DATA_DIR } = require('../utils/dataInit')
 
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 const MAX_RETRIES = parseInt(process.env.LLM_MAX_RETRIES || '3')
@@ -8,29 +9,39 @@ const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000')
 const HEAVY_LLM_NUM_CTX = parseInt(process.env.HEAVY_LLM_NUM_CTX || '8192')
 const PROMPTS_DIR = path.join(__dirname, '../../../prompts')
 const PROMPT_SCHEMAS_DIR = path.join(PROMPTS_DIR, 'schemas')
-const LOGS_DIR = process.env.LLM_LOG_DIR || path.join(__dirname, '../../../logs')
-const SESSION_LOG_STAMP = buildLogTimestamp(new Date())
-const LOG_FILE = path.join(LOGS_DIR, `LLM_log_${SESSION_LOG_STAMP}.txt`)
 const schemaCache = new Map()
+
+function tableLogsDir(tableId) {
+  return path.join(DATA_DIR, 'tables', tableId, 'logs', 'prompts')
+}
 
 // ── LLM logger ────────────────────────────────────────────────────────────────
 
 function llmLog(entry) {
-  const sep = '═'.repeat(80)
-  const line = [
-    `\n${sep}`,
-    `[${new Date().toISOString()}]  model: ${entry.model}  phase: ${entry.phase || '?'}  attempt: ${entry.attempt}`,
-    sep,
+  if (!entry.tableId) return
+
+  const logsDir = tableLogsDir(entry.tableId)
+  const phase = (entry.phase || 'unknown').replace(/\.md$/, '').replace(/[^a-z0-9_-]/gi, '_')
+  const stamp = buildLogTimestamp(new Date())
+  const filename = `${stamp}_${phase}_${entry.attempt}.txt`
+
+  const lines = [
+    `model:   ${entry.model}`,
+    `phase:   ${entry.phase || '?'}`,
+    `attempt: ${entry.attempt}`,
+    '',
     '--- PROMPT ---',
     entry.prompt,
+    '',
     '--- RESPONSE ---',
     entry.response,
-    entry.error ? `--- ERROR ---\n${entry.error}` : null,
-    sep,
-  ].filter(Boolean).join('\n')
+  ]
+  if (entry.error) {
+    lines.push('', '--- ERROR ---', entry.error)
+  }
 
-  fsSync.mkdirSync(LOGS_DIR, { recursive: true })
-  fsSync.appendFile(LOG_FILE, line + '\n', () => {})
+  fsSync.mkdirSync(logsDir, { recursive: true })
+  fsSync.writeFile(path.join(logsDir, filename), lines.join('\n') + '\n', () => {})
 }
 
 // ── Carica e compila un prompt template ───────────────────────────────────────
@@ -65,7 +76,7 @@ async function loadPromptSchema(filename) {
 
 // ── Chiamata Ollama con retry ─────────────────────────────────────────────────
 
-async function callOllama(model, prompt, expectJson = true, phase = '?', schema = null, ollamaOptions = {}) {
+async function callOllama(model, prompt, expectJson = true, phase = '?', schema = null, ollamaOptions = {}, tableId = null) {
   let lastError
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -90,7 +101,7 @@ async function callOllama(model, prompt, expectJson = true, phase = '?', schema 
       const raw = data.response?.trim() || ''
 
       if (!expectJson) {
-        llmLog({ model, phase, attempt, prompt, response: raw })
+        llmLog({ tableId, model, phase, attempt, prompt, response: raw })
         return raw
       }
 
@@ -99,22 +110,22 @@ async function callOllama(model, prompt, expectJson = true, phase = '?', schema 
       if (parsed !== null) {
         const schemaError = validateSchemaResponse(schema, parsed, phase)
         if (schemaError) {
-          llmLog({ model, phase, attempt, prompt, response: raw, error: schemaError })
+          llmLog({ tableId, model, phase, attempt, prompt, response: raw, error: schemaError })
           throw new Error(`${schemaError} (tentativo ${attempt})`)
         }
-        llmLog({ model, phase, attempt, prompt, response: raw })
+        llmLog({ tableId, model, phase, attempt, prompt, response: raw })
         return parsed
       }
 
       console.warn(`[Ollama] Risposta grezza (tentativo ${attempt}):\n${raw.slice(0, 500)}`)
-      llmLog({ model, phase, attempt, prompt, response: raw, error: `JSON non valido` })
+      llmLog({ tableId, model, phase, attempt, prompt, response: raw, error: `JSON non valido` })
       throw new Error(`JSON non valido (tentativo ${attempt}): ${raw.slice(0, 200)}`)
 
     } catch (err) {
       lastError = err
       if (err.name === 'AbortError') {
         lastError = new Error(`Timeout LLM (tentativo ${attempt})`)
-        llmLog({ model, phase, attempt, prompt, response: '', error: lastError.message })
+        llmLog({ tableId, model, phase, attempt, prompt, response: '', error: lastError.message })
       }
       console.warn(`[Ollama] ${lastError.message}`)
       if (attempt < MAX_RETRIES) await sleep(1000 * attempt)
@@ -222,32 +233,33 @@ function buildLogTimestamp(date) {
   const hh = String(date.getHours()).padStart(2, '0')
   const mi = String(date.getMinutes()).padStart(2, '0')
   const ss = String(date.getSeconds()).padStart(2, '0')
-  return `${yyyy}${mm}${dd}_${hh}${mi}${ss}`
+  const ms = String(date.getMilliseconds()).padStart(3, '0')
+  return `${yyyy}${mm}${dd}_${hh}${mi}${ss}${ms}`
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 // ── API pubblica ───────────────────────────────────────────────────────────────
 
-async function runPhase(model, promptFile, vars, ollamaOptions = {}) {
+async function runPhase(model, promptFile, vars, ollamaOptions = {}, tableId = null) {
   const [prompt, schema] = await Promise.all([
     loadPrompt(promptFile, vars),
     loadPromptSchema(promptFile)
   ])
-  return callOllama(model, prompt, true, promptFile, schema, ollamaOptions)
+  return callOllama(model, prompt, true, promptFile, schema, ollamaOptions, tableId)
 }
 
-async function runTextPhase(model, promptFile, vars) {
+async function runTextPhase(model, promptFile, vars, tableId = null) {
   const prompt = await loadPrompt(promptFile, vars)
-  return callOllama(model, prompt, false, promptFile, null, { num_ctx: HEAVY_LLM_NUM_CTX })
+  return callOllama(model, prompt, false, promptFile, null, { num_ctx: HEAVY_LLM_NUM_CTX }, tableId)
 }
 
-async function runTagging(model, promptFile, vars) {
+async function runTagging(model, promptFile, vars, tableId = null) {
   const [prompt, schema] = await Promise.all([
     loadPrompt(promptFile, vars),
     loadPromptSchema(promptFile)
   ])
-  return callOllama(model, prompt, true, promptFile, schema)
+  return callOllama(model, prompt, true, promptFile, schema, {}, tableId)
 }
 
-module.exports = { runPhase, runTextPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, LOG_FILE, LOGS_DIR, HEAVY_LLM_NUM_CTX }
+module.exports = { runPhase, runTextPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, tableLogsDir, HEAVY_LLM_NUM_CTX }
