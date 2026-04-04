@@ -60,6 +60,7 @@ const TYPE_LABELS = {
  * Il campo `content` rimane invariato per la visualizzazione nei prompt.
  *
  * Formato: [Tipo] [Nome] [Modulo] [Atto N] [Sessione N]
+ * Più eventuale footer: Ricerche correlate: [Entità1] [Entità2]
  */
 function buildEmbedText(chunk) {
   const typeLabel = TYPE_LABELS[chunk.type] || chunk.type
@@ -67,7 +68,79 @@ function buildEmbedText(chunk) {
   if (chunk.moduleTitle)   parts.push(`[${chunk.moduleTitle}]`)
   if (chunk.chapter)       parts.push(`[Atto ${chunk.chapter}]`)
   if (chunk.sessionNumber) parts.push(`[Sessione ${chunk.sessionNumber}]`)
-  return parts.join(' ') + '\n' + chunk.content
+  let text = parts.join(' ') + '\n' + chunk.content
+  if (chunk.relatedTags?.length) {
+    text += '\nRicerche correlate: ' + chunk.relatedTags.map(t => `[${t}]`).join(' ')
+  }
+  return text
+}
+
+// ── Tag expansion e arricchimento chunk raw ───────────────────────────────────
+
+const STOP_WORDS = new Set([
+  'di','del','della','dello','dei','degli','delle',
+  'la','il','lo','le','un','una','e','in','a','da','su','per',
+  'du','de','des','le','la'   // francese (moduli ambientati a Parigi, ecc.)
+])
+
+/**
+ * Espande un nome di entità in una lista di tag per la rilevazione nei chunk raw.
+ * "Sophia Hapgood"          → ["Sophia Hapgood", "Sophia", "Hapgood"]
+ * "Biblioteca della Sorbona" → ["Biblioteca della Sorbona", "Biblioteca", "Sorbona"]
+ */
+function expandEntityTags(name, type) {
+  const tags = [name]
+  const words = name.split(/[\s,\-]+/).filter(Boolean)
+
+  if (type === 'personaggio') {
+    // Ogni parola capitalizzata (nome, cognome, titolo)
+    for (const word of words) {
+      if (word.length > 2 && /^[A-ZÀÈÉÌÒÙÜ]/.test(word))
+        tags.push(word)
+    }
+  } else {
+    // Parole significative: salta stop words e parole troppo corte
+    for (const word of words) {
+      if (word.length > 3 && !STOP_WORDS.has(word.toLowerCase()))
+        tags.push(word)
+    }
+  }
+
+  return [...new Set(tags)]
+}
+
+/**
+ * Arricchisce i chunk raw aggiungendo `relatedTags` con i nomi canonici
+ * delle entità semantiche (location, personaggio) citate nel testo.
+ *
+ * La rilevazione usa i tag espansi (cerca "Sophia" oltre a "Sophia Hapgood"),
+ * ma relatedTags contiene solo il nome canonico completo per non duplicare.
+ * L'arricchimento avviene solo nell'embedding — il campo `content` non cambia.
+ */
+function enrichRawChunks(rawChunks, semanticChunks) {
+  // Costruisce la mappa: tag espanso (lowercase) → nome canonico
+  const tagMap = new Map()  // tagLower → canonicalName
+  for (const chunk of semanticChunks) {
+    if (chunk.type !== 'location' && chunk.type !== 'personaggio') continue
+    for (const tag of expandEntityTags(chunk.name, chunk.type)) {
+      tagMap.set(tag.toLowerCase(), chunk.name)
+    }
+  }
+  if (tagMap.size === 0) return rawChunks
+
+  return rawChunks.map(chunk => {
+    const lowerContent = chunk.content.toLowerCase()
+    const mentioned = new Set()
+
+    for (const [tagLower, canonicalName] of tagMap) {
+      if (lowerContent.includes(tagLower)) {
+        mentioned.add(canonicalName)
+      }
+    }
+
+    if (!mentioned.size) return chunk
+    return { ...chunk, relatedTags: [...mentioned] }
+  })
 }
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
@@ -456,9 +529,10 @@ async function indexModule(moduleId, chapterText, chapterNumber = 1) {
   } catch { /* file non ancora generato, ignorato */ }
 
   // 2. Chunk semantici (LLM)
+  let semanticChunks = []
   if (DEFAULT_HEAVY_MODEL) {
     try {
-      const semanticChunks = await preprocessModuleWithLLM(chapterText, chapterNumber)
+      semanticChunks = await preprocessModuleWithLLM(chapterText, chapterNumber)
       allChunks.push(...semanticChunks.map(tag))
     } catch (err) {
       console.warn(`[RAG] Preprocessing LLM fallito per ${moduleId}:`, err.message)
@@ -467,9 +541,10 @@ async function indexModule(moduleId, chapterText, chapterNumber = 1) {
     console.warn('[RAG] DEFAULT_HEAVY_LLM_MODEL non configurato, solo chunk raw')
   }
 
-  // 3. Chunk raw (testo originale suddiviso per sezioni)
-  const rawChunks = splitIntoRawChunks(chapterText)
-  console.log(`[RAG] ${rawChunks.length} chunk raw generati`)
+  // 3. Chunk raw — arricchiti con "Ricerche correlate" dalle entità semantiche
+  const rawChunks = enrichRawChunks(splitIntoRawChunks(chapterText), semanticChunks)
+  const enrichedCount = rawChunks.filter(c => c.relatedTags?.length).length
+  console.log(`[RAG] ${rawChunks.length} chunk raw generati (${enrichedCount} arricchiti con tag correlati)`)
   allChunks.push(...rawChunks.map(tag))
 
   return indexModuleChunks(moduleId, allChunks)
