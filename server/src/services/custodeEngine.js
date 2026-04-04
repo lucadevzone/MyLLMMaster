@@ -96,10 +96,10 @@ async function getDiary(tableId) {
   try { return await fs.readFile(p, 'utf-8') } catch { return '' }
 }
 
-async function appendDiary(tableId, entry) {
+async function appendDiary(tableId, entry, sessionNumber = 0, moduleTitle = '') {
   const p = path.join(tDir(tableId), 'diary.txt')
   await fs.appendFile(p, '\n\n' + entry)
-  rag.indexDiaryEntry(tableId, entry).catch(err =>
+  rag.indexDiaryEntry(tableId, entry, sessionNumber, moduleTitle).catch(err =>
     console.warn(`[Custode] Indicizzazione diary entry fallita per ${tableId}:`, err.message)
   )
 }
@@ -248,6 +248,46 @@ function formatRagResults(results) {
     .join('\n\n---\n\n')
 }
 
+// ── RAG resolver ──────────────────────────────────────────────────────────────
+//
+// Risolve i tag {{rag:module:"query"}} e {{rag:table:"query"}} nel template
+// prima della normale sostituzione delle variabili.
+// La query può contenere riferimenti a variabili runtime: {{rag:module:"{{suggerimento_scena}}"}}
+
+const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"\}\}/g
+const RAG_PROMPT_TOP_K = parseInt(process.env.RAG_PROMPT_TOP_K || '3')
+
+function buildRagResolver(moduleId, tableId) {
+  return async (template, vars) => {
+    const matches = [...template.matchAll(RAG_PATTERN)]
+    if (!matches.length) return template
+
+    for (const match of matches) {
+      const [fullMatch, source, queryTemplate] = match
+
+      // Interpola la stringa di query con le variabili runtime
+      let query = queryTemplate
+      for (const [key, val] of Object.entries(vars)) {
+        const value = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')
+        query = query.replaceAll(`{{${key}}}`, value)
+      }
+
+      let results = []
+      try {
+        results = source === 'module'
+          ? await rag.queryModule(moduleId, query, RAG_PROMPT_TOP_K)
+          : await rag.queryTable(tableId, query, RAG_PROMPT_TOP_K)
+      } catch (err) {
+        console.warn(`[Custode] RAG resolver [${source}] "${query}" fallita:`, err.message)
+      }
+
+      template = template.replaceAll(fullMatch, formatRagResults(results))
+    }
+
+    return template
+  }
+}
+
 const FASE1A_CACHE_FILE = 'fase1a_cache.json'
 function fase1aCachePath(tableId) { return path.join(tDir(tableId), FASE1A_CACHE_FILE) }
 
@@ -293,11 +333,11 @@ async function prepareSessionBootstrap(tableId, options = {}) {
   const allCreated = table.invitedPlayers.every(email => charOwners.has(email))
   if (!allCreated) return false
 
-  const primoCapitolo = mod.chapters[0]?.content || ''
-  if (!primoCapitolo.trim()) return false
+  // Verifica che il modulo abbia contenuto (serve per il RAG, non più per l'ambientazione diretta)
+  if (!mod.chapters[0]?.content?.trim()) return false
 
   const schede_PG = chars.map(synthChar).join('\n')
-  const ambientazione = await ensureModuleAmbientazione(table.moduleId, primoCapitolo, heavyModel, tableId)
+  const ragResolver = buildRagResolver(table.moduleId, tableId)
 
   let lastError
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -305,16 +345,17 @@ async function prepareSessionBootstrap(tableId, options = {}) {
       const result = await ollama.runPhase(
         heavyModel,
         'fase1a_prima_sessione.md',
-        { ambientazione, schede_PG },
+        { schede_PG },
         { num_ctx: ollama.HEAVY_LLM_NUM_CTX },
-        tableId
+        tableId,
+        ragResolver
       )
       await writeJSON(fase1aCachePath(tableId), result)
       table.custodeStarted = true
       table.updatedAt = new Date().toISOString()
       await writeJSON(path.join(tDir(tableId), 'table.json'), table)
       if (result.narrativa) {
-        rag.indexSessionIntro(tableId, result.narrativa).catch(err =>
+        rag.indexSessionIntro(tableId, result.narrativa, mod.title).catch(err =>
           console.warn(`[Custode] Indicizzazione Prima Sessione fallita per ${tableId}:`, err.message)
         )
       }
@@ -441,7 +482,8 @@ class CustodeEngine {
 
     try {
       const ollamaOptions = useLight ? {} : { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
-      return await ollama.runPhase(model, promptFile, vars, ollamaOptions, this.tableId)
+      const ragResolver = buildRagResolver(table.moduleId, this.tableId)
+      return await ollama.runPhase(model, promptFile, vars, ollamaOptions, this.tableId, ragResolver)
     } catch (err) {
       if (err.isLlmError) {
         await this.pauseForTechnicalIssue(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
@@ -501,15 +543,11 @@ class CustodeEngine {
         result = await readJSON(cachePath)
       } else {
         console.log(`[Custode] fase1a: cache assente, chiamo LLM per ${this.tableId}`)
-        const primo_capitolo = mod.chapters[0]?.content || ''
-        const ambientazione = await ensureModuleAmbientazione(
-          table.moduleId, primo_capitolo, table['heavy-llmModel'], this.tableId
-        )
-        result = await this.llm('fase1a_prima_sessione.md', { ambientazione, schede_PG })
+        result = await this.llm('fase1a_prima_sessione.md', { schede_PG })
       }
       if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
-      if (result.diary) await appendDiary(this.tableId, result.diary)
+      if (result.diary) await appendDiary(this.tableId, result.diary, sessionNumber, mod.title)
 
       // Inizializza world_state: tutti i PG in un unico gruppo
       worldState.groups = [{
@@ -523,14 +561,15 @@ class CustodeEngine {
     } else {
       await this.emitPhaseChange('fase-1b')
       await this.emitThinking('fase-1b')
+      const prevSession = Math.max(1, sessionNumber - 1)
       const vars = {
-        diary,
+        prevSession,
         scena_in_focus: focusScene ? JSON.stringify(focusScene) : ''
       }
       const result = await this.llm('fase1b_sessioni_successive.md', vars)
       if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
-      if (result.diary) await appendDiary(this.tableId, result.diary)
+      if (result.diary) await appendDiary(this.tableId, result.diary, sessionNumber, mod.title)
     }
 
     // Prossima fase
@@ -544,34 +583,11 @@ class CustodeEngine {
 
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
-    const { worldState, mod, table } = await this.buildContext()
-    const primo_capitolo = mod.chapters[0]?.content || ''
+    const { worldState } = await this.buildContext()
     const suggerimento_scena = suggerimento || 'scena introduttiva'
-    const heavyModel = table['heavy-llmModel']
-
-    await this.emitThinking('fase-2a')
-    const materiale_scena = await ollama.runTextPhase(
-      heavyModel,
-      'fase2a_estrai_materiale.md',
-      { primo_capitolo, suggerimento_scena },
-      this.tableId
-    )
-    if (this.abortIfPaused()) return null
-
-    let contesto_rag = '(nessun contesto disponibile)'
-    try {
-      const ragResults = await rag.queryModule(table.moduleId, suggerimento_scena, 3)
-      contesto_rag = formatRagResults(ragResults)
-    } catch (err) {
-      console.warn('[Custode] RAG query fase2b fallita:', err.message)
-    }
 
     await this.emitThinking('fase-2b')
-    const result = await this.llm('fase2b_prepara_scena.md', {
-      materiale_scena,
-      suggerimento_scena,
-      contesto_rag
-    })
+    const result = await this.llm('fase2b_prepara_scena.md', { suggerimento_scena })
     if (this.abortIfPaused()) return null
 
     // Assegna ID progressivo e inizializza progressione
@@ -635,25 +651,14 @@ class CustodeEngine {
     const recentMsgs = ctx?.messages.slice(-10)
       .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
 
-    let contesto_rag = '(nessun contesto disponibile)'
-    const ragQuery = focusScene?.contesto_dove || focusScene?.location || ''
-    if (ragQuery) {
-      try {
-        const ragResults = await rag.queryModule(table.moduleId, ragQuery, 3)
-        contesto_rag = formatRagResults(ragResults)
-      } catch (err) {
-        console.warn('[Custode] RAG query fase3b fallita:', err.message)
-      }
-    }
-
     const result = await this.llm('fase3b_narrazione.md', {
-      scena_focus: JSON.stringify(focusScene),
+      scena_focus:  JSON.stringify(focusScene),
       progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       schede_PG,
-      diary: diary || '(nessun diario disponibile)',
-      engagement: JSON.stringify(engagement),
+      diary:        diary || '(nessun diario disponibile)',
+      engagement:   JSON.stringify(engagement),
       storia_recente: recentMsgs,
-      contesto_rag
+      contesto_dove:  focusScene?.contesto_dove || ''
     })
     if (this.abortIfPaused()) return null
 
@@ -834,7 +839,8 @@ class CustodeEngine {
   async fase5(piano) {
     await this.emitPhaseChange('fase-5')
     await this.emitThinking('fase-5')
-    const { worldState, schede_PG, pgLookup } = await this.buildContext()
+    const { worldState, schede_PG, pgLookup, mod } = await this.buildContext()
+    const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase5_risoluzione.md', {
@@ -875,7 +881,7 @@ class CustodeEngine {
     }
 
     // Aggiorna diario
-    if (agg.diary) await appendDiary(this.tableId, agg.diary)
+    if (agg.diary) await appendDiary(this.tableId, agg.diary, sessionNumber, mod.title)
 
     // Aggiorna npcs e items nel world state
     if (agg.npcs?.length || agg.items?.length) {
@@ -944,7 +950,8 @@ class CustodeEngine {
   async fase5c(data) {
     await this.emitPhaseChange('fase-5c')
     await this.emitThinking('fase-5c')
-    const { worldState } = await this.buildContext()
+    const { worldState, mod } = await this.buildContext()
+    const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase5c_chiusura_scena.md', {
@@ -956,7 +963,7 @@ class CustodeEngine {
 
     await this.emitNarrative(result.narrativa)
 
-    if (result.aggiornamenti?.diary) await appendDiary(this.tableId, result.aggiornamenti.diary)
+    if (result.aggiornamenti?.diary) await appendDiary(this.tableId, result.aggiornamenti.diary, sessionNumber, mod.title)
     if (result.aggiornamenti?.scena_chiusa) {
       await closeScene(this.tableId, result.aggiornamenti.scena_chiusa, result.riepilogo_scena)
       const ws = await getWorldState(this.tableId)

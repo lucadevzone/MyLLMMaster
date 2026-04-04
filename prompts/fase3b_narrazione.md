@@ -37,5 +37,5 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 **Cosa è successo finora in questa scena:**
 {{progressione}}
 
-**Contesto dal modulo (personaggi e luoghi rilevanti, estratto via RAG):**
-{{contesto_rag}}
+**Contesto dal modulo (personaggi e luoghi della scena):**
+{{rag:module:"{{contesto_dove}}"}}

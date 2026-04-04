@@ -18,15 +18,12 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 }
 
 ## Istruzioni
-- Struttura il materiale estratto qui sotto nei campi JSON richiesti
+- Struttura il materiale estratto nei campi JSON richiesti
 - Descrizione dettagliata della location
 - Descrizione dettagliata dei personaggi non giocanti (PNG)
 - Elenco delle opportunità, delle minacce e degli indizi (con eventuali prove da affrontare e difficoltà)
 - Attieniti solo al materiale fornito, non inventare elementi aggiuntivi
 
 ## Input
-**Contesto dal modulo (personaggi e luoghi rilevanti, estratto via RAG):**
-{{contesto_rag}}
-
-**Materiale estratto per la scena:**
-{{materiale_scena}}
+**Contesto dal modulo (personaggi e luoghi rilevanti):**
+{{rag:module:"{{suggerimento_scena}}"}}

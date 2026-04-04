@@ -55,16 +55,19 @@ const TYPE_LABELS = {
 
 /**
  * Costruisce il testo da passare all'embedding.
- * Aggiunge un header con tipo leggibile, nome e contesto del modulo/atto
- * così che query categoriali ("personaggi non giocanti dell'atto I") trovino corrispondenza.
+ * Tutti i metadati sono racchiusi in [parentesi quadre] per uniformità e per
+ * migliorare il retrieval con query categoriali ("personaggi non giocanti dell'atto I").
  * Il campo `content` rimane invariato per la visualizzazione nei prompt.
+ *
+ * Formato: [Tipo] [Nome] [Modulo] [Atto N] [Sessione N]
  */
 function buildEmbedText(chunk) {
   const typeLabel = TYPE_LABELS[chunk.type] || chunk.type
-  const chapterPart = chunk.chapter ? `, Atto ${chunk.chapter}` : ''
-  const modulePart  = chunk.moduleTitle ? ` — ${chunk.moduleTitle}${chapterPart}` : ''
-  const header = `[${typeLabel}] ${chunk.name}${modulePart}`
-  return `${header}\n${chunk.content}`
+  const parts = [`[${typeLabel}]`, `[${chunk.name}]`]
+  if (chunk.moduleTitle)   parts.push(`[${chunk.moduleTitle}]`)
+  if (chunk.chapter)       parts.push(`[Atto ${chunk.chapter}]`)
+  if (chunk.sessionNumber) parts.push(`[Sessione ${chunk.sessionNumber}]`)
+  return parts.join(' ') + '\n' + chunk.content
 }
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
@@ -473,33 +476,37 @@ async function indexModule(moduleId, chapterText, chapterNumber = 1) {
 }
 
 /**
- * Indicizza il file avviare_la_sessione.txt nel RAG del tavolo.
- * Chiamato da custodeEngine dopo la generazione del file (Fase 4).
+ * Indicizza la narrativa di apertura sessione nel RAG del tavolo.
+ * Chiamato da custodeEngine dopo la generazione della fase1a cache.
+ * @param {string} tableId
+ * @param {string} introText
+ * @param {string} moduleTitle — titolo del modulo per tagging (opzionale)
  */
-async function indexSessionIntro(tableId, introText) {
+async function indexSessionIntro(tableId, introText, moduleTitle = '') {
   const indexPath = tableIndexPath(tableId)
   const index = await loadIndex(indexPath)
 
   // Rimuovi eventuale chunk precedente (un solo chunk "Prima Sessione" per tavolo)
   index.chunks = index.chunks.filter(c => c.id !== 'special_prima_sessione')
 
+  const chunk = {
+    id:          'special_prima_sessione',
+    type:        'prima_sessione',
+    name:        'Prima Sessione',
+    moduleTitle,
+    content:     introText,
+    addedAt:     new Date().toISOString()
+  }
+
   let embedding
   try {
-    embedding = await embed(introText)
+    embedding = await embed(buildEmbedText(chunk))
   } catch (err) {
     console.warn(`[RAG] Embedding Prima Sessione fallito per tavolo ${tableId}:`, err.message)
     return
   }
 
-  index.chunks.push({
-    id:      'special_prima_sessione',
-    type:    'prima_sessione',
-    name:    'Prima Sessione',
-    content: introText,
-    embedding,
-    addedAt: new Date().toISOString()
-  })
-
+  index.chunks.push({ ...chunk, embedding })
   await saveIndex(indexPath, index)
   console.log(`[RAG] Chunk "Prima Sessione" indicizzato per tavolo ${tableId}`)
 }
@@ -575,29 +582,35 @@ async function queryModule(moduleId, queryText, topK = RAG_TOP_K) {
 
 /**
  * Aggiunge una voce di diario all'indice RAG del tavolo.
- * Chiamato da custodeEngine.appendDiary() in Fase 4.
+ * Chiamato da custodeEngine.appendDiary().
+ * @param {string} tableId
+ * @param {string} entryText
+ * @param {number} sessionNumber — numero di sessione per tagging (es. [Sessione 3])
+ * @param {string} moduleTitle  — titolo del modulo per tagging (opzionale)
  */
-async function indexDiaryEntry(tableId, entryText) {
+async function indexDiaryEntry(tableId, entryText, sessionNumber = 0, moduleTitle = '') {
   const indexPath = tableIndexPath(tableId)
   const index = await loadIndex(indexPath)
 
+  const chunk = {
+    id:            `diary_${Date.now()}`,
+    type:          'diario',
+    name:          `Sessione ${sessionNumber}`,
+    sessionNumber,
+    moduleTitle,
+    content:       entryText,
+    addedAt:       new Date().toISOString()
+  }
+
   let embedding
   try {
-    embedding = await embed(entryText)
+    embedding = await embed(buildEmbedText(chunk))
   } catch (err) {
     console.warn(`[RAG] Embedding diary entry fallito per tavolo ${tableId}:`, err.message)
     return
   }
 
-  index.chunks.push({
-    id:      `diary_${Date.now()}`,
-    type:    'diario',
-    name:    `Voce ${new Date().toLocaleDateString('it-IT')}`,
-    content: entryText,
-    embedding,
-    addedAt: new Date().toISOString()
-  })
-
+  index.chunks.push({ ...chunk, embedding })
   await saveIndex(indexPath, index)
 }
 
