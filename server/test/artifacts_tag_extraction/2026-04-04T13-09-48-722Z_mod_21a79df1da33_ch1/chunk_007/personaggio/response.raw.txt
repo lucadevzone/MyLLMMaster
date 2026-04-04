@@ -1,0 +1,9 @@
+{
+  "tags": [
+    {
+      "canonical": "Belloq",
+      "aliases": ["Henri Belloq"],
+      "evidence": "presente nel testo"
+    }
+  ]
+}

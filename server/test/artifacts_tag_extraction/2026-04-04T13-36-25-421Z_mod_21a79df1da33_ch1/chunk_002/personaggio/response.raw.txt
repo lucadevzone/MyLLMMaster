@@ -1,0 +1,19 @@
+{
+  "tags": [
+    {
+      "canonical": "Sophia Hapgood",
+      "aliases": [],
+      "evidence": "Ex studentessa di antropologia, oggi conferenziera e medium famosa. È il fulcro emotivo e operativo dell'Atto I."
+    },
+    {
+      "canonical": "Marcel Dumont",
+      "aliases": [],
+      "evidence": "Antiquario parigino che organizza l’asta senza capire davvero cosa sta vendendo. Ha ricevuto la collezione da un intermediario chiamato “M. Arnaud”. Conserva una ricevuta con un indirizzo nel 9° arrondissement e una lettera che Belloq gli aveva affidato per “una persona di fiducia”. Dopo l’asta viene intimidito."
+    },
+    {
+      "canonical": "Commissaire Renard",
+      "aliases": [],
+      "evidence": "Poliziotto pragmatico che indaga sulla sparizione di Belloq. Non crede al soprannaturale. Ha il rapporto sugli ultimi movimenti del professore e un appunto che aveva archiviato come irrilevante: “Timeo 25a — non è metafora.” Può diventare alleato o ostacolo."
+    }
+  ]
+}

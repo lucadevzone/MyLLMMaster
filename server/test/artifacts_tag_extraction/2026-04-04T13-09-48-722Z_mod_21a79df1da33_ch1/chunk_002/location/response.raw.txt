@@ -1,0 +1,14 @@
+{
+  "tags": [
+    {
+      "canonical": "Asta di Marcel Dumont",
+      "aliases": [],
+      "evidence": "Il luogo dove si svolge l'asta"
+    },
+    {
+      "canonical": "Appartamento di Belloq",
+      "aliases": [],
+      "evidence": "Il luogo dove Sophia Hapgood sa che i documenti importanti venivano nascosti"
+    }
+  ]
+}

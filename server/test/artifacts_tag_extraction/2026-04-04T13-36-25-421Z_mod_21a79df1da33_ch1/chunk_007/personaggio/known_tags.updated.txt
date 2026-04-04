@@ -1,0 +1,14 @@
+- canonical: Belloq | aliases: Henri Belloq
+- canonical: Brandt | aliases: Helene Brandt
+- canonical: Commissaire Renard | aliases: alias 1, Renard
+- canonical: Dott.ssa Helene Brandt | aliases: Helene Brandt, Brandt
+- canonical: Dumont | aliases: Marcel Dumont
+- canonical: Ernst
+- canonical: Helene Brandt
+- canonical: Henri Belloq
+- canonical: Kerner | aliases: Klaus Kerner
+- canonical: Klaus Kerner | aliases: Kerner
+- canonical: Marcel Dumont | aliases: Dumont
+- canonical: Renard | aliases: Commissaire Renard
+- canonical: Sophia
+- canonical: Sophia Hapgood

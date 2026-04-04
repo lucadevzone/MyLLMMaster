@@ -1,0 +1,39 @@
+{
+  "tags": [
+    {
+      "canonical": "Sophia",
+      "aliases": ["Sophia"],
+      "evidence": "Rivela l’esistenza dell’amuleto e il fatto che Belloq temeva di essere cercato. Sa anche dove lui nascondeva i documenti."
+    },
+    {
+      "canonical": "Belloq",
+      "aliases": ["Belloq", "Henri Belloq"],
+      "evidence": "Script sconosciuto, non classificabile tra le scritture mediterranee note. Indica che Belloq non stava studiando una civiltà già nota."
+    },
+    {
+      "canonical": "Klaus Kerner",
+      "aliases": ["Kerner", "Klaus Kerner"],
+      "evidence": "Kerner che disegna il simbolo Segnala che non è un semplice compratore. È già toccato da qualcosa che non comprende."
+    },
+    {
+      "canonical": "Dott.ssa Helene Brandt",
+      "aliases": ["Helene Brandt", "Brandt"],
+      "evidence": "La conferenza di Brandt Brandt collega Atlantide al Mediterraneo orientale e lascia sfuggire che Knossos è il punto di convergenza più probabile."
+    },
+    {
+      "canonical": "Marcel Dumont",
+      "aliases": ["Dumont", "Marcel Dumont"],
+      "evidence": "La Galleria Dumont Dumont fornisce la lettera di Belloq: \"Vai a Knossos. Cerca sotto il labirinto, non dentro.\""
+    },
+    {
+      "canonical": "Commissaire Renard",
+      "aliases": ["Renard", "alias 1"],
+      "evidence": "Renard Conferma che la sparizione non è volontaria e fornisce l’appunto \"Timeo 25a — non è metafora.\""
+    },
+    {
+      "canonical": "Ernst",
+      "aliases": ["Ernst"],
+      "evidence": "L’Atto I è una gara investigativa. I nazisti sono avanti, ma hanno un punto cieco: non sanno del sistema tra Sophia e Belloq, cioè il nascondiglio nel Timeo. Questo permette ai PG di recuperarli se agiscono in fretta."
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+Sei il Custode di una partita di Call of Cthulhu.
+
+# Estrazione TAG — Location
+Stai leggendo il modulo avventura e devi estrarre dal testo le `location` utili alla conduzione.
+Una `location` è un luogo fisico riferito nel testo. Decidi se si tratta di una location immaginando se si tratta di un luogo visitabile da dei PG)
+
+Rispondi SOLO con JSON valido nel formato:
+{
+  "tags": [
+    {
+      "canonical": "nome location",
+      "aliases": ["alias 1"],
+      "evidence": "breve motivo"
+    }
+  ]
+}
+
+Regole:
+Una location valida può essere:
+- un luogo con un nome proprio (esempi: Hotel Lumier, Empire State Building)
+- una città (esempi: Londra, Roma, New York)
+- un'isola (esempi: Sicilia, Isola di Skye)
+- una regione o area geografica concreta (esempi: la Francia, l'Asia)
+- un edificio (esempi: Museo Civico, la casa isolata nel bosco, il vicolo)
+- l'interno di un edificio (esempi: stanza 303, il pub, sala conferenze)
+- una sede specifica di un evento (esempi: il luogo del rapimento, la collina dell'avvistamento degli ufo)
+- un luogo descritto senza nome proprio (esempi: il moletto, il ponte sul fiume)
+
+- includi solo location esplicitamente presenti nel testo
+- se nel testo compaiono più location valide, estraille tutte, non solo la principale
+- usa in `canonical` la forma più completa presente nel testo
+- se il luogo non ha nome proprio, usa in `canonical` la descrizione completa presente nel testo
+- metti in `aliases` solo varianti esplicite davvero presenti nel testo
+- se non ci sono location valide, restituisci un array vuoto
+
+Confronta le tue location con quelle già identificate per questo modulo:
+- canonical: Appartamento di Belloq | aliases: Rue Monsieur-le-Prince
+- canonical: Biblioteca della Sorbona
+- canonical: Deposito bagagli, Gare du Nord | aliases: Gare du Nord
+- canonical: Galleria Dumont
+- canonical: Grand Palais
+- canonical: Hôtel Lutétia
+- canonical: Knossos
+- canonical: Parigi
+- canonical: Sala delle Antichità, Grand Palais
+
+- se il luogo corrisponde chiaramente a un elemento già noto, riusa il `canonical` già noto
+- se invece riscontri una simiglianza tra il tuo luogo e uno già presente, puoi mettere le variante tra gli `aliases`
+- non forzare corrispondenze dubbie con i tag già noti
+- non trattare come alias due luoghi distinti, anche se uno è contenuto nell'altro
+
+
+Testo:
+Fase 1: osservazione
+Giorno dell’asta e giorno successivo. Brandt e Kerner osservano chi si interessa ai reperti. Ernst inizia a seguire i PG se si espongono. La conferenza di Brandt è ancora un evento relativamente sicuro.
+
+Fase 2: infiltrazione
+Se i PG fanno domande, parlano con Sophia o visitano Dumont, Kerner capisce che stanno indagando e li usa per vedere dove conducono. Effettua un’altra perquisizione dell’appartamento di Belloq. Ernst diventa abbastanza visibile da essere notato.
+
+Fase 3: pressione
+Brandt vuole partire per Creta entro 48 ore. Kerner riceve ordini di chiudere le questioni rimaste a Parigi. Dumont viene intimidito, Renard riceve una soffiata contro i PG, Sophia rischia un contatto diretto da parte di Kerner.
+
+Fase 4: partenza
+Brandt e Kerner lasciano Parigi in treno notturno per Atene e poi Creta. Lasciano Ernst dietro di sé per rallentare i PG, rubare l’amuleto o lanciare un avvertimento fisico. Se i PG hanno già scoperto le rivelazioni principali, questa partenza diventa la spinta finale: devono seguirli o precederli.
+
+Come interpretare i PNG
+
+Non usare i personaggi come distributori automatici di informazioni. Ognuno ha paure, limiti e interessi.
+
+Sophia è sincera ma inquietata da ciò che porta con sé.
+Dumont è collaborativo solo se si sente protetto.
+Renard pretende concretezza.
+Brandt è colta e magnetica, ma filtra tutto attraverso l’ideologia.
+Kerner è il vero predatore operativo: osserva, deduce, poi colpisce.
+Ernst è il braccio fisico della minaccia.
+
+Uso del soprannaturale
+
+L’orrore deve emergere lentamente. All’inizio sembra una storia di archeologia, spionaggio e rivalità politiche. Gli elementi soprannaturali entrano come incrinature: sogni, simboli compulsivi, reazioni inspiegabili all’amuleto, attrazione cognitiva verso Atlantide. Non spiegare troppo presto la natura di Nur-Ab-Sal o della “macchina”.
+
+Obiettivo pratico del Custode
+
+Guida i PG verso questi punti senza forzarli:
+

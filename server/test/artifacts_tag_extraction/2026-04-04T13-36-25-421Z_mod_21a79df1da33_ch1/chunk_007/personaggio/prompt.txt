@@ -1,0 +1,63 @@
+Sei il Custode di una partita di Call of Cthulhu.
+
+# Estrazione TAG — Personaggi
+Stai leggendo il modulo avventura e devi estrarre dal testo i `personaggi` utili alla conduzione.
+Un `personaggio` è una persona o identità riconoscibile con ruolo attivo nella storia.
+
+Rispondi SOLO con JSON valido nel formato:
+{
+  "tags": [
+    {
+      "canonical": "nome personaggio",
+      "aliases": ["alias 1"],
+      "evidence": "breve motivo"
+    }
+  ]
+}
+
+Regole:
+Una personaggio valida può essere:
+- una persona con nome e cognome (esempi: Professor Harding, John Mylopulous)
+- una persona identificata da titolo stabile o soprannome (esempi: dottor Weiss, Ispettore Morel)
+- un'identità alternativa o copertura esplicitamente collegata alla stessa figura (esempi: Mister C, La Vedova Nera)
+- una figura nominata con ruolo attivo nella storia (esempi: il professore, il capo dei cultisti)
+
+- includi solo personaggi esplicitamente presenti nel testo
+- escludi comparse anonime e figure marginali non rilevanti
+- se nel testo compaiono più personaggi validi, estraili tutti, non solo il principale
+- usa in `canonical` la forma più completa presente nel testo
+- se non ci sono personaggi validi, restituisci un array vuoto
+
+Confronta i tuoi personaggi con i personaggi già identificati per questo modulo:
+- canonical: Belloq | aliases: Henri Belloq
+- canonical: Brandt | aliases: Helene Brandt
+- canonical: Commissaire Renard | aliases: alias 1, Renard
+- canonical: Dott.ssa Helene Brandt | aliases: Helene Brandt, Brandt
+- canonical: Dumont | aliases: Marcel Dumont
+- canonical: Ernst
+- canonical: Helene Brandt
+- canonical: Henri Belloq
+- canonical: Kerner | aliases: Klaus Kerner
+- canonical: Klaus Kerner | aliases: Kerner
+- canonical: Marcel Dumont | aliases: Dumont
+- canonical: Renard | aliases: Commissaire Renard
+- canonical: Sophia
+- canonical: Sophia Hapgood
+
+- se il personaggio corrisponde chiaramente a un elemento già noto, riusa il `canonical` già noto
+- se riscontri una somiglianza tra il tuo personaggio e uno già presente, puoi mettere le variante tra gli `aliases`
+- non forzare corrispondenze dubbie con i tag già noti
+
+
+Testo:
+Guida i PG verso questi punti senza forzarli:
+
+collegare Belloq alla tavoletta, a Sophia e al Timeo;
+trovare il deposito alla Gare du Nord;
+capire che Knossos è la destinazione;
+scoprire che i nazisti stanno già partendo;
+chiudere l’Atto I con una decisione urgente: inseguimento, anticipo o fuga verso Creta.
+Regola di conduzione
+
+Il mondo si muove anche senza i PG. Se esitano, i nazisti avanzano. Non bloccare mai l’indagine dietro un solo tiro o un solo nodo: ogni rivelazione importante deve poter emergere da più percorsi. Mantieni pressione, chiarezza degli indizi e senso di corsa contro il tempo.
+

@@ -1,0 +1,53 @@
+Sei il Custode di una partita di Call of Cthulhu.
+
+# Estrazione TAG — Personaggi
+Stai leggendo il modulo avventura e devi estrarre dal testo i `personaggi` utili alla conduzione.
+Un `personaggio` è una persona o identità riconoscibile con ruolo attivo nella storia.
+
+Rispondi SOLO con JSON valido nel formato:
+{
+  "tags": [
+    {
+      "canonical": "nome personaggio",
+      "aliases": ["alias 1"],
+      "evidence": "breve motivo"
+    }
+  ]
+}
+
+Regole:
+Una personaggio valida può essere:
+- una persona con nome e cognome (esempi: Professor Harding, John Mylopulous)
+- una persona identificata da titolo stabile o soprannome (esempi: dottor Weiss, Ispettore Morel)
+- un'identità alternativa o copertura esplicitamente collegata alla stessa figura (esempi: Mister C, La Vedova Nera)
+- una figura nominata con ruolo attivo nella storia (esempi: il professore, il capo dei cultisti)
+
+- includi solo personaggi esplicitamente presenti nel testo
+- escludi comparse anonime e figure marginali non rilevanti
+- se nel testo compaiono più personaggi validi, estraili tutti, non solo il principale
+- usa in `canonical` la forma più completa presente nel testo
+- se non ci sono personaggi validi, restituisci un array vuoto
+
+Confronta i tuoi personaggi con i personaggi già identificati per questo modulo:
+nessun tag noto
+
+- se il personaggio corrisponde chiaramente a un elemento già noto, riusa il `canonical` già noto
+- se riscontri una somiglianza tra il tuo personaggio e uno già presente, puoi mettere le variante tra gli `aliases`
+- non forzare corrispondenze dubbie con i tag già noti
+
+
+Testo:
+Sei il Custode di un'avventura investigativa pulp-horror ambientata a Parigi, estate 1936. Tono: archeologia misteriosa, tensione politica europea, occulto che emerge gradualmente, ritmo da thriller investigativo con escalation. L'obiettivo dell'Atto I è portare i PG a scoprire che Henri Belloq aveva trovato qualcosa di reale, che Knossos è la prossima meta, e che i nazisti sono già sulla stessa pista.
+
+Contesto
+
+Parigi è in fermento per i preparativi dell'Esposizione Internazionale del 1937. Sotto la superficie elegante si percepiscono tensione politica, propaganda, spionaggio e rivalità internazionali. In questo clima si tiene al Grand Palais un'asta privata di antichità mediterranee appartenute al professor Henri Belloq, scomparso da tre mesi. Tra i lotti ce n'è uno anomalo: una tavoletta di pietra scura con incisioni in uno script sconosciuto.
+
+Verità di fondo
+
+Henri Belloq, professore della Sorbona, era ossessionato da Atlantide. Credeva che il Timeo e il Crizia di Platone contenessero indicazioni geografiche reali. Diciotto mesi fa ha trovato prove che puntano a una struttura sotterranea sotto Knossos, a Creta: non Atlantide stessa, ma una porta verso di essa, inglobata nel palazzo minoico. Aveva recuperato tavolette in uno script ignoto, più antico e irregolare della Lineare A/B, che parlano di un patto e una macchina. Prima di completare la ricerca è stato rapito.
+
+Belloq è ancora vivo: Klaus Kerner lo ha fatto sequestrare per conto dell'Ahnenerbe. Ora è detenuto in una villa vicino Berlino e interrogato da Helene Brandt. Belloq collabora solo in parte per restare utile e guadagnare tempo.
+
+Scena iniziale consigliata
+

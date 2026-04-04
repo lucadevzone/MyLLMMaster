@@ -234,6 +234,10 @@ function moduleIndexPath(moduleId) {
   return path.join(moduleRagDir(moduleId), 'index.json')
 }
 
+function moduleTagCatalogPath(moduleId) {
+  return path.join(moduleRagDir(moduleId), 'tag_catalog.json')
+}
+
 function tableRagDir(tableId) {
   return path.join(DATA_DIR, 'tables', tableId, 'rag')
 }
@@ -887,11 +891,11 @@ async function indexModuleChunks(moduleId, chunks) {
 }
 
 /**
- * Pipeline completa: approccio ibrido semantico + raw.
+ * Pipeline completa del modulo.
  *
- * 1. Chunk speciali: ambientazione pre-generata se disponibile (type: 'ambientazione')
- * 2. Chunk semantici (LLM pass1+pass2): location e personaggi estratti → alta precisione
- * 3. Chunk raw: sezioni naturali del testo originale → copertura totale
+ * 1. Chunk speciali: ambientazione pre-generata se disponibile
+ * 2. Estrazione TAG dal modulo e consolidamento globale
+ * 3. Chunk raw del testo originale, annotati con relatedTags dal catalogo consolidato
  *
  * Se DEFAULT_HEAVY_LLM_MODEL non è configurato, produce solo chunk speciali + raw.
  */
@@ -930,30 +934,62 @@ async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
       }))
     : [{ content: chapterSource || '', chapter: chapterNumber }]
 
+  const rawChunksByChapter = []
+  let allTagCandidates = []
+  if (!DEFAULT_HEAVY_MODEL) {
+    console.warn('[RAG] DEFAULT_HEAVY_LLM_MODEL non configurato, solo chunk raw senza catalogo TAG')
+  }
+
   for (const currentChapter of chapters) {
     const text = String(currentChapter.content || '').trim()
     if (!text) continue
 
-    const tagCurrent = chunk => ({ ...chunk, moduleTitle, chapter: chunk.chapter ?? currentChapter.chapter })
+    rawChunksByChapter.push({
+      chapter: currentChapter.chapter,
+      chunks: splitIntoRawChunks(text)
+    })
 
-    // 2. Chunk semantici (LLM)
-    let semanticChunks = []
     if (DEFAULT_HEAVY_MODEL) {
       try {
-        semanticChunks = await preprocessModuleWithLLM(text, currentChapter.chapter)
-        allChunks.push(...semanticChunks.map(tagCurrent))
+        const tagChunks = splitTextIntoTagChunks(text)
+        const chapterTags = await extractTagCandidates(tagChunks)
+        allTagCandidates.push(...chapterTags)
+        console.log(`[RAG] Capitolo ${currentChapter.chapter}: ${chapterTags.length} candidati TAG estratti`)
       } catch (err) {
-        console.warn(`[RAG] Preprocessing LLM fallito per ${moduleId} capitolo ${currentChapter.chapter}:`, err.message)
+        console.warn(`[RAG] Tag extraction fallita per ${moduleId} capitolo ${currentChapter.chapter}:`, err.message)
       }
-    } else {
-      console.warn('[RAG] DEFAULT_HEAVY_LLM_MODEL non configurato, solo chunk raw')
     }
+  }
 
-    // 3. Chunk raw — arricchiti con "Ricerche correlate" dalle entità semantiche
-    const rawChunks = enrichRawChunks(splitIntoRawChunks(text), semanticChunks)
-    const enrichedCount = rawChunks.filter(c => c.relatedTags?.length).length
-    console.log(`[RAG] Capitolo ${currentChapter.chapter}: ${rawChunks.length} chunk raw generati (${enrichedCount} arricchiti con tag correlati)`)
-    allChunks.push(...rawChunks.map(tagCurrent))
+  const tagCatalog = DEFAULT_HEAVY_MODEL
+    ? consolidateExtractedTags(allTagCandidates)
+    : []
+
+  await ensureDir(moduleRagDir(moduleId))
+  await fs.writeFile(
+    moduleTagCatalogPath(moduleId),
+    JSON.stringify({
+      moduleId,
+      indexedAt: new Date().toISOString(),
+      tags: tagCatalog
+    }, null, 2)
+  )
+
+  if (tagCatalog.length) {
+    console.log(`[RAG] Modulo ${moduleId}: catalogo consolidato con ${tagCatalog.length} TAG`)
+  }
+
+  for (const chapterData of rawChunksByChapter) {
+    const annotatedRawChunks = tagCatalog.length
+      ? annotateRawChunksWithTagCatalog(chapterData.chunks, tagCatalog)
+      : chapterData.chunks.map(chunk => ({ ...chunk, relatedTags: [] }))
+    const enrichedCount = annotatedRawChunks.filter(c => c.relatedTags?.length).length
+    console.log(`[RAG] Capitolo ${chapterData.chapter}: ${annotatedRawChunks.length} chunk raw generati (${enrichedCount} annotati con relatedTags)`)
+    allChunks.push(...annotatedRawChunks.map(chunk => ({
+      ...chunk,
+      moduleTitle,
+      chapter: chapterData.chapter
+    })))
   }
 
   return indexModuleChunks(moduleId, allChunks)

@@ -1,0 +1,14 @@
+{
+  "tags": [
+    {
+      "canonical": "Sala delle Antichità, Grand Palais",
+      "aliases": [],
+      "evidence": "luogo dell'asta privata"
+    },
+    {
+      "canonical": "Appartamento di Belloq, Rue Monsieur-le-Prince",
+      "aliases": [],
+      "evidence": "luogo dove Sophia cerca il nascondiglio"
+    }
+  ]
+}

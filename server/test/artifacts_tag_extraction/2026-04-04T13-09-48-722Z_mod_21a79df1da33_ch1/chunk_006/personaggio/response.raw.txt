@@ -1,0 +1,34 @@
+{
+  "tags": [
+    {
+      "canonical": "Dott.ssa Helene Brandt",
+      "aliases": [],
+      "evidence": "Presente come personaggio principale nella storia"
+    },
+    {
+      "canonical": "Klaus Kerner",
+      "aliases": [],
+      "evidence": "Presente come personaggio importante nella storia"
+    },
+    {
+      "canonical": "Marcel Dumont",
+      "aliases": [],
+      "evidence": "Menzionato come personaggio rilevante nella storia"
+    },
+    {
+      "canonical": "Madame Yseult",
+      "aliases": ["Sophia"],
+      "evidence": "Presente come personaggio importante nella storia con soprannome usato nel testo"
+    },
+    {
+      "canonical": "Commissaire Renard",
+      "aliases": [],
+      "evidence": "Menzionato come personaggio rilevante nella storia"
+    },
+    {
+      "canonical": "Ernst",
+      "aliases": [],
+      "evidence": "Presente come personaggio attivo nella storia"
+    }
+  ]
+}

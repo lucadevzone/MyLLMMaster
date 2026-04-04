@@ -1,0 +1,9 @@
+{
+  "tags": [
+    {
+      "canonical": "tavoletta di pietra con incisioni sconosciute",
+      "aliases": [],
+      "evidence": "presente tra i lotti dell'asta privata"
+    }
+  ]
+}

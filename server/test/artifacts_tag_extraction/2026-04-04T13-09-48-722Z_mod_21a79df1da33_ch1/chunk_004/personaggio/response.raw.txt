@@ -1,0 +1,14 @@
+{
+  "tags": [
+    {
+      "canonical": "Belloq",
+      "aliases": ["Henri Belloq"],
+      "evidence": "menzionato come proprietario dell'appartamento"
+    },
+    {
+      "canonical": "Klaus Kerner",
+      "aliases": [],
+      "evidence": "menzionato nella rivelazione principale R3"
+    }
+  ]
+}

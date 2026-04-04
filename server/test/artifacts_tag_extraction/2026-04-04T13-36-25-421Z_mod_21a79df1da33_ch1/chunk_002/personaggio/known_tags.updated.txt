@@ -1,0 +1,6 @@
+- canonical: Commissaire Renard
+- canonical: Helene Brandt
+- canonical: Henri Belloq
+- canonical: Klaus Kerner
+- canonical: Marcel Dumont
+- canonical: Sophia Hapgood

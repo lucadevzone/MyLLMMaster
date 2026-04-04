@@ -1,0 +1,33 @@
+{
+  "tags": [
+    {
+      "canonical": "Appartamento di Belloq",
+      "aliases": [
+        "Rue Monsieur-le-Prince"
+      ],
+      "evidence": "Indicato come la residenza di Belloq nel testo."
+    },
+    {
+      "canonical": "Galleria Dumont",
+      "aliases": [],
+      "evidence": "Il negozio dove è possibile ottenere informazioni su Belloq e l'intermediario."
+    },
+    {
+      "canonical": "Biblioteca della Sorbona",
+      "aliases": [],
+      "evidence": "Luogo per verificare fonti su Platone e documenti relativi a una vecchia spedizione a Knossos."
+    },
+    {
+      "canonical": "Hôtel Lutétia",
+      "aliases": [],
+      "evidence": "Base dei nazisti a Parigi, dove Brandt e Kerner alloggiano."
+    },
+    {
+      "canonical": "Deposito bagagli, Gare du Nord",
+      "aliases": [
+        "Gare du Nord"
+      ],
+      "evidence": "Contiene gli appunti completi di Belloq, il vero tesoro investigativo dell’Atto I."
+    }
+  ]
+}

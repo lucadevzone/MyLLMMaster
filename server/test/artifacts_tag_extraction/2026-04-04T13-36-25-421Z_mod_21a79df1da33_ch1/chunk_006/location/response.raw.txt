@@ -1,0 +1,33 @@
+{
+  "tags": [
+    {
+      "canonical": "Appartamento di Belloq",
+      "aliases": ["Rue Monsieur-le-Prince"]
+    },
+    {
+      "canonical": "Biblioteca della Sorbona"
+    },
+    {
+      "canonical": "Deposito bagagli, Gare du Nord",
+      "aliases": ["Gare du Nord"]
+    },
+    {
+      "canonical": "Galleria Dumont"
+    },
+    {
+      "canonical": "Grand Palais"
+    },
+    {
+      "canonical": "Hôtel Lutétia"
+    },
+    {
+      "canonical": "Knossos"
+    },
+    {
+      "canonical": "Parigi"
+    },
+    {
+      "canonical": "Sala delle Antichità, Grand Palais"
+    }
+  ]
+}

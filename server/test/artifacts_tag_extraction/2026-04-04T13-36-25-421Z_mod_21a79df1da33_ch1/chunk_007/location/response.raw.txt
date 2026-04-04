@@ -1,0 +1,19 @@
+{
+  "tags": [
+    {
+      "canonical": "Gare du Nord",
+      "aliases": ["Deposito bagagli"],
+      "evidence": "trovare il deposito alla Gare du Nord"
+    },
+    {
+      "canonical": "Knossos",
+      "aliases": [],
+      "evidence": "capire che Knossos è la destinazione"
+    },
+    {
+      "canonical": "Parigi",
+      "aliases": ["Rue Monsieur-le-Prince"],
+      "evidence": "collegare Belloq alla tavoletta, a Sophia e al Timeo"
+    }
+  ]
+}

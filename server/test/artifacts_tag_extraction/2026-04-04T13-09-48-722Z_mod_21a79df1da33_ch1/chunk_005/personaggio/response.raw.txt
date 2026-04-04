@@ -1,0 +1,24 @@
+{
+"tags": [
+	{
+		"canonical": "Belloq",
+		"aliases": [],
+		"evidence": "Presente nell'asta e nei documenti trovati"
+	},
+	{
+		"canonical": "Sophia Hapgood",
+		"aliases": [],
+		"evidence": "Rivela informazioni su Belloq"
+	},
+	{
+		"canonical": "Klaus Kerner",
+		"aliases": [],
+		"evidence": "Disegna il simbolo e ha informazioni sul sigillo di Nur-Ab-Sal"
+	},
+	{
+		"canonical": "Dott.ssa Helene Brandt",
+		"aliases": [],
+		"evidence": "Tiene una conferenza su Atlantide e lascia indizi sulla sua posizione"
+	}
+]
+}
