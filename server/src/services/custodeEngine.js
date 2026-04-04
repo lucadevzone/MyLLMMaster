@@ -254,8 +254,8 @@ function formatRagResults(results) {
 // prima della normale sostituzione delle variabili.
 // La query può contenere riferimenti a variabili runtime: {{rag:module:"{{suggerimento_scena}}"}}
 
-const RAG_PATTERN = /\{\{rag:(module|table)(?::cascade)?:"([^"]+)"\}\}/g
-const RAG_CASCADE_PATTERN = /\{\{rag:module:cascade:"([^"]+)"\}\}/
+// Sintassi: {{rag:source:"query"}} oppure {{rag:source:"query":cascade}}
+const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"(:cascade)?\}\}/g
 const RAG_PROMPT_TOP_K = parseInt(process.env.RAG_PROMPT_TOP_K || '3')
 
 function buildRagResolver(moduleId, tableId) {
@@ -264,7 +264,7 @@ function buildRagResolver(moduleId, tableId) {
     if (!matches.length) return template
 
     for (const match of matches) {
-      const [fullMatch, source, queryTemplate] = match
+      const [fullMatch, source, queryTemplate, cascadeFlag] = match
 
       // Interpola la stringa di query con le variabili runtime
       let query = queryTemplate
@@ -273,7 +273,7 @@ function buildRagResolver(moduleId, tableId) {
         query = query.replaceAll(`{{${key}}}`, value)
       }
 
-      const isCascade = RAG_CASCADE_PATTERN.test(fullMatch)
+      const isCascade = cascadeFlag === ':cascade'
       let results = []
       try {
         if (source === 'module') {
