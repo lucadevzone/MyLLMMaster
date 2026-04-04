@@ -22,17 +22,19 @@ async function deleteAmbientazione(moduleId) {
 
 /**
  * Prepara il modulo in background in modo sequenziale:
- * 1. Genera ambientazione.txt (se modello configurato)
- * 2. Indicizza il modulo nel RAG (includerà il chunk Ambientazione se già generato)
+ * 1. Genera ambientazione.txt dal primo capitolo (se modello configurato)
+ * 2. Indicizza tutti i capitoli del modulo nel RAG
  * Le due operazioni sono sequenziali per non sovraccaricare la LLM locale.
  */
-function prepareModuleInBackground(moduleId, primoCapitolo) {
-  if (!primoCapitolo?.trim()) return
+function prepareModuleInBackground(moduleId, chapters = []) {
+  const firstChapter = chapters[0]?.content
+  const hasAnyContent = chapters.some(ch => ch?.content?.trim())
+  if (!hasAnyContent) return
   ;(async () => {
-    if (DEFAULT_HEAVY_LLM_MODEL) {
+    if (DEFAULT_HEAVY_LLM_MODEL && firstChapter?.trim()) {
       try {
         const text = await ollama.runTextPhase(
-          DEFAULT_HEAVY_LLM_MODEL, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo }
+          DEFAULT_HEAVY_LLM_MODEL, 'prepara_ambientazione.md', { primo_capitolo: firstChapter }
         )
         await fs.writeFile(ambientazioneFilePath(moduleId), text.trim(), 'utf-8')
         console.log(`[Modules] Ambientazione generata per ${moduleId}`)
@@ -42,7 +44,7 @@ function prepareModuleInBackground(moduleId, primoCapitolo) {
       }
     }
     try {
-      await rag.indexModule(moduleId, primoCapitolo, 1)
+      await rag.indexModule(moduleId, chapters)
     } catch (err) {
       console.error(`[Modules] Errore indicizzazione RAG ${moduleId}:`, err.message)
     }
@@ -96,7 +98,7 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
 
   await ensureDir(MODULES_DIR)
   await writeJSON(path.join(MODULES_DIR, `${mod.id}.json`), mod)
-  prepareModuleInBackground(mod.id, chapters[0]?.content)
+  prepareModuleInBackground(mod.id, chapters)
   res.status(201).json(mod)
 })
 
@@ -120,7 +122,7 @@ router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
   if (chapters) {
     await deleteAmbientazione(req.params.id)
     await rag.deleteModuleIndex(req.params.id)
-    prepareModuleInBackground(req.params.id, chapters[0]?.content)
+    prepareModuleInBackground(req.params.id, chapters)
   }
   res.json(updated)
 })

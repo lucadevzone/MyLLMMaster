@@ -83,6 +83,29 @@ const STOP_WORDS = new Set([
   'du','de','des','le','la'   // francese (moduli ambientati a Parigi, ecc.)
 ])
 
+const MIN_TAG_LENGTH = 4
+
+function normalizeText(text) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function escapeRegex(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function containsWholeTag(normalizedContent, tag) {
+  const normalizedTag = normalizeText(tag)
+  if (!normalizedTag) return false
+  const pattern = new RegExp(`(^|\\s)${escapeRegex(normalizedTag)}(?=\\s|$)`, 'i')
+  return pattern.test(normalizedContent)
+}
+
 /**
  * Espande un nome di entità in una lista di tag per la rilevazione nei chunk raw.
  * "Sophia Hapgood"          → ["Sophia Hapgood", "Sophia", "Hapgood"]
@@ -95,14 +118,21 @@ function expandEntityTags(name, type) {
   if (type === 'personaggio') {
     // Ogni parola capitalizzata (nome, cognome, titolo)
     for (const word of words) {
-      if (word.length > 2 && /^[A-ZÀÈÉÌÒÙÜ]/.test(word))
+      if (word.length >= MIN_TAG_LENGTH && /^[A-ZÀÈÉÌÒÙÜ]/.test(word))
         tags.push(word)
     }
   } else {
-    // Parole significative: salta stop words e parole troppo corte
+    // Per le location tieni solo token distintivi dal nome originale:
+    // niente blacklist manuali, solo parole abbastanza lunghe e con iniziale maiuscola.
     for (const word of words) {
-      if (word.length > 3 && !STOP_WORDS.has(word.toLowerCase()))
+      const lowerWord = word.toLowerCase()
+      if (
+        word.length >= MIN_TAG_LENGTH &&
+        !STOP_WORDS.has(lowerWord) &&
+        /^[A-ZÀÈÉÌÒÙÜ]/.test(word)
+      ) {
         tags.push(word)
+      }
     }
   }
 
@@ -119,21 +149,23 @@ function expandEntityTags(name, type) {
  */
 function enrichRawChunks(rawChunks, semanticChunks) {
   // Costruisce la mappa: tag espanso (lowercase) → nome canonico
-  const tagMap = new Map()  // tagLower → canonicalName
+  const tagMap = new Map()  // normalizedTag → canonicalName
   for (const chunk of semanticChunks) {
     if (chunk.type !== 'location' && chunk.type !== 'personaggio') continue
     for (const tag of expandEntityTags(chunk.name, chunk.type)) {
-      tagMap.set(tag.toLowerCase(), chunk.name)
+      const normalizedTag = normalizeText(tag)
+      if (!normalizedTag || normalizedTag.length < MIN_TAG_LENGTH) continue
+      tagMap.set(normalizedTag, chunk.name)
     }
   }
   if (tagMap.size === 0) return rawChunks
 
   return rawChunks.map(chunk => {
-    const lowerContent = chunk.content.toLowerCase()
+    const normalizedContent = normalizeText(chunk.content)
     const mentioned = new Set()
 
-    for (const [tagLower, canonicalName] of tagMap) {
-      if (lowerContent.includes(tagLower)) {
+    for (const [normalizedTag, canonicalName] of tagMap) {
+      if (containsWholeTag(normalizedContent, normalizedTag)) {
         mentioned.add(canonicalName)
       }
     }
@@ -186,6 +218,21 @@ function cosineSimilarity(a, b) {
   }
   if (magA === 0 || magB === 0) return 0
   return dot / (Math.sqrt(magA) * Math.sqrt(magB))
+}
+
+function scoreChunks(chunks, queryEmbedding, topK = null) {
+  const scored = chunks
+    .map(chunk => ({
+      type:        chunk.type,
+      name:        chunk.name,
+      chapter:     chunk.chapter,
+      content:     chunk.content,
+      relatedTags: chunk.relatedTags,
+      score:       cosineSimilarity(queryEmbedding, chunk.embedding)
+    }))
+    .sort((a, b) => b.score - a.score)
+
+  return topK == null ? scored : scored.slice(0, topK)
 }
 
 // ── Index I/O ─────────────────────────────────────────────────────────────────
@@ -425,7 +472,13 @@ async function preprocessModuleWithLLM(chapterText, chapterNumber = 1) {
 
   if (!allEntities.length) {
     console.warn('[RAG] Pass 1 non ha prodotto entità, uso fallback paragrafi')
-    return splitIntoChunks(chapterText, chapterNumber)
+    return splitTextIntoChunks(chapterText).map((content, i) => ({
+      id:      `fallback_${String(i).padStart(3, '0')}`,
+      type:    'raw',
+      name:    `Estratto capitolo ${chapterNumber}`,
+      chapter: chapterNumber,
+      content
+    }))
   }
 
   console.log(`[RAG] Pass 1 completato: ${allEntities.length} entità totali`)
@@ -500,7 +553,7 @@ async function indexModuleChunks(moduleId, chunks) {
  *
  * Se DEFAULT_HEAVY_LLM_MODEL non è configurato, produce solo chunk speciali + raw.
  */
-async function indexModule(moduleId, chapterText, chapterNumber = 1) {
+async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
   const allChunks = []
 
   // Carica titolo del modulo per arricchire l'header di embedding
@@ -528,24 +581,38 @@ async function indexModule(moduleId, chapterText, chapterNumber = 1) {
     }
   } catch { /* file non ancora generato, ignorato */ }
 
-  // 2. Chunk semantici (LLM)
-  let semanticChunks = []
-  if (DEFAULT_HEAVY_MODEL) {
-    try {
-      semanticChunks = await preprocessModuleWithLLM(chapterText, chapterNumber)
-      allChunks.push(...semanticChunks.map(tag))
-    } catch (err) {
-      console.warn(`[RAG] Preprocessing LLM fallito per ${moduleId}:`, err.message)
-    }
-  } else {
-    console.warn('[RAG] DEFAULT_HEAVY_LLM_MODEL non configurato, solo chunk raw')
-  }
+  const chapters = Array.isArray(chapterSource)
+    ? chapterSource.map((chapter, idx) => ({
+        content: typeof chapter === 'string' ? chapter : chapter?.content || '',
+        chapter: idx + 1
+      }))
+    : [{ content: chapterSource || '', chapter: chapterNumber }]
 
-  // 3. Chunk raw — arricchiti con "Ricerche correlate" dalle entità semantiche
-  const rawChunks = enrichRawChunks(splitIntoRawChunks(chapterText), semanticChunks)
-  const enrichedCount = rawChunks.filter(c => c.relatedTags?.length).length
-  console.log(`[RAG] ${rawChunks.length} chunk raw generati (${enrichedCount} arricchiti con tag correlati)`)
-  allChunks.push(...rawChunks.map(tag))
+  for (const currentChapter of chapters) {
+    const text = String(currentChapter.content || '').trim()
+    if (!text) continue
+
+    const tagCurrent = chunk => ({ ...chunk, moduleTitle, chapter: chunk.chapter ?? currentChapter.chapter })
+
+    // 2. Chunk semantici (LLM)
+    let semanticChunks = []
+    if (DEFAULT_HEAVY_MODEL) {
+      try {
+        semanticChunks = await preprocessModuleWithLLM(text, currentChapter.chapter)
+        allChunks.push(...semanticChunks.map(tagCurrent))
+      } catch (err) {
+        console.warn(`[RAG] Preprocessing LLM fallito per ${moduleId} capitolo ${currentChapter.chapter}:`, err.message)
+      }
+    } else {
+      console.warn('[RAG] DEFAULT_HEAVY_LLM_MODEL non configurato, solo chunk raw')
+    }
+
+    // 3. Chunk raw — arricchiti con "Ricerche correlate" dalle entità semantiche
+    const rawChunks = enrichRawChunks(splitIntoRawChunks(text), semanticChunks)
+    const enrichedCount = rawChunks.filter(c => c.relatedTags?.length).length
+    console.log(`[RAG] Capitolo ${currentChapter.chapter}: ${rawChunks.length} chunk raw generati (${enrichedCount} arricchiti con tag correlati)`)
+    allChunks.push(...rawChunks.map(tagCurrent))
+  }
 
   return indexModuleChunks(moduleId, allChunks)
 }
@@ -640,18 +707,7 @@ async function queryModule(moduleId, queryText, topK = RAG_TOP_K) {
   if (!index.chunks?.length) return []
 
   const queryEmbedding = await embed(queryText)
-
-  return index.chunks
-    .map(chunk => ({
-      type:        chunk.type,
-      name:        chunk.name,
-      chapter:     chunk.chapter,
-      content:     chunk.content,
-      relatedTags: chunk.relatedTags,
-      score:       cosineSimilarity(queryEmbedding, chunk.embedding)
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
+  return scoreChunks(index.chunks, queryEmbedding, topK)
 }
 
 /**
@@ -672,20 +728,16 @@ async function cascadeQueryModule(moduleId, queryText, topK = RAG_TOP_K) {
   if (!index.chunks?.length) return []
 
   const queryEmbedding = await embed(queryText)
+  const rawChunks = index.chunks.filter(chunk => chunk.type === 'raw')
 
-  // Livello 1: scoring normale
-  const scored = index.chunks
-    .map(chunk => ({
-      type:        chunk.type,
-      name:        chunk.name,
-      chapter:     chunk.chapter,
-      content:     chunk.content,
-      relatedTags: chunk.relatedTags,
-      score:       cosineSimilarity(queryEmbedding, chunk.embedding)
-    }))
-    .sort((a, b) => b.score - a.score)
+  // Livello 1: raw-first per sfruttare relatedTags come ponte verso i chunk semantici.
+  let level1 = scoreChunks(rawChunks, queryEmbedding, topK)
 
-  const level1 = scored.slice(0, topK)
+  // Fallback: se il retrieval raw non produce nulla, torna al retrieval misto classico.
+  if (!level1.length) {
+    console.log('[RAG] Cascade fallback: nessun chunk raw, uso retrieval misto')
+    return scoreChunks(index.chunks, queryEmbedding, topK)
+  }
 
   // Livello 2: lookup per nome dei tag correlati trovati nel L1
   const included = new Set(level1.map(r => r.name.toLowerCase()))

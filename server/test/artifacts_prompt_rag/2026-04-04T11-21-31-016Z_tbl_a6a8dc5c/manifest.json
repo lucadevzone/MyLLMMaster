@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-04-04T11:21:31.347Z",
+  "tableId": "tbl_a6a8dc5c",
+  "moduleId": "mod_21a79df1da33",
+  "moduleTitle": "The Fate of Atlantis",
+  "model": "mistral-nemo:latest",
+  "ollamaUrl": "http://localhost:11434",
+  "sceneSuggestion": "scena introduttiva",
+  "only": "fase2b",
+  "files": {
+    "phase1Prompt": "fase1a_prima_sessione.prompt.txt",
+    "phase1ResponseRaw": "fase1a_prima_sessione.response.raw.txt",
+    "phase1ResponseJson": "fase1a_prima_sessione.response.json",
+    "phase2Prompt": "fase2b_prepara_scena.prompt.txt",
+    "phase2ResponseRaw": "fase2b_prepara_scena.response.raw.txt",
+    "phase2ResponseJson": "fase2b_prepara_scena.response.json"
+  }
+}

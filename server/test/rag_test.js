@@ -57,23 +57,62 @@ function showRawChunks(chapterText) {
   return chunks
 }
 
+async function rebuildIndex(mod) {
+  console.log(`\n${'='.repeat(60)}`)
+  console.log('REBUILD INDICE\n')
+  const count = await ragService.indexModule(mod.id, mod.chapters || [])
+  console.log(`\nIndicizzazione completata: ${count} chunk totali`)
+}
+
+async function testQueries(mod, queries) {
+  console.log(`\n${'='.repeat(60)}`)
+  console.log('TEST QUERY\n')
+  for (const q of queries) {
+    console.log(`\nQuery: "${q}"`)
+    console.log('-'.repeat(50))
+    const results = await ragService.queryModule(mod.id, q, 3)
+    if (!results.length) { console.log('  (nessun risultato)'); continue }
+    for (const r of results) {
+      const preview = r.content.replace(/\n/g, ' ').slice(0, 120)
+      console.log(`  [${r.type.padEnd(13)}] ${r.name} (score: ${r.score.toFixed(3)})`)
+      console.log(`    ${preview}...`)
+    }
+  }
+}
+
 async function main() {
   const mod = await loadModule()
+  console.log(`\nModulo: ${mod.title} (${mod.id})`)
+
+  const args = process.argv.slice(2)
+
+  if (args[0] === 'rebuild') {
+    await rebuildIndex(mod)
+    return
+  }
+
+  if (args[0] === 'query') {
+    // Modalità query: node rag_test.js query "parola chiave" "altra query"
+    const queries = args.slice(1).length ? args.slice(1) : [
+      'appartamento di Belloq',
+      'Sophia Hapgood',
+      'nazisti Kerner',
+      'indizi tavoletta',
+      'Knossos destinazione',
+      'come inizia la sessione'
+    ]
+    await testQueries(mod, queries)
+    return
+  }
+
+  // Default: mostra chunk raw + pass1 (come prima)
   const chapterText = mod.chapters[0]?.content || ''
-  console.log(`\nModulo: ${mod.title} (${mod.id}) — Capitolo 1: ${chapterText.length} caratteri`)
-
-  // Mostra i chunk raw
   const rawChunks = showRawChunks(chapterText)
-
-  // Strategia A: paragrafo-aware (~3000 char, no tagli a metà paragrafo)
   const chunksA = splitTextIntoChunks(chapterText)
   const resultA = await runPass1('Strategia A — paragrafo-aware', chunksA)
-
-  // Strategia B: chunk raw come input (sezione-aware)
   const chunksB = rawChunksToTextArray(rawChunks)
   const resultB = await runPass1('Strategia B — chunk raw', chunksB)
 
-  // Confronto finale
   console.log(`\n${'='.repeat(60)}`)
   console.log('CONFRONTO\n')
   const namesA = new Set(resultA.map(e => e.name.toLowerCase()))
