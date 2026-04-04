@@ -25,5 +25,8 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 - Attieniti solo al materiale fornito, non inventare elementi aggiuntivi
 
 ## Input
+**Contesto dal modulo (personaggi e luoghi rilevanti, estratto via RAG):**
+{{contesto_rag}}
+
 **Materiale estratto per la scena:**
 {{materiale_scena}}

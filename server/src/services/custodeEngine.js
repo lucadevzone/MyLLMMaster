@@ -11,6 +11,7 @@ const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileSto
 const { DATA_DIR } = require('../utils/dataInit')
 const svc = require('./sessionService')
 const ollama = require('./ollamaService')
+const rag = require('./ragService')
 
 const THINKING_MESSAGES_FILE = path.join(__dirname, '../../../config/custode-messages.json')
 let thinkingMessagesCache = null
@@ -98,6 +99,9 @@ async function getDiary(tableId) {
 async function appendDiary(tableId, entry) {
   const p = path.join(tDir(tableId), 'diary.txt')
   await fs.appendFile(p, '\n\n' + entry)
+  rag.indexDiaryEntry(tableId, entry).catch(err =>
+    console.warn(`[Custode] Indicizzazione diary entry fallita per ${tableId}:`, err.message)
+  )
 }
 
 async function readPreparedFile(tableId, filename) {
@@ -237,6 +241,13 @@ function normalizeNarrativeText(text) {
   return String(text).trim()
 }
 
+function formatRagResults(results) {
+  if (!results?.length) return '(nessun contesto disponibile)'
+  return results
+    .map(r => `[${r.type}] ${r.name}:\n${r.content}`)
+    .join('\n\n---\n\n')
+}
+
 const FASE1A_CACHE_FILE = 'fase1a_cache.json'
 function fase1aCachePath(tableId) { return path.join(tDir(tableId), FASE1A_CACHE_FILE) }
 
@@ -302,6 +313,11 @@ async function prepareSessionBootstrap(tableId, options = {}) {
       table.custodeStarted = true
       table.updatedAt = new Date().toISOString()
       await writeJSON(path.join(tDir(tableId), 'table.json'), table)
+      if (result.narrativa) {
+        rag.indexSessionIntro(tableId, result.narrativa).catch(err =>
+          console.warn(`[Custode] Indicizzazione Prima Sessione fallita per ${tableId}:`, err.message)
+        )
+      }
       return true
     } catch (err) {
       lastError = err
@@ -542,10 +558,19 @@ class CustodeEngine {
     )
     if (this.abortIfPaused()) return null
 
+    let contesto_rag = '(nessun contesto disponibile)'
+    try {
+      const ragResults = await rag.queryModule(table.moduleId, suggerimento_scena, 3)
+      contesto_rag = formatRagResults(ragResults)
+    } catch (err) {
+      console.warn('[Custode] RAG query fase2b fallita:', err.message)
+    }
+
     await this.emitThinking('fase-2b')
     const result = await this.llm('fase2b_prepara_scena.md', {
       materiale_scena,
-      suggerimento_scena
+      suggerimento_scena,
+      contesto_rag
     })
     if (this.abortIfPaused()) return null
 
@@ -575,7 +600,7 @@ class CustodeEngine {
   // ── FASE 3: Scena e Gioco Libero ──────────────────────────────────────────
 
   async fase3() {
-    const { worldState, schede_PG, pgLookup, diary } = await this.buildContext()
+    const { worldState, schede_PG, pgLookup, diary, table } = await this.buildContext()
     const ctx = svc.getSession(this.tableId)
     const engagement = engagementForLlm(ctx?.session?.engagement || {}, pgLookup)
 
@@ -610,13 +635,25 @@ class CustodeEngine {
     const recentMsgs = ctx?.messages.slice(-10)
       .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
 
+    let contesto_rag = '(nessun contesto disponibile)'
+    const ragQuery = focusScene?.contesto_dove || focusScene?.location || ''
+    if (ragQuery) {
+      try {
+        const ragResults = await rag.queryModule(table.moduleId, ragQuery, 3)
+        contesto_rag = formatRagResults(ragResults)
+      } catch (err) {
+        console.warn('[Custode] RAG query fase3b fallita:', err.message)
+      }
+    }
+
     const result = await this.llm('fase3b_narrazione.md', {
       scena_focus: JSON.stringify(focusScene),
       progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       schede_PG,
       diary: diary || '(nessun diario disponibile)',
       engagement: JSON.stringify(engagement),
-      storia_recente: recentMsgs
+      storia_recente: recentMsgs,
+      contesto_rag
     })
     if (this.abortIfPaused()) return null
 
