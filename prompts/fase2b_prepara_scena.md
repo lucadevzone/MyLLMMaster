@@ -26,6 +26,5 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 ## Input
 **Contesto:**
-{{rag:module:"{{suggerimento_scena}}"}}
-{{rag:module:"locations"}}
-{{rag:module:"personaggi rilevanti"}}
+{{rag:module:"{{suggerimento_scena}}":cascade}}
+

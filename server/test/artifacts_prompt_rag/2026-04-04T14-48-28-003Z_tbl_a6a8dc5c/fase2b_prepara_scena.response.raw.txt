@@ -1,0 +1,17 @@
+{
+  "contesto_dove": "Parigi",
+  "contesto_quando": "1930",
+  "location": "Una sala d'aste affollata con una tavoletta anomala sul podio, Sophia Hapgood che impallidisce alla vista e un uomo elegante in un angolo, Kerner, che riempie un taccuino con lo stesso simbolo ripetuto ossessivamente.",
+  "PNG": {
+    "Dott.ssa Helene Brandt": "Studiosa dell’Ahnenerbe. Brillante, affascinante, ideologicamente convinta. Tiene una conferenza su Atlantide e le origini della civiltà mediterranea. Ha accesso solo ad appunti incompleti di Belloq.",
+    "Marcel Dumont": "Antiquario parigino che organizza l’asta senza capire davvero cosa sta vendendo. Ha ricevuto la collezione da un intermediario chiamato “M. Arnaud”. Conserva una ricevuta con un indirizzo nel 9° arrondissement e una lettera che Belloq gli aveva affidato per “una persona di fiducia”. Dopo l'asta viene intimidito.",
+    "Commissaire Renard": "Poliziotto pragmatico che indaga sulla sparizione di Belloq. Non crede al soprannaturale. Ha il rapporto sugli ultimi movimenti del professore e un appunto che aveva archiviato come irrilevante: \"Timeo 25a — non è metafora.\""
+  },
+  "opportunita": "Osservare la sala, gli invitati, le tensioni, i dettagli sociali.",
+  "minacce": "Intimidazione di Marcel Dumont dopo l'asta se ignorato.",
+  "indizi": {
+    "tavoletta anomala": "Sul podio",
+    "reazione di Sophia Hapgood": "Impallidisce alla vista",
+    "comportamento di Kerner": "Riempie un taccuino con lo stesso simbolo ripetuto ossessivamente"
+  }
+}

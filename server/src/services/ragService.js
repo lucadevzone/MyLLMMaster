@@ -238,6 +238,10 @@ function moduleTagCatalogPath(moduleId) {
   return path.join(moduleRagDir(moduleId), 'tag_catalog.json')
 }
 
+function moduleAnnotatedRawDebugPath(moduleId) {
+  return path.join(moduleRagDir(moduleId), 'annotated_raw_chunks.debug.json')
+}
+
 function tableRagDir(tableId) {
   return path.join(DATA_DIR, 'tables', tableId, 'rag')
 }
@@ -596,6 +600,18 @@ async function saveIndex(indexPath, index) {
   await fs.writeFile(indexPath, JSON.stringify(index, null, 2))
 }
 
+async function loadModuleTagCatalog(moduleId) {
+  try {
+    const raw = await fs.readFile(moduleTagCatalogPath(moduleId), 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return parsed
+    if (Array.isArray(parsed?.tags)) return parsed.tags
+    return []
+  } catch {
+    return []
+  }
+}
+
 // ── Chunking raw del testo originale (strategia 1+3) ─────────────────────────
 //
 // Strategia combinata:
@@ -936,6 +952,13 @@ async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
 
   const rawChunksByChapter = []
   let allTagCandidates = []
+  let tagCatalog = await loadModuleTagCatalog(moduleId)
+  let shouldPersistTagCatalog = false
+
+  if (tagCatalog.length) {
+    console.log(`[RAG] Modulo ${moduleId}: riuso catalogo TAG esistente (${tagCatalog.length} TAG)`)
+  }
+
   if (!DEFAULT_HEAVY_MODEL) {
     console.warn('[RAG] DEFAULT_HEAVY_LLM_MODEL non configurato, solo chunk raw senza catalogo TAG')
   }
@@ -949,7 +972,7 @@ async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
       chunks: splitIntoRawChunks(text)
     })
 
-    if (DEFAULT_HEAVY_MODEL) {
+    if (DEFAULT_HEAVY_MODEL && !tagCatalog.length) {
       try {
         const tagChunks = splitTextIntoTagChunks(text)
         const chapterTags = await extractTagCandidates(tagChunks)
@@ -961,36 +984,53 @@ async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
     }
   }
 
-  const tagCatalog = DEFAULT_HEAVY_MODEL
-    ? consolidateExtractedTags(allTagCandidates)
-    : []
+  if (!tagCatalog.length && DEFAULT_HEAVY_MODEL) {
+    tagCatalog = consolidateExtractedTags(allTagCandidates)
+    shouldPersistTagCatalog = true
+  }
 
   await ensureDir(moduleRagDir(moduleId))
-  await fs.writeFile(
-    moduleTagCatalogPath(moduleId),
-    JSON.stringify({
-      moduleId,
-      indexedAt: new Date().toISOString(),
-      tags: tagCatalog
-    }, null, 2)
-  )
+  if (shouldPersistTagCatalog || !(await fileExists(moduleTagCatalogPath(moduleId)))) {
+    await fs.writeFile(
+      moduleTagCatalogPath(moduleId),
+      JSON.stringify({
+        moduleId,
+        indexedAt: new Date().toISOString(),
+        tags: tagCatalog
+      }, null, 2)
+    )
+  }
 
   if (tagCatalog.length) {
     console.log(`[RAG] Modulo ${moduleId}: catalogo consolidato con ${tagCatalog.length} TAG`)
   }
 
+  const annotatedRawDebug = []
   for (const chapterData of rawChunksByChapter) {
     const annotatedRawChunks = tagCatalog.length
       ? annotateRawChunksWithTagCatalog(chapterData.chunks, tagCatalog)
       : chapterData.chunks.map(chunk => ({ ...chunk, relatedTags: [] }))
     const enrichedCount = annotatedRawChunks.filter(c => c.relatedTags?.length).length
     console.log(`[RAG] Capitolo ${chapterData.chapter}: ${annotatedRawChunks.length} chunk raw generati (${enrichedCount} annotati con relatedTags)`)
+    annotatedRawDebug.push({
+      chapter: chapterData.chapter,
+      chunks: annotatedRawChunks
+    })
     allChunks.push(...annotatedRawChunks.map(chunk => ({
       ...chunk,
       moduleTitle,
       chapter: chapterData.chapter
     })))
   }
+
+  await fs.writeFile(
+    moduleAnnotatedRawDebugPath(moduleId),
+    JSON.stringify({
+      moduleId,
+      indexedAt: new Date().toISOString(),
+      chapters: annotatedRawDebug
+    }, null, 2)
+  )
 
   return indexModuleChunks(moduleId, allChunks)
 }
