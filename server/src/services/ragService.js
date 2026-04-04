@@ -42,6 +42,31 @@ const TYPE_CONFIG = {
 // Priorità per deduplicazione cross-tipo (tipo con indice più basso "vince" in caso di nome identico)
 const TYPE_PRIORITY = ['personaggio', 'location']
 
+// Etichette leggibili usate nell'header di embedding per migliorare il retrieval
+// con query categoriali ("personaggi non giocanti", "luoghi dell'atto I", ecc.)
+const TYPE_LABELS = {
+  location:      'Luogo',
+  personaggio:   'Personaggio non giocante',
+  ambientazione: 'Ambientazione del modulo',
+  raw:           'Sezione del modulo',
+  diario:        'Diario di sessione',
+  prima_sessione: 'Prima sessione'
+}
+
+/**
+ * Costruisce il testo da passare all'embedding.
+ * Aggiunge un header con tipo leggibile, nome e contesto del modulo/atto
+ * così che query categoriali ("personaggi non giocanti dell'atto I") trovino corrispondenza.
+ * Il campo `content` rimane invariato per la visualizzazione nei prompt.
+ */
+function buildEmbedText(chunk) {
+  const typeLabel = TYPE_LABELS[chunk.type] || chunk.type
+  const chapterPart = chunk.chapter ? `, Atto ${chunk.chapter}` : ''
+  const modulePart  = chunk.moduleTitle ? ` — ${chunk.moduleTitle}${chapterPart}` : ''
+  const header = `[${typeLabel}] ${chunk.name}${modulePart}`
+  return `${header}\n${chunk.content}`
+}
+
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
 function moduleRagDir(moduleId) {
@@ -372,7 +397,7 @@ async function indexModuleChunks(moduleId, chunks) {
 
   for (const chunk of chunks) {
     try {
-      const embedding = await embed(chunk.content)
+      const embedding = await embed(buildEmbedText(chunk))
       embeddedChunks.push({ ...chunk, embedding })
     } catch (err) {
       console.warn(`[RAG] Embedding fallito per chunk "${chunk.name}":`, err.message)
@@ -402,18 +427,27 @@ async function indexModuleChunks(moduleId, chunks) {
 async function indexModule(moduleId, chapterText, chapterNumber = 1) {
   const allChunks = []
 
+  // Carica titolo del modulo per arricchire l'header di embedding
+  let moduleTitle = ''
+  try {
+    const modRaw = await fs.readFile(path.join(DATA_DIR, 'modules', `${moduleId}.json`), 'utf-8')
+    moduleTitle = JSON.parse(modRaw).title || ''
+  } catch { /* non critico */ }
+
+  // Helper: aggiunge moduleTitle e chapter ai chunk prima dell'indicizzazione
+  const tag = chunk => ({ ...chunk, moduleTitle, chapter: chunk.chapter ?? chapterNumber })
+
   // 1. Chunk speciali: ambientazione pre-generata
   const ambientazionePath = path.join(DATA_DIR, 'modules', `${moduleId}_ambientazione.txt`)
   try {
     const ambText = await fs.readFile(ambientazionePath, 'utf-8')
     if (ambText.trim()) {
-      allChunks.push({
+      allChunks.push(tag({
         id:      'special_ambientazione',
         type:    'ambientazione',
         name:    'Ambientazione',
-        chapter: chapterNumber,
         content: ambText.trim()
-      })
+      }))
       console.log(`[RAG] Chunk "Ambientazione" aggiunto dall'ambientazione pre-generata`)
     }
   } catch { /* file non ancora generato, ignorato */ }
@@ -422,7 +456,7 @@ async function indexModule(moduleId, chapterText, chapterNumber = 1) {
   if (DEFAULT_HEAVY_MODEL) {
     try {
       const semanticChunks = await preprocessModuleWithLLM(chapterText, chapterNumber)
-      allChunks.push(...semanticChunks.map(c => ({ ...c, chapter: chapterNumber })))
+      allChunks.push(...semanticChunks.map(tag))
     } catch (err) {
       console.warn(`[RAG] Preprocessing LLM fallito per ${moduleId}:`, err.message)
     }
@@ -433,7 +467,7 @@ async function indexModule(moduleId, chapterText, chapterNumber = 1) {
   // 3. Chunk raw (testo originale suddiviso per sezioni)
   const rawChunks = splitIntoRawChunks(chapterText)
   console.log(`[RAG] ${rawChunks.length} chunk raw generati`)
-  allChunks.push(...rawChunks)
+  allChunks.push(...rawChunks.map(tag))
 
   return indexModuleChunks(moduleId, allChunks)
 }
