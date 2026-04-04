@@ -254,7 +254,8 @@ function formatRagResults(results) {
 // prima della normale sostituzione delle variabili.
 // La query può contenere riferimenti a variabili runtime: {{rag:module:"{{suggerimento_scena}}"}}
 
-const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"\}\}/g
+const RAG_PATTERN = /\{\{rag:(module|table)(?::cascade)?:"([^"]+)"\}\}/g
+const RAG_CASCADE_PATTERN = /\{\{rag:module:cascade:"([^"]+)"\}\}/
 const RAG_PROMPT_TOP_K = parseInt(process.env.RAG_PROMPT_TOP_K || '3')
 
 function buildRagResolver(moduleId, tableId) {
@@ -272,13 +273,18 @@ function buildRagResolver(moduleId, tableId) {
         query = query.replaceAll(`{{${key}}}`, value)
       }
 
+      const isCascade = RAG_CASCADE_PATTERN.test(fullMatch)
       let results = []
       try {
-        results = source === 'module'
-          ? await rag.queryModule(moduleId, query, RAG_PROMPT_TOP_K)
-          : await rag.queryTable(tableId, query, RAG_PROMPT_TOP_K)
+        if (source === 'module') {
+          results = isCascade
+            ? await rag.cascadeQueryModule(moduleId, query, RAG_PROMPT_TOP_K)
+            : await rag.queryModule(moduleId, query, RAG_PROMPT_TOP_K)
+        } else {
+          results = await rag.queryTable(tableId, query, RAG_PROMPT_TOP_K)
+        }
       } catch (err) {
-        console.warn(`[Custode] RAG resolver [${source}] "${query}" fallita:`, err.message)
+        console.warn(`[Custode] RAG resolver [${source}${isCascade ? ':cascade' : ''}] "${query}" fallita:`, err.message)
       }
 
       template = template.replaceAll(fullMatch, formatRagResults(results))

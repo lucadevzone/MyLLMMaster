@@ -630,7 +630,7 @@ async function deleteModuleIndex(moduleId) {
 
 /**
  * Recupera i topK chunk più rilevanti per una query testuale.
- * Restituisce array di { type, name, chapter, content, score }.
+ * Restituisce array di { type, name, chapter, content, relatedTags, score }.
  */
 async function queryModule(moduleId, queryText, topK = RAG_TOP_K) {
   const indexPath = moduleIndexPath(moduleId)
@@ -643,14 +643,81 @@ async function queryModule(moduleId, queryText, topK = RAG_TOP_K) {
 
   return index.chunks
     .map(chunk => ({
-      type:    chunk.type,
-      name:    chunk.name,
-      chapter: chunk.chapter,
-      content: chunk.content,
-      score:   cosineSimilarity(queryEmbedding, chunk.embedding)
+      type:        chunk.type,
+      name:        chunk.name,
+      chapter:     chunk.chapter,
+      content:     chunk.content,
+      relatedTags: chunk.relatedTags,
+      score:       cosineSimilarity(queryEmbedding, chunk.embedding)
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, topK)
+}
+
+/**
+ * Query a cascata su due livelli:
+ *  Livello 1 — query semantica normale (topK risultati)
+ *  Livello 2 — per ogni relatedTag nei risultati del L1, recupera il chunk
+ *              semantico corrispondente (location/personaggio) direttamente
+ *              dall'indice per nome, senza ulteriori chiamate embedding.
+ *
+ * I risultati L2 vengono aggiunti solo se non già presenti nel L1.
+ * Usato con la sintassi {{rag:module:cascade:"query"}} nei prompt.
+ */
+async function cascadeQueryModule(moduleId, queryText, topK = RAG_TOP_K) {
+  const indexPath = moduleIndexPath(moduleId)
+  if (!await fileExists(indexPath)) return []
+
+  const index = await loadIndex(indexPath)
+  if (!index.chunks?.length) return []
+
+  const queryEmbedding = await embed(queryText)
+
+  // Livello 1: scoring normale
+  const scored = index.chunks
+    .map(chunk => ({
+      type:        chunk.type,
+      name:        chunk.name,
+      chapter:     chunk.chapter,
+      content:     chunk.content,
+      relatedTags: chunk.relatedTags,
+      score:       cosineSimilarity(queryEmbedding, chunk.embedding)
+    }))
+    .sort((a, b) => b.score - a.score)
+
+  const level1 = scored.slice(0, topK)
+
+  // Livello 2: lookup per nome dei tag correlati trovati nel L1
+  const included = new Set(level1.map(r => r.name.toLowerCase()))
+  const semanticByName = new Map(
+    index.chunks
+      .filter(c => c.type === 'location' || c.type === 'personaggio')
+      .map(c => [c.name.toLowerCase(), c])
+  )
+
+  const level2 = []
+  for (const result of level1) {
+    for (const tag of result.relatedTags || []) {
+      const key = tag.toLowerCase()
+      if (!included.has(key) && semanticByName.has(key)) {
+        const chunk = semanticByName.get(key)
+        level2.push({
+          type:    chunk.type,
+          name:    chunk.name,
+          chapter: chunk.chapter,
+          content: chunk.content,
+          score:   null   // risultato cascade, non scoring diretto
+        })
+        included.add(key)
+      }
+    }
+  }
+
+  if (level2.length) {
+    console.log(`[RAG] Cascade L2: +${level2.length} chunk da relatedTags`)
+  }
+
+  return [...level1, ...level2]
 }
 
 // ── Table (diary) indexing ────────────────────────────────────────────────────
@@ -719,6 +786,7 @@ module.exports = {
   indexAmbientazione,
   deleteModuleIndex,
   queryModule,
+  cascadeQueryModule,
   indexSessionIntro,
   indexDiaryEntry,
   queryTable,
