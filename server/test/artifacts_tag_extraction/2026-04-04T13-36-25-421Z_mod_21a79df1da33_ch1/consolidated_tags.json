@@ -1,0 +1,228 @@
+[
+  {
+    "type": "indizio",
+    "canonical": "amuleto di Sophia",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "appunti completi di Belloq",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "appunti incompleti di Belloq",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "appunto irrilevante di Renard",
+    "aliases": [
+      "Timeo 25a — non è metafora"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "diario personale della Dott.ssa Helene Brandt",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "disegni compulsivi di Klaus Kerner",
+    "aliases": [
+      "sigillo di Nur-Ab-Sal"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "documenti logistici nazisti",
+    "aliases": [
+      "diario di Brandt",
+      "taccuino di Kerner"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "frammento di orichalcum",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "lettera di Belloq",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "note su Timeo",
+    "aliases": [
+      "Timeo 25a"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "rapporto sugli ultimi movimenti di Belloq",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "indizio",
+    "canonical": "tavoletta di pietra scura",
+    "aliases": [
+      "lotto anomalo",
+      "script sconosciuto",
+      "tavoletta dell'asta"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "location",
+    "canonical": "Appartamento di Belloq",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "location",
+    "canonical": "Biblioteca della Sorbona",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "location",
+    "canonical": "Deposito bagagli, Gare du Nord",
+    "aliases": [
+      "Deposito bagagli",
+      "Gare du Nord"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "location",
+    "canonical": "Galleria Dumont",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "location",
+    "canonical": "Grand Palais",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "location",
+    "canonical": "Hôtel Lutétia",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "location",
+    "canonical": "Knossos",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "location",
+    "canonical": "Parigi",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "location",
+    "canonical": "Sala delle Antichità, Grand Palais",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "personaggio",
+    "canonical": "Commissaire Renard",
+    "aliases": [
+      "alias 1",
+      "Renard"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "personaggio",
+    "canonical": "Dott.ssa Helene Brandt",
+    "aliases": [
+      "Brandt",
+      "Helene Brandt"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "personaggio",
+    "canonical": "Ernst",
+    "aliases": [],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "personaggio",
+    "canonical": "Henri Belloq",
+    "aliases": [
+      "Belloq"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "personaggio",
+    "canonical": "Klaus Kerner",
+    "aliases": [
+      "Kerner"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "personaggio",
+    "canonical": "Marcel Dumont",
+    "aliases": [
+      "Dumont"
+    ],
+    "evidences": [],
+    "sources": []
+  },
+  {
+    "type": "personaggio",
+    "canonical": "Sophia Hapgood",
+    "aliases": [
+      "Sophia"
+    ],
+    "evidences": [],
+    "sources": []
+  }
+]

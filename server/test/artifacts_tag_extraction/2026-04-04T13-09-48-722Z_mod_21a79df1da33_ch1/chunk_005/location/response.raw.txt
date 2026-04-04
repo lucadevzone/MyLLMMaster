@@ -1,0 +1,19 @@
+{
+  "tags": [
+    {
+      "canonical": "Gare du Nord",
+      "aliases": [],
+      "evidence": "Si trova nel biglietto lasciato da Belloq nel suo appartamento."
+    },
+    {
+      "canonical": "Knossos",
+      "aliases": ["punto di convergenza più probabile"],
+      "evidence": "Brandt collega Atlantide al Mediterraneo orientale e lascia sfuggire che Knossos è il punto di convergenza più probabile."
+    },
+    {
+      "canonical": "appartamento di Belloq",
+      "aliases": [],
+      "evidence": "Nel Timeo si trova un biglietto con il numero di un deposito bagagli alla Gare du Nord."
+    }
+  ]
+}

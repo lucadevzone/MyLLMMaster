@@ -46,9 +46,11 @@ function llmLog(entry) {
 
 // ── Carica e compila un prompt template ───────────────────────────────────────
 
-async function loadPrompt(filename, vars = {}) {
+async function loadPrompt(filename, vars = {}, ragResolver = null) {
   const p = path.join(PROMPTS_DIR, filename)
   let text = await fs.readFile(p, 'utf-8')
+  // Risolvi i tag {{rag:...}} prima della sostituzione normale delle variabili
+  if (ragResolver) text = await ragResolver(text, vars)
   for (const [key, val] of Object.entries(vars)) {
     const value = typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val ?? '')
     text = text.replaceAll(`{{${key}}}`, value)
@@ -246,22 +248,22 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 // ── API pubblica ───────────────────────────────────────────────────────────────
 
-async function runPhase(model, promptFile, vars, ollamaOptions = {}, tableId = null) {
+async function runPhase(model, promptFile, vars, ollamaOptions = {}, tableId = null, ragResolver = null) {
   const [prompt, schema] = await Promise.all([
-    loadPrompt(promptFile, vars),
+    loadPrompt(promptFile, vars, ragResolver),
     loadPromptSchema(promptFile)
   ])
   return callOllama(model, prompt, true, promptFile, schema, ollamaOptions, tableId)
 }
 
-async function runTextPhase(model, promptFile, vars, tableId = null) {
-  const prompt = await loadPrompt(promptFile, vars)
+async function runTextPhase(model, promptFile, vars, tableId = null, ragResolver = null) {
+  const prompt = await loadPrompt(promptFile, vars, ragResolver)
   return callOllama(model, prompt, false, promptFile, null, { num_ctx: HEAVY_LLM_NUM_CTX }, tableId)
 }
 
-async function runTagging(model, promptFile, vars, tableId = null) {
+async function runTagging(model, promptFile, vars, tableId = null, ragResolver = null) {
   const [prompt, schema] = await Promise.all([
-    loadPrompt(promptFile, vars),
+    loadPrompt(promptFile, vars, ragResolver),
     loadPromptSchema(promptFile)
   ])
   return callOllama(model, prompt, true, promptFile, schema, {}, tableId)

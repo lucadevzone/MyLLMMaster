@@ -1,0 +1,19 @@
+{
+  "tags": [
+    {
+      "canonical": "Parigi",
+      "aliases": [],
+      "evidence": "Il modulo si svolge a Parigi"
+    },
+    {
+      "canonical": "Grand Palais",
+      "aliases": [],
+      "evidence": "L'asta privata di antichità mediterranee appartenute al professor Henri Belloq viene tenuta al Grand Palais"
+    },
+    {
+      "canonical": "Knossos",
+      "aliases": [],
+      "evidence": "Henri Belloq aveva trovato prove che puntano a una struttura sotterranea sotto Knossos, a Creta"
+    }
+  ]
+}

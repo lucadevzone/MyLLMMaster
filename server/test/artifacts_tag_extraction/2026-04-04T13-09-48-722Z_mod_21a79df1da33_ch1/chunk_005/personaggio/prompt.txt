@@ -1,0 +1,116 @@
+Sei il Custode di una partita di Call of Cthulhu.
+
+# Estrazione TAG — Personaggi
+Stai leggendo il modulo avventura e devi estrarre dal testo i `personaggi` utili alla conduzione.
+Un `personaggio` è una persona o identità riconoscibile con ruolo attivo nella storia.
+
+Rispondi SOLO con JSON valido nel formato:
+{
+  "tags": [
+    {
+      "canonical": "nome personaggio",
+      "aliases": ["alias 1"],
+      "evidence": "breve motivo"
+    }
+  ]
+}
+
+Regole:
+Una personaggio valida può essere:
+- una persona con nome e cognome (esempi: Professor Harding, John Mylopulous)
+- una persona identificata da titolo stabile o soprannome (esempi: dottor Weiss, Ispettore Morel)
+- un'identità alternativa o copertura esplicitamente collegata alla stessa figura (esempi: Mister C, La Vedova Nera)
+- una figura nominata con ruolo attivo nella storia (esempi: il professore, il capo dei cultisti)
+
+- includi solo personaggi esplicitamente presenti nel testo
+- escludi comparse anonime e figure marginali non rilevanti
+- se nel testo compaiono più personaggi validi, estraili tutti, non solo il principale
+- usa in `canonical` la forma più completa presente nel testo
+- se il testo corrisponde chiaramente a un personaggio già noto, riusa il `canonical` già noto
+- se non ci sono personaggi validi, restituisci un array vuoto
+
+Confronta i tuoi personaggi con i personaggi già identificati per questo modulo:
+[
+  {
+    "canonical": "Belloq",
+    "aliases": [
+      "Henri Belloq"
+    ]
+  },
+  {
+    "canonical": "Commissaire Renard",
+    "aliases": []
+  },
+  {
+    "canonical": "Dott.ssa Helene Brandt",
+    "aliases": []
+  },
+  {
+    "canonical": "Ernst",
+    "aliases": []
+  },
+  {
+    "canonical": "Henri Belloq",
+    "aliases": []
+  },
+  {
+    "canonical": "Klaus Kerner",
+    "aliases": []
+  },
+  {
+    "canonical": "Madame Yseult",
+    "aliases": []
+  },
+  {
+    "canonical": "Marcel Dumont",
+    "aliases": []
+  },
+  {
+    "canonical": "Sophia Hapgood",
+    "aliases": []
+  }
+]
+
+- se lo stesso personaggio è già presente evita di metterlo in output
+- se riscontri una similutudine tra il tuo personaggio e uno già presente, puoi mettere le variante tra gli `aliases`
+- non forzare corrispondenze dubbie con i tag già noti
+
+
+Testo:
+La tavoletta dell’asta
+Script sconosciuto, non classificabile tra le scritture mediterranee note. Indica che Belloq non stava studiando una civiltà già nota.
+
+Sophia
+Rivela l’esistenza dell’amuleto e il fatto che Belloq temeva di essere cercato. Sa anche dove lui nascondeva i documenti.
+
+Kerner che disegna il simbolo
+Segnala che non è un semplice compratore. È già toccato da qualcosa che non comprende.
+
+La conferenza di Brandt
+Brandt collega Atlantide al Mediterraneo orientale e lascia sfuggire che Knossos è il punto di convergenza più probabile.
+
+L’appartamento di Belloq
+Nel Timeo si trova un biglietto con il numero di un deposito bagagli alla Gare du Nord.
+
+Il deposito bagagli
+Contiene gli appunti completi. Il punto decisivo è la nota: “La porta è sotto Knossos, non sopra.”
+
+La Galleria Dumont
+Dumont fornisce la lettera di Belloq: “Vai a Knossos. Cerca sotto il labirinto, non dentro.”
+
+La Biblioteca della Sorbona
+Fornisce note di Belloq sul Timeo e materiale su una spedizione degli anni ’20 che aveva individuato strutture sotterranee anomale a Knossos.
+
+Renard
+Conferma che la sparizione non è volontaria e fornisce l’appunto “Timeo 25a — non è metafora.”
+
+L’hotel dei nazisti
+Documenti logistici confermano che Creta è la loro destinazione. Il taccuino di Kerner contiene ripetizioni del sigillo di Nur-Ab-Sal. Il diario di Brandt mostra dubbi autentici.
+
+Struttura dinamica dell’Atto I
+
+L’Atto I è una gara investigativa. I nazisti sono avanti, ma hanno un punto cieco: non sanno del sistema tra Sophia e Belloq, cioè il nascondiglio nel Timeo. Questo permette ai PG di recuperarli se agiscono in fretta.
+
+Fase 1: osservazione
+Giorno dell’asta e giorno successivo. Brandt e Kerner osservano chi si interessa ai reperti. Ernst inizia a seguire i PG se si espongono. La conferenza di Brandt è ancora un evento relativamente sicuro.
+

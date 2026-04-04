@@ -1,0 +1,3 @@
+- canonical: Helene Brandt
+- canonical: Henri Belloq
+- canonical: Klaus Kerner

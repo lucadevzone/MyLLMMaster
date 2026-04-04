@@ -1,0 +1,34 @@
+{
+  "tags": [
+    {
+      "canonical": "Appartamento di Belloq",
+      "aliases": ["Rue Monsieur-le-Prince"],
+      "evidence": "Nel testo si menziona l'appartamento di Belloq e la sua posizione in Rue Monsieur-le-Prince."
+    },
+    {
+      "canonical": "Galleria Dumont",
+      "aliases": [],
+      "evidence": "La Galleria Dumont è esplicitamente menzionata nel testo come luogo dove si trova una lettera importante per la trama."
+    },
+    {
+      "canonical": "Biblioteca della Sorbona",
+      "aliases": [],
+      "evidence": "La Biblioteca della Sorbona è esplicitamente menzionata nel testo come luogo dove si trovano note di Belloq sul Timeo."
+    },
+    {
+      "canonical": "Deposito bagagli, Gare du Nord",
+      "aliases": ["Gare du Nord"],
+      "evidence": "Il deposito bagagli alla Gare du Nord è esplicitamente menzionato nel testo come luogo dove si trovano gli appunti completi."
+    },
+    {
+      "canonical": "Hôtel Lutétia",
+      "aliases": [],
+      "evidence": "L'Hôtel Lutétia è menzionato nel testo come l'hotel dei nazisti."
+    },
+    {
+      "canonical": "Knossos",
+      "aliases": [],
+      "evidence": "Knossos è esplicitamente menzionato nel testo come luogo di interesse per la trama."
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+Sei il Custode di una partita di Call of Cthulhu.
+
+# Estrazione TAG — Indizi
+Stai leggendo il modulo avventura e devi estrarre dal testo gli `indizi` utili alla conduzione.
+Un `indizio` è un reperto, documento, simbolo, informazione, traccia o fatto osservabile che può guidare i PG verso una scoperta, una indagine o una rivelazione.
+
+Rispondi SOLO con JSON valido nel formato:
+{
+  "tags": [
+    {
+      "canonical": "nome indizio",
+      "aliases": ["alias 1"],
+      "evidence": "breve motivo"
+    }
+  ]
+}
+
+Regole:
+Un indizio valido può essere:
+- un reperto fisico (esempio: una scatola di cerini con una nota, la chiave della stanza, fotografia bruciata a metà), 
+- un documento o appunto (esempio: la lettera del testamento, un biglietto nela tasca del morto, lettera macchiata di sangue, mappa del tunnel)
+- un simbolo o segno riconoscibile (esempio: il tatuaggio del drago, la croce nordica)
+- una traccia osservabile (esempio: le impronte del mostro, tracce di sangue nel pavimento)
+- un'informazione concreta utile all'indagine (il tesoros i trova sull'isola, John non è morto)
+
+- includi solo indizi esplicitamente presenti nel testo
+- escludi atmosfera, tono, emozioni e semplici dettagli decorativi
+- se nel testo compaiono più indizi validi, estraili tutti
+- usa in `canonical` la forma più chiara e completa presente nel testo
+- metti in `aliases` solo varianti esplicite davvero presenti nel testo
+- se il testo corrisponde chiaramente a un indizio già noto, riusa il `canonical` già noto
+- se non ci sono indizi validi, restituisci un array vuoto
+
+Confronta i tuoi indizi con quelli già identificati per questo modulo:
+[
+  {
+    "canonical": "tavoletta di pietra con incisioni sconosciute",
+    "aliases": []
+  }
+]
+
+- se lo stesso indizio è già presente evita di metterlo in output
+- se riscontri una similutudine tra il tuo indizio e uno già presente, puoi mettere le variante tra gli `aliases`
+- non forzare corrispondenze dubbie con i tag già noti
+
+
+Testo:
+Commissaire Renard
+Poliziotto pragmatico che indaga sulla sparizione di Belloq. Non crede al soprannaturale. Ha il rapporto sugli ultimi movimenti del professore e un appunto che aveva archiviato come irrilevante: “Timeo 25a — non è metafora.” Può diventare alleato o ostacolo.
+
+Dott.ssa Helene Brandt
+Studiosa dell’Ahnenerbe. Brillante, affascinante, ideologicamente convinta. Tiene a Parigi una conferenza su Atlantide e le origini della civiltà mediterranea. Ha accesso solo ad appunti incompleti di Belloq. Sa che Knossos è importante, ma non possiede ancora tutta la mappa. Porta sempre con sé un diario personale in cui annota dubbi privati: certi reperti non sostengono la narrativa razziale che vorrebbe imporre.
+
+Klaus Kerner
+Operativo freddo ed efficiente, probabilmente SS. Ha già perquisito due volte l’appartamento di Belloq senza trovare gli appunti completi. Possiede un frammento di orichalcum recuperato in Nord Africa. Da settimane soffre di sogni disturbanti e disegna compulsivamente il sigillo di Nur-Ab-Sal senza capirlo. All’inizio usa i PG come indicatori: li lascia muovere per vedere dove portano. Poi diventa attivo e pericoloso.
+
+Ernst
+Braccio destro di Kerner. Muscoloso, silenzioso, minaccioso. È la presenza nazista più visibile nell’Atto I. Segue i PG e tenta l’azione diretta nella fase finale.
+
+Madame Yseult
+Collezionista ambigua presente all’asta. Riconosce l’amuleto di Sophia e può offrire un avvertimento criptico. La sua natura resta volutamente incerta.
+
+Luoghi importanti
+
+Sala delle Antichità, Grand Palais
+Asta privata elegante e vagamente clandestina. Luogo ideale per osservare, origliare, notare reazioni e collegare personaggi.
+
+Appartamento di Belloq, Rue Monsieur-le-Prince
+Casa borghese piena di libri, odore di tabacco e carta. È già stata perquisita: cassetti richiusi male, tappeto spostato. Sophia sa che il vero nascondiglio è la libreria, e soprattutto la copia del Timeo.
+

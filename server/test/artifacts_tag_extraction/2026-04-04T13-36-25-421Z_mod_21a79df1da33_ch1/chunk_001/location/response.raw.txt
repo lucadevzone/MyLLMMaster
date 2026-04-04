@@ -1,0 +1,14 @@
+{
+  "tags": [
+    {
+      "canonical": "Parigi",
+      "aliases": [],
+      "evidence": "La scena si svolge a Parigi"
+    },
+    {
+      "canonical": "Grand Palais",
+      "aliases": [],
+      "evidence": "L'asta privata di antichità mediterranee appartenute al professor Henri Belloq si tiene al Grand Palais"
+    }
+  ]
+}

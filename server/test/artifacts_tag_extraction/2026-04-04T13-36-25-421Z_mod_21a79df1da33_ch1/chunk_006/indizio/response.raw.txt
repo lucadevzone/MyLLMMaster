@@ -1,0 +1,16 @@
+{
+  "tags": [
+    {
+      "canonical": "frammento di orichalcum",
+      "aliases": []
+    },
+    {
+      "canonical": "rapporto sugli ultimi movimenti di Belloq",
+      "aliases": []
+    },
+    {
+      "canonical": "lettera di Belloq",
+      "aliases": []
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+Sei il Custode di una partita di Call of Cthulhu.
+
+# Estrazione TAG — Personaggi
+Stai leggendo il modulo avventura e devi estrarre dal testo i `personaggi` utili alla conduzione.
+Un `personaggio` è una persona o identità riconoscibile con ruolo attivo nella storia.
+
+Rispondi SOLO con JSON valido nel formato:
+{
+  "tags": [
+    {
+      "canonical": "nome personaggio",
+      "aliases": ["alias 1"],
+      "evidence": "breve motivo"
+    }
+  ]
+}
+
+Regole:
+Una personaggio valida può essere:
+- una persona con nome e cognome (esempi: Professor Harding, John Mylopulous)
+- una persona identificata da titolo stabile o soprannome (esempi: dottor Weiss, Ispettore Morel)
+- un'identità alternativa o copertura esplicitamente collegata alla stessa figura (esempi: Mister C, La Vedova Nera)
+- una figura nominata con ruolo attivo nella storia (esempi: il professore, il capo dei cultisti)
+
+- includi solo personaggi esplicitamente presenti nel testo
+- escludi comparse anonime e figure marginali non rilevanti
+- se nel testo compaiono più personaggi validi, estraili tutti, non solo il principale
+- usa in `canonical` la forma più completa presente nel testo
+- se non ci sono personaggi validi, restituisci un array vuoto
+
+Confronta i tuoi personaggi con i personaggi già identificati per questo modulo:
+- canonical: Commissaire Renard
+- canonical: Dott.ssa Helene Brandt
+- canonical: Helene Brandt
+- canonical: Henri Belloq
+- canonical: Klaus Kerner
+- canonical: Marcel Dumont
+- canonical: Sophia Hapgood
+
+- se il personaggio corrisponde chiaramente a un elemento già noto, riusa il `canonical` già noto
+- se riscontri una somiglianza tra il tuo personaggio e uno già presente, puoi mettere le variante tra gli `aliases`
+- non forzare corrispondenze dubbie con i tag già noti
+
+
+Testo:
+Appartamento di Belloq, Rue Monsieur-le-Prince
+Casa borghese piena di libri, odore di tabacco e carta. È già stata perquisita: cassetti richiusi male, tappeto spostato. Sophia sa che il vero nascondiglio è la libreria, e soprattutto la copia del Timeo.
+
+Galleria Dumont
+Negozio stretto e silenzioso, con retrobottega pieno di mappe e fotografie di scavi. Qui si possono ottenere ricevuta, lettera e dettagli sull’intermediario.
+
+Biblioteca della Sorbona
+Luogo per verificare fonti su Platone, note di Belloq e documenti su una vecchia spedizione a Knossos che aveva trovato strutture sotterranee anomale.
+
+Hôtel Lutétia
+Base dei nazisti a Parigi. Brandt e Kerner alloggiano qui. Infiltrarsi permette di recuperare documenti operativi, diario di Brandt o taccuino di Kerner.
+
+Deposito bagagli, Gare du Nord
+Contiene gli appunti completi di Belloq. È il vero tesoro investigativo dell’Atto I.
+
+Rivelazioni che i PG devono ottenere
+
+Per chiudere l’Atto I in modo solido, i PG dovrebbero ricostruire tre verità:
+
+R1. Belloq aveva scoperto qualcosa di reale.
+La tavoletta, gli appunti, l’amuleto e il comportamento dei nazisti mostrano che non si tratta di una semplice ossessione accademica.
+
+R2. Knossos è il prossimo passo.
+Gli appunti di Belloq, la lettera, la biblioteca e la conferenza di Brandt convergono tutti su Knossos e su una struttura sotterranea.
+
+R3. I nazisti sono sulla stessa pista e sono in vantaggio.
+Brandt e Kerner hanno già catturato Belloq, possiedono informazioni parziali e stanno per partire.
+
+Rivelazione opzionale:
+
+R4. L’amuleto non è un semplice reperto.
+Produce sogni, visioni e una seduzione cognitiva. Toccare certi oggetti o simboli può costare Sanità e lasciare tracce oniriche.
+
+Indizi principali
+
+La tavoletta dell’asta
+Script sconosciuto, non classificabile tra le scritture mediterranee note. Indica che Belloq non stava studiando una civiltà già nota.
+

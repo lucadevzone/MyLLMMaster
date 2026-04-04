@@ -36,7 +36,7 @@ FASE 2 — Prompt di preprocessing
 ---------------------------------
 
 2.1  prompts/rag_pass1_entita.md
-     Chiede al LLM di produrre una lista "tipo | nome" per ogni entità rilevante
+     Chiede al DEFAULT_HEAVY_LLM_MODEL  (vedi variabile .env) di produrre una lista "tipo | nome" per ogni entità rilevante
      presente nel testo del capitolo (location, NPC, oggetto, rivelazione, filone narrativo).
      Output testuale semplice, parsato in codice con split().
 
@@ -67,7 +67,7 @@ FASE 3 — Integrazione in routes/modules.js
 3.1  POST (crea modulo):
      Aggiungere ragService.indexModule() in background,
      affiancata all'attuale generateAmbientazioneInBackground().
-     Le due coesistono: nessuna regressione.
+     Al momento le due coesistono: nessuna regressione.
 
 3.2  PUT (modifica modulo):
      Cancella indice esistente e rilancia l'indicizzazione.

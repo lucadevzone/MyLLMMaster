@@ -1,0 +1,14 @@
+{
+  "tags": [
+    {
+      "canonical": "Grand Palais",
+      "aliases": [],
+      "evidence": "Il testo menziona l'asta che si tiene al Grand Palais."
+    },
+    {
+      "canonical": "Parigi",
+      "aliases": [],
+      "evidence": "Il testo menziona Parigi come la città in cui si tiene l'asta."
+    }
+  ]
+}
