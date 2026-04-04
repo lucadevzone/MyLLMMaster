@@ -193,18 +193,37 @@ function splitIntoRawChunks(text) {
   return chunks
 }
 
-// ── Chunking preliminare del testo grezzo ────────────────────────────────────
+// ── Chunking preliminare per pass1 ───────────────────────────────────────────
+//
+// Strategia A: accumula paragrafi fino a PRELIM_CHUNK_SIZE senza tagliare a metà
+// paragrafo. Overlap di 1 paragrafo tra chunk consecutivi.
+//
+// Strategia B (usata via rawChunksToTextArray): usa i chunk raw già calcolati
+// da splitIntoRawChunks — sono sezione-aware e hanno titoli impliciti.
 
-function splitTextIntoChunks(text, size = PRELIM_CHUNK_SIZE, overlap = PRELIM_CHUNK_OVERLAP) {
+function splitTextIntoChunks(text, size = PRELIM_CHUNK_SIZE) {
+  const paragraphs = text.split(/\n\n+/).map(p => p.trim()).filter(Boolean)
   const chunks = []
-  let start = 0
-  while (start < text.length) {
-    const end = Math.min(start + size, text.length)
-    chunks.push(text.slice(start, end))
-    if (end === text.length) break
-    start = end - overlap
+  let current = ''
+  let prevPara = ''
+
+  for (const para of paragraphs) {
+    if (current.length + para.length + 2 > size && current) {
+      chunks.push(current.trim())
+      // Overlap: ricomincia con l'ultimo paragrafo del chunk precedente
+      current = prevPara ? prevPara + '\n\n' + para : para
+    } else {
+      current = current ? current + '\n\n' + para : para
+    }
+    prevPara = para
   }
+  if (current.trim()) chunks.push(current.trim())
   return chunks
+}
+
+// Converte chunk raw in array di stringhe testuali per il pass1 (strategia B)
+function rawChunksToTextArray(rawChunks) {
+  return rawChunks.map(c => c.content)
 }
 
 // ── Preprocessing LLM — Pass 1: lista entità per tipo ────────────────────────
@@ -374,17 +393,36 @@ async function indexModuleChunks(moduleId, chunks) {
 /**
  * Pipeline completa: approccio ibrido semantico + raw.
  *
- * 1. Chunk semantici (LLM): entità estratte con tipo/nome/contenuto → alta precisione
- * 2. Chunk raw (testo originale): suddivisione per sezioni naturali → copertura totale
+ * 1. Chunk speciali: ambientazione pre-generata se disponibile (type: 'ambientazione')
+ * 2. Chunk semantici (LLM pass1+pass2): location e personaggi estratti → alta precisione
+ * 3. Chunk raw: sezioni naturali del testo originale → copertura totale
  *
- * Se DEFAULT_HEAVY_LLM_MODEL non è configurato, produce solo i chunk raw.
+ * Se DEFAULT_HEAVY_LLM_MODEL non è configurato, produce solo chunk speciali + raw.
  */
 async function indexModule(moduleId, chapterText, chapterNumber = 1) {
-  let semanticChunks = []
+  const allChunks = []
 
+  // 1. Chunk speciali: ambientazione pre-generata
+  const ambientazionePath = path.join(DATA_DIR, 'modules', `${moduleId}_ambientazione.txt`)
+  try {
+    const ambText = await fs.readFile(ambientazionePath, 'utf-8')
+    if (ambText.trim()) {
+      allChunks.push({
+        id:      'special_ambientazione',
+        type:    'ambientazione',
+        name:    'Ambientazione',
+        chapter: chapterNumber,
+        content: ambText.trim()
+      })
+      console.log(`[RAG] Chunk "Ambientazione" aggiunto dall'ambientazione pre-generata`)
+    }
+  } catch { /* file non ancora generato, ignorato */ }
+
+  // 2. Chunk semantici (LLM)
   if (DEFAULT_HEAVY_MODEL) {
     try {
-      semanticChunks = await preprocessModuleWithLLM(chapterText, chapterNumber)
+      const semanticChunks = await preprocessModuleWithLLM(chapterText, chapterNumber)
+      allChunks.push(...semanticChunks.map(c => ({ ...c, chapter: chapterNumber })))
     } catch (err) {
       console.warn(`[RAG] Preprocessing LLM fallito per ${moduleId}:`, err.message)
     }
@@ -392,13 +430,77 @@ async function indexModule(moduleId, chapterText, chapterNumber = 1) {
     console.warn('[RAG] DEFAULT_HEAVY_LLM_MODEL non configurato, solo chunk raw')
   }
 
+  // 3. Chunk raw (testo originale suddiviso per sezioni)
   const rawChunks = splitIntoRawChunks(chapterText)
   console.log(`[RAG] ${rawChunks.length} chunk raw generati`)
+  allChunks.push(...rawChunks)
 
-  // Aggiungi numero capitolo ai chunk semantici; i raw non ce l'hanno (testo grezzo)
-  const taggedSemantic = semanticChunks.map(c => ({ ...c, chapter: chapterNumber }))
+  return indexModuleChunks(moduleId, allChunks)
+}
 
-  return indexModuleChunks(moduleId, [...taggedSemantic, ...rawChunks])
+/**
+ * Indicizza il file avviare_la_sessione.txt nel RAG del tavolo.
+ * Chiamato da custodeEngine dopo la generazione del file (Fase 4).
+ */
+async function indexSessionIntro(tableId, introText) {
+  const indexPath = tableIndexPath(tableId)
+  const index = await loadIndex(indexPath)
+
+  // Rimuovi eventuale chunk precedente (un solo chunk "Prima Sessione" per tavolo)
+  index.chunks = index.chunks.filter(c => c.id !== 'special_prima_sessione')
+
+  let embedding
+  try {
+    embedding = await embed(introText)
+  } catch (err) {
+    console.warn(`[RAG] Embedding Prima Sessione fallito per tavolo ${tableId}:`, err.message)
+    return
+  }
+
+  index.chunks.push({
+    id:      'special_prima_sessione',
+    type:    'prima_sessione',
+    name:    'Prima Sessione',
+    content: introText,
+    embedding,
+    addedAt: new Date().toISOString()
+  })
+
+  await saveIndex(indexPath, index)
+  console.log(`[RAG] Chunk "Prima Sessione" indicizzato per tavolo ${tableId}`)
+}
+
+/**
+ * Aggiunge o aggiorna il chunk "Ambientazione" nell'indice esistente del modulo,
+ * senza rieseguire il preprocessing completo.
+ */
+async function indexAmbientazione(moduleId, ambientazioneText) {
+  const indexPath = moduleIndexPath(moduleId)
+  const index = await loadIndex(indexPath)
+
+  // Rimuovi eventuale chunk precedente
+  index.chunks = index.chunks.filter(c => c.id !== 'special_ambientazione')
+
+  let embedding
+  try {
+    embedding = await embed(ambientazioneText)
+  } catch (err) {
+    console.warn(`[RAG] Embedding Ambientazione fallito per modulo ${moduleId}:`, err.message)
+    return
+  }
+
+  index.chunks.unshift({
+    id:      'special_ambientazione',
+    type:    'ambientazione',
+    name:    'Ambientazione',
+    content: ambientazioneText,
+    embedding,
+    addedAt: new Date().toISOString()
+  })
+
+  index.moduleId = moduleId
+  await saveIndex(indexPath, index)
+  console.log(`[RAG] Chunk "Ambientazione" aggiornato per modulo ${moduleId}`)
 }
 
 async function deleteModuleIndex(moduleId) {
@@ -492,11 +594,13 @@ async function queryTable(tableId, queryText, topK = RAG_TOP_K) {
 module.exports = {
   indexModule,
   indexModuleChunks,
+  indexAmbientazione,
   deleteModuleIndex,
   queryModule,
+  indexSessionIntro,
   indexDiaryEntry,
   queryTable,
   // Esposto solo per test
-  _test: { extractEntitiesForType, deduplicateEntities, splitTextIntoChunks, splitIntoRawChunks },
+  _test: { extractEntitiesForType, deduplicateEntities, splitTextIntoChunks, splitIntoRawChunks, rawChunksToTextArray },
   _typeConfig: TYPE_CONFIG
 }

@@ -7,6 +7,7 @@ const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileSto
 const { DATA_DIR } = require('../utils/dataInit')
 const { authMiddleware, adminOnly } = require('../middleware/auth')
 const ollama = require('../services/ollamaService')
+const rag = require('../services/ragService')
 
 const MODULES_DIR = path.join(DATA_DIR, 'modules')
 const DEFAULT_HEAVY_LLM_MODEL = process.env.DEFAULT_HEAVY_LLM_MODEL
@@ -19,11 +20,33 @@ async function deleteAmbientazione(moduleId) {
   try { await fs.unlink(ambientazioneFilePath(moduleId)) } catch { /* già assente */ }
 }
 
-function generateAmbientazioneInBackground(moduleId, primoCapitolo) {
-  if (!DEFAULT_HEAVY_LLM_MODEL || !primoCapitolo?.trim()) return
-  ollama.runTextPhase(DEFAULT_HEAVY_LLM_MODEL, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo })
-    .then(text => fs.writeFile(ambientazioneFilePath(moduleId), text.trim(), 'utf-8'))
-    .catch(err => console.error(`[Modules] Errore generazione ambientazione ${moduleId}:`, err.message))
+/**
+ * Prepara il modulo in background in modo sequenziale:
+ * 1. Genera ambientazione.txt (se modello configurato)
+ * 2. Indicizza il modulo nel RAG (includerà il chunk Ambientazione se già generato)
+ * Le due operazioni sono sequenziali per non sovraccaricare la LLM locale.
+ */
+function prepareModuleInBackground(moduleId, primoCapitolo) {
+  if (!primoCapitolo?.trim()) return
+  ;(async () => {
+    if (DEFAULT_HEAVY_LLM_MODEL) {
+      try {
+        const text = await ollama.runTextPhase(
+          DEFAULT_HEAVY_LLM_MODEL, 'prepara_ambientazione.md', { primo_capitolo: primoCapitolo }
+        )
+        await fs.writeFile(ambientazioneFilePath(moduleId), text.trim(), 'utf-8')
+        console.log(`[Modules] Ambientazione generata per ${moduleId}`)
+      } catch (err) {
+        console.error(`[Modules] Errore generazione ambientazione ${moduleId}:`, err.message)
+        // non blocca l'indicizzazione
+      }
+    }
+    try {
+      await rag.indexModule(moduleId, primoCapitolo, 1)
+    } catch (err) {
+      console.error(`[Modules] Errore indicizzazione RAG ${moduleId}:`, err.message)
+    }
+  })()
 }
 
 async function getAllModules() {
@@ -73,7 +96,7 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
 
   await ensureDir(MODULES_DIR)
   await writeJSON(path.join(MODULES_DIR, `${mod.id}.json`), mod)
-  generateAmbientazioneInBackground(mod.id, chapters[0]?.content)
+  prepareModuleInBackground(mod.id, chapters[0]?.content)
   res.status(201).json(mod)
 })
 
@@ -96,7 +119,8 @@ router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
   await writeJSON(filePath, updated)
   if (chapters) {
     await deleteAmbientazione(req.params.id)
-    generateAmbientazioneInBackground(req.params.id, chapters[0]?.content)
+    await rag.deleteModuleIndex(req.params.id)
+    prepareModuleInBackground(req.params.id, chapters[0]?.content)
   }
   res.json(updated)
 })
@@ -107,6 +131,7 @@ router.delete('/:id', authMiddleware, adminOnly, async (req, res) => {
   if (!await fileExists(filePath)) return res.status(404).json({ error: 'Modulo non trovato' })
   await fs.unlink(filePath)
   await deleteAmbientazione(req.params.id)
+  await rag.deleteModuleIndex(req.params.id)
   res.json({ message: 'Modulo eliminato' })
 })
 

@@ -11,7 +11,7 @@ const ragService = require('../src/services/ragService')
 
 const MODULES_DIR = path.join(__dirname, '../../data/modules')
 
-const { extractEntitiesForType, deduplicateEntities, splitTextIntoChunks, splitIntoRawChunks } = ragService._test || {}
+const { extractEntitiesForType, deduplicateEntities, splitTextIntoChunks, splitIntoRawChunks, rawChunksToTextArray } = ragService._test || {}
 
 async function loadModule() {
   const files = (await fs.readdir(MODULES_DIR)).filter(f => f.endsWith('.json') && !f.includes('_rag'))
@@ -19,10 +19,9 @@ async function loadModule() {
   return JSON.parse(await fs.readFile(path.join(MODULES_DIR, files[0]), 'utf-8'))
 }
 
-async function testPass1Only(chapterText) {
-  const textChunks = splitTextIntoChunks(chapterText)
+async function runPass1(label, textChunks) {
   console.log(`\n${'='.repeat(60)}`)
-  console.log(`PASS 1 — Testo diviso in ${textChunks.length} chunk preliminari\n`)
+  console.log(`PASS 1 — ${label} (${textChunks.length} chunk)\n`)
 
   const allEntities = []
   for (const type of Object.keys(ragService._typeConfig || {})) {
@@ -34,7 +33,6 @@ async function testPass1Only(chapterText) {
 
   const deduped = deduplicateEntities(allEntities)
   console.log(`\nTotale grezzo: ${allEntities.length} → dopo deduplicazione: ${deduped.length}`)
-  console.log('='.repeat(60))
 
   const byType = {}
   for (const e of deduped) {
@@ -42,20 +40,21 @@ async function testPass1Only(chapterText) {
     byType[e.type].push(e.name)
   }
   for (const [type, names] of Object.entries(byType)) {
-    console.log(`\n[${type}] (${names.length})`)
-    for (const name of names) console.log(`  - ${name}`)
+    console.log(`\n  [${type}] (${names.length})`)
+    for (const name of names) console.log(`    - ${name}`)
   }
+  return deduped
 }
 
-function testRawChunks(chapterText) {
+function showRawChunks(chapterText) {
   const chunks = splitIntoRawChunks(chapterText)
   console.log(`\n${'='.repeat(60)}`)
-  console.log(`CHUNK RAW — ${chunks.length} chunk generati\n`)
+  console.log(`CHUNK RAW — ${chunks.length} chunk (usati come input strategia B)\n`)
   for (const c of chunks) {
-    const preview = c.content.replace(/\n/g, ' ').slice(0, 100)
-    console.log(`[${c.id}] "${c.name}" (${c.content.length} char)`)
-    console.log(`  ${preview}...`)
+    const preview = c.content.replace(/\n/g, ' ').slice(0, 90)
+    console.log(`  [${c.id}] "${c.name}" (${c.content.length} char) ${preview}...`)
   }
+  return chunks
 }
 
 async function main() {
@@ -63,11 +62,28 @@ async function main() {
   const chapterText = mod.chapters[0]?.content || ''
   console.log(`\nModulo: ${mod.title} (${mod.id}) — Capitolo 1: ${chapterText.length} caratteri`)
 
-  // Mostra prima i chunk raw (sincrono, veloce)
-  testRawChunks(chapterText)
+  // Mostra i chunk raw
+  const rawChunks = showRawChunks(chapterText)
 
-  // Poi il pass1 semantico
-  await testPass1Only(chapterText)
+  // Strategia A: paragrafo-aware (~3000 char, no tagli a metà paragrafo)
+  const chunksA = splitTextIntoChunks(chapterText)
+  const resultA = await runPass1('Strategia A — paragrafo-aware', chunksA)
+
+  // Strategia B: chunk raw come input (sezione-aware)
+  const chunksB = rawChunksToTextArray(rawChunks)
+  const resultB = await runPass1('Strategia B — chunk raw', chunksB)
+
+  // Confronto finale
+  console.log(`\n${'='.repeat(60)}`)
+  console.log('CONFRONTO\n')
+  const namesA = new Set(resultA.map(e => e.name.toLowerCase()))
+  const namesB = new Set(resultB.map(e => e.name.toLowerCase()))
+  const onlyA = resultA.filter(e => !namesB.has(e.name.toLowerCase())).map(e => `${e.name} (${e.type})`)
+  const onlyB = resultB.filter(e => !namesA.has(e.name.toLowerCase())).map(e => `${e.name} (${e.type})`)
+  const both  = resultA.filter(e =>  namesB.has(e.name.toLowerCase())).map(e => `${e.name} (${e.type})`)
+  console.log(`  Comuni (${both.length}):      ${both.join(', ') || '—'}`)
+  console.log(`  Solo A (${onlyA.length}):     ${onlyA.join(', ') || '—'}`)
+  console.log(`  Solo B (${onlyB.length}):     ${onlyB.join(', ') || '—'}`)
 }
 
 main().catch(err => { console.error('\nErrore:', err.message); process.exit(1) })
