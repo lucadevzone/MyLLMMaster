@@ -23,6 +23,9 @@ const RAG_TOP_K = parseInt(process.env.RAG_TOP_K || '5')
 const DEFAULT_HEAVY_MODEL = process.env.DEFAULT_HEAVY_LLM_MODEL
 const PRELIM_CHUNK_SIZE = parseInt(process.env.RAG_CHUNK_SIZE || '3000')
 const PRELIM_CHUNK_OVERLAP = parseInt(process.env.RAG_CHUNK_OVERLAP || '200')
+const TAG_CHUNK_SIZE = parseInt(
+  process.env.RAG_TAG_CHUNK_SIZE || String(Math.max(1000, Math.floor(PRELIM_CHUNK_SIZE * 2 / 3)))
+)
 
 // Configurazione per il prompt pass1 — solo i tipi più affidabili per estrazione semantica.
 // Tutto il resto (indizi, risorse, eventi, scene, mostri) è coperto dai chunk raw.
@@ -37,6 +40,12 @@ const TYPE_CONFIG = {
     esempi:      'Dr. Brown, Alice Meraviglia, John Mylopoulos, Mister X',
     escludi:     'luoghi, oggetti, eventi, informazioni astratte — solo esseri umani identificati con un nome'
   }
+}
+
+const TAG_EXTRACTION_PROMPTS = {
+  location: 'rag_pass1_tags_location.md',
+  personaggio: 'rag_pass1_tags_personaggio.md',
+  indizio: 'rag_pass1_tags_indizio.md'
 }
 
 // Priorità per deduplicazione cross-tipo (tipo con indice più basso "vince" in caso di nome identico)
@@ -175,6 +184,46 @@ function enrichRawChunks(rawChunks, semanticChunks) {
   })
 }
 
+function buildTagCatalogMap(tagCatalog) {
+  const tagMap = new Map() // normalizedTag -> canonical
+
+  for (const tag of tagCatalog || []) {
+    const canonical = String(tag.canonical || '').trim()
+    if (!canonical) continue
+
+    const candidates = [canonical, ...(tag.aliases || [])]
+    for (const candidate of candidates) {
+      const normalized = normalizeText(candidate)
+      if (!normalized || normalized.length < MIN_TAG_LENGTH) continue
+      tagMap.set(normalized, canonical)
+    }
+  }
+
+  return tagMap
+}
+
+function annotateRawChunksWithTagCatalog(rawChunks, tagCatalog) {
+  const tagMap = buildTagCatalogMap(tagCatalog)
+  if (!tagMap.size) return rawChunks
+
+  return rawChunks.map(chunk => {
+    const normalizedContent = normalizeText(chunk.content)
+    const related = new Set()
+
+    for (const [normalizedTag, canonical] of tagMap) {
+      if (containsWholeTag(normalizedContent, normalizedTag)) {
+        related.add(canonical)
+      }
+    }
+
+    if (!related.size) return chunk
+    return {
+      ...chunk,
+      relatedTags: [...related].sort((a, b) => a.localeCompare(b, 'it'))
+    }
+  })
+}
+
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
 function moduleRagDir(moduleId) {
@@ -235,6 +284,298 @@ function scoreChunks(chunks, queryEmbedding, topK = null) {
   return topK == null ? scored : scored.slice(0, topK)
 }
 
+function deduplicateTagCandidates(candidates) {
+  const grouped = new Map()
+
+  for (const candidate of candidates) {
+    const type = String(candidate.type || '').trim()
+    const canonical = String(candidate.canonical || '').trim()
+    if (!type || !canonical) continue
+
+    const key = `${type}::${normalizeText(canonical)}`
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        type,
+        canonical,
+        aliases: new Set(),
+        evidences: []
+      })
+    }
+
+    const entry = grouped.get(key)
+    for (const alias of candidate.aliases || []) {
+      const cleanAlias = String(alias || '').trim()
+      if (!cleanAlias) continue
+      if (normalizeText(cleanAlias) === normalizeText(canonical)) continue
+      entry.aliases.add(cleanAlias)
+    }
+
+    const evidence = String(candidate.evidence || '').trim()
+    if (evidence && !entry.evidences.includes(evidence)) {
+      entry.evidences.push(evidence)
+    }
+  }
+
+  return [...grouped.values()]
+    .map(entry => ({
+      type: entry.type,
+      canonical: entry.canonical,
+      aliases: [...entry.aliases],
+      evidences: entry.evidences
+    }))
+    .sort((a, b) =>
+      a.type.localeCompare(b.type, 'it') ||
+      a.canonical.localeCompare(b.canonical, 'it')
+    )
+}
+
+function serializeKnownTagsForPrompt(tags) {
+  if (!Array.isArray(tags) || !tags.length) return 'nessun tag noto'
+  return tags
+    .map(tag => {
+      const aliases = Array.isArray(tag.aliases) && tag.aliases.length
+        ? ` | aliases: ${tag.aliases.join(', ')}`
+        : ''
+      return `- canonical: ${tag.canonical}${aliases}`
+    })
+    .join('\n')
+}
+
+function mergeKnownTags(existingTags, newTags, type) {
+  const normalizedExisting = (existingTags || []).map(tag => ({ type, ...tag }))
+  const normalizedNew = (newTags || []).map(tag => ({ type, ...tag }))
+  const merged = deduplicateTagCandidates([...normalizedExisting, ...normalizedNew])
+  return merged.map(tag => ({
+    canonical: tag.canonical,
+    aliases: tag.aliases || [],
+    evidences: tag.evidences || []
+  }))
+}
+
+function tokenizeCanonical(text) {
+  return normalizeText(text).split(' ').filter(Boolean)
+}
+
+function canonicalScore(tag, type) {
+  const canonical = String(tag.canonical || '').trim()
+  const tokens = tokenizeCanonical(canonical)
+  const tokenCount = tokens.length
+  let score = tokenCount * 10 + canonical.length
+
+  if (type === 'personaggio') {
+    if (tokenCount >= 2) score += 30
+    if (/^(dott|dottssa|dr|prof|professoressa|commissaire|ispettore|monsieur|madame)\b/i.test(normalizeText(canonical))) {
+      score += 5
+    }
+    if (tokenCount === 1) score -= 15
+  }
+
+  if (type === 'indizio') {
+    if (tokenCount >= 3) score += 10
+    if (/(tavoletta|lettera|diario|appunti|amuleto|sigillo|frammento|ricevuta|mappa|rapporto)/i.test(canonical)) {
+      score += 8
+    }
+  }
+
+  if (type === 'location') {
+    if (/,/.test(canonical)) score += 5
+    if (tokenCount === 1) score -= 2
+  }
+
+  return score
+}
+
+function areEquivalentTags(a, b, type) {
+  const canonA = normalizeText(a.canonical)
+  const canonB = normalizeText(b.canonical)
+  if (!canonA || !canonB) return false
+  if (canonA === canonB) return true
+
+  const aliasesA = new Set((a.aliases || []).map(normalizeText).filter(Boolean))
+  const aliasesB = new Set((b.aliases || []).map(normalizeText).filter(Boolean))
+
+  if (type === 'location') {
+    return aliasesA.has(canonB) || aliasesB.has(canonA)
+  }
+
+  if (aliasesA.has(canonB) || aliasesB.has(canonA)) return true
+  for (const alias of aliasesA) {
+    if (aliasesB.has(alias)) return true
+  }
+
+  const tokensA = tokenizeCanonical(a.canonical)
+  const tokensB = tokenizeCanonical(b.canonical)
+
+  if (type === 'personaggio') {
+    const setA = new Set(tokensA)
+    const setB = new Set(tokensB)
+    if (tokensA.length >= 2 && tokensB.length === 1 && setA.has(tokensB[0])) return true
+    if (tokensB.length >= 2 && tokensA.length === 1 && setB.has(tokensA[0])) return true
+
+    const strippedA = canonA.replace(/^(dott|dottssa|dr|prof|professoressa|commissaire|ispettore)\s+/i, '')
+    const strippedB = canonB.replace(/^(dott|dottssa|dr|prof|professoressa|commissaire|ispettore)\s+/i, '')
+    if (strippedA === strippedB) return true
+  }
+
+  if (type === 'indizio') {
+    if (canonA.includes(canonB) || canonB.includes(canonA)) {
+      const shorter = canonA.length < canonB.length ? canonA : canonB
+      if (shorter.length >= 12) return true
+    }
+  }
+
+  return false
+}
+
+function chooseBestCanonical(group, type) {
+  const sorted = [...group].sort((a, b) => canonicalScore(b, type) - canonicalScore(a, type))
+  return sorted[0]
+}
+
+function consolidateTagsByType(tags, type) {
+  const items = (tags || []).filter(tag => tag.type === type)
+  const groups = []
+
+  for (const item of items) {
+    const matchingIndexes = []
+    for (let idx = 0; idx < groups.length; idx++) {
+      if (groups[idx].some(existing => areEquivalentTags(existing, item, type))) {
+        matchingIndexes.push(idx)
+      }
+    }
+
+    if (!matchingIndexes.length) {
+      groups.push([item])
+      continue
+    }
+
+    const mergedGroup = [item]
+    for (const idx of matchingIndexes.sort((a, b) => b - a)) {
+      mergedGroup.push(...groups[idx])
+      groups.splice(idx, 1)
+    }
+    groups.push(mergedGroup)
+  }
+
+  const consolidated = groups.map(group => {
+    const best = chooseBestCanonical(group, type)
+    const aliasSet = new Set()
+    const evidences = []
+    const sources = new Set()
+
+    for (const item of group) {
+      const candidateCanonical = String(item.canonical || '').trim()
+      if (candidateCanonical && normalizeText(candidateCanonical) !== normalizeText(best.canonical)) {
+        aliasSet.add(candidateCanonical)
+      }
+      for (const alias of item.aliases || []) {
+        const cleanAlias = String(alias || '').trim()
+        if (!cleanAlias) continue
+        if (normalizeText(cleanAlias) === normalizeText(best.canonical)) continue
+        aliasSet.add(cleanAlias)
+      }
+      const evidence = String(item.evidence || '').trim()
+      if (evidence && !evidences.includes(evidence)) evidences.push(evidence)
+      const evidencesList = Array.isArray(item.evidences) ? item.evidences : []
+      for (const ev of evidencesList) {
+        const cleanEv = String(ev || '').trim()
+        if (cleanEv && !evidences.includes(cleanEv)) evidences.push(cleanEv)
+      }
+      if (item.sourceChunk != null) sources.add(item.sourceChunk)
+      for (const src of item.sources || []) {
+        if (src != null) sources.add(src)
+      }
+    }
+
+    return {
+      type,
+      canonical: best.canonical,
+      aliases: [...aliasSet]
+        .filter(alias => normalizeText(alias) !== normalizeText(best.canonical))
+        .sort((a, b) => a.localeCompare(b, 'it')),
+      evidences,
+      sources: [...sources].sort((a, b) => a - b)
+    }
+  }).sort((a, b) => a.canonical.localeCompare(b.canonical, 'it'))
+
+  if (type !== 'location') return consolidated
+
+  const canonicalNorms = new Set(consolidated.map(tag => normalizeText(tag.canonical)))
+  const aliasOwners = new Map()
+
+  for (const tag of consolidated) {
+    const ownerKey = normalizeText(tag.canonical)
+    for (const alias of tag.aliases || []) {
+      const aliasNorm = normalizeText(alias)
+      if (!aliasNorm) continue
+      if (!aliasOwners.has(aliasNorm)) aliasOwners.set(aliasNorm, new Set())
+      aliasOwners.get(aliasNorm).add(ownerKey)
+    }
+  }
+
+  return consolidated.map(tag => ({
+    ...tag,
+    aliases: (tag.aliases || []).filter(alias => {
+      const aliasNorm = normalizeText(alias)
+      if (!aliasNorm) return false
+      if (aliasNorm === normalizeText(tag.canonical)) return false
+      if (canonicalNorms.has(aliasNorm) && aliasNorm !== normalizeText(tag.canonical)) return false
+      const owners = aliasOwners.get(aliasNorm)
+      if (owners && owners.size > 1) return false
+      return true
+    })
+  }))
+}
+
+function consolidateExtractedTags(tags) {
+  const types = [...new Set((tags || []).map(tag => tag.type).filter(Boolean))]
+  const consolidated = types.flatMap(type => consolidateTagsByType(tags, type))
+  return deduplicateTagCandidates(consolidated).map(tag => ({
+    type: tag.type,
+    canonical: tag.canonical,
+    aliases: (tag.aliases || []).filter(alias => normalizeText(alias) !== normalizeText(tag.canonical)),
+    evidences: tag.evidences || [],
+    sources: [...new Set(tag.sources || [])].sort((a, b) => a - b)
+  }))
+}
+
+async function extractTagCandidates(textChunks) {
+  const allTags = []
+  const knownByType = Object.fromEntries(
+    Object.keys(TAG_EXTRACTION_PROMPTS).map(type => [type, []])
+  )
+
+  for (let i = 0; i < textChunks.length; i++) {
+    for (const [type, promptFile] of Object.entries(TAG_EXTRACTION_PROMPTS)) {
+      try {
+        const result = await ollama.runPhase(
+          DEFAULT_HEAVY_MODEL,
+          promptFile,
+          {
+            testo_chunk: textChunks[i],
+            known_tags: serializeKnownTagsForPrompt(knownByType[type])
+          },
+          { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
+        )
+
+        const tags = Array.isArray(result?.tags) ? result.tags : []
+        for (const tag of tags) {
+          allTags.push({
+            type,
+            ...tag,
+            sourceChunk: i
+          })
+        }
+        knownByType[type] = mergeKnownTags(knownByType[type], tags, type)
+      } catch (err) {
+        console.warn(`[RAG] Tag extraction [${type}] chunk ${i + 1} fallita:`, err.message)
+      }
+    }
+  }
+
+  return allTags
+}
+
 // ── Index I/O ─────────────────────────────────────────────────────────────────
 
 async function loadIndex(indexPath) {
@@ -256,8 +597,8 @@ async function saveIndex(indexPath, index) {
 // Strategia combinata:
 //   3. Rileva sezioni naturali: paragrafo breve (<= TITLE_MAX_LEN) non puntato
 //      seguito da contenuto più lungo = titolo implicito di sezione
-//   1. Raggruppa i paragrafi di ogni sezione con overlap di 1 paragrafo
-//      se la sezione supera RAW_CHUNK_MAX caratteri
+//   1. Raggruppa i paragrafi di ogni sezione senza overlap, così il corpus raw
+//      resta fedele e non ripete testo tra chunk consecutivi
 //
 // Ogni chunk raw mantiene il testo originale intatto: nessuna elaborazione LLM.
 
@@ -305,7 +646,6 @@ function splitIntoRawChunks(text) {
   for (const section of sections) {
     const header = section.title ? section.title + '\n\n' : ''
     let current = header
-    let prevPara = ''
 
     for (const para of section.paras) {
       if (current.length + para.length > RAW_CHUNK_MAX && current.trim().length > RAW_CHUNK_MIN) {
@@ -316,12 +656,10 @@ function splitIntoRawChunks(text) {
           content: current.trim()
         })
         idx++
-        // Overlap: ricomincia con l'ultimo paragrafo del chunk precedente
-        current = header + (prevPara ? prevPara + '\n\n' : '') + para
+        current = header + para
       } else {
         current = current ? current + '\n\n' + para : para
       }
-      prevPara = para
     }
 
     if (current.trim().length >= RAW_CHUNK_MIN) {
@@ -367,6 +705,10 @@ function splitTextIntoChunks(text, size = PRELIM_CHUNK_SIZE) {
   }
   if (current.trim()) chunks.push(current.trim())
   return chunks
+}
+
+function splitTextIntoTagChunks(text) {
+  return splitTextIntoChunks(text, TAG_CHUNK_SIZE)
 }
 
 // Converte chunk raw in array di stringhe testuali per il pass1 (strategia B)
@@ -843,6 +1185,20 @@ module.exports = {
   indexDiaryEntry,
   queryTable,
   // Esposto solo per test
-  _test: { extractEntitiesForType, deduplicateEntities, splitTextIntoChunks, splitIntoRawChunks, rawChunksToTextArray },
+  _test: {
+    extractEntitiesForType,
+    deduplicateEntities,
+    splitTextIntoChunks,
+    splitTextIntoTagChunks,
+    splitIntoRawChunks,
+    rawChunksToTextArray,
+    extractTagCandidates,
+    deduplicateTagCandidates,
+    serializeKnownTagsForPrompt,
+    mergeKnownTags,
+    consolidateTagsByType,
+    consolidateExtractedTags,
+    annotateRawChunksWithTagCatalog
+  },
   _typeConfig: TYPE_CONFIG
 }

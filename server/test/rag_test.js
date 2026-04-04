@@ -11,7 +11,16 @@ const ragService = require('../src/services/ragService')
 
 const MODULES_DIR = path.join(__dirname, '../../data/modules')
 
-const { extractEntitiesForType, deduplicateEntities, splitTextIntoChunks, splitIntoRawChunks, rawChunksToTextArray } = ragService._test || {}
+const {
+  extractEntitiesForType,
+  deduplicateEntities,
+  splitTextIntoChunks,
+  splitTextIntoTagChunks,
+  splitIntoRawChunks,
+  rawChunksToTextArray,
+  extractTagCandidates,
+  deduplicateTagCandidates
+} = ragService._test || {}
 
 async function loadModule() {
   const files = (await fs.readdir(MODULES_DIR)).filter(f => f.endsWith('.json') && !f.includes('_rag'))
@@ -80,6 +89,34 @@ async function testQueries(mod, queries) {
   }
 }
 
+async function runTagExtraction(mod) {
+  const chapterText = mod.chapters[0]?.content || ''
+  const textChunks = splitTextIntoTagChunks(chapterText)
+  console.log(`\n${'='.repeat(60)}`)
+  console.log(`TAG EXTRACTION (${textChunks.length} chunk)\n`)
+
+  const rawCandidates = await extractTagCandidates(textChunks)
+  const deduped = deduplicateTagCandidates(rawCandidates)
+
+  console.log(`Candidati grezzi: ${rawCandidates.length}`)
+  console.log(`Dopo deduplica esatta: ${deduped.length}\n`)
+
+  const byType = {}
+  for (const tag of deduped) {
+    if (!byType[tag.type]) byType[tag.type] = []
+    byType[tag.type].push(tag)
+  }
+
+  for (const [type, tags] of Object.entries(byType)) {
+    console.log(`[${type}] (${tags.length})`)
+    for (const tag of tags) {
+      const aliasText = tag.aliases.length ? ` | alias: ${tag.aliases.join(', ')}` : ''
+      console.log(`  - ${tag.canonical}${aliasText}`)
+    }
+    console.log('')
+  }
+}
+
 async function main() {
   const mod = await loadModule()
   console.log(`\nModulo: ${mod.title} (${mod.id})`)
@@ -102,6 +139,11 @@ async function main() {
       'come inizia la sessione'
     ]
     await testQueries(mod, queries)
+    return
+  }
+
+  if (args[0] === 'tags') {
+    await runTagExtraction(mod)
     return
   }
 
