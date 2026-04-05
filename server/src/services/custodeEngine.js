@@ -254,9 +254,43 @@ function formatRagResults(results) {
 // prima della normale sostituzione delle variabili.
 // La query può contenere riferimenti a variabili runtime: {{rag:module:"{{suggerimento_scena}}"}}
 
-// Sintassi: {{rag:source:"query"}} oppure {{rag:source:"query":cascade}}
-const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"(:cascade)?\}\}/g
+// Sintassi: {{rag:source:"query"}}, {{rag:source:"query":cascade}} oppure
+// {{rag:source:"query1, query2":iterate}}
+const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"(?::(cascade|iterate))?\}\}/g
 const RAG_PROMPT_TOP_K = parseInt(process.env.RAG_PROMPT_TOP_K || '3')
+
+function dedupeRagResults(results) {
+  const seen = new Set()
+  return (results || []).filter(result => {
+    const key = [
+      result.type || '',
+      result.name || '',
+      result.chapter || '',
+      result.sessionNumber || '',
+      result.content || ''
+    ].join('::')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function splitIterateItems(query) {
+  const raw = String(query || '').trim()
+  if (!raw) return []
+  if (raw.startsWith('[') && raw.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => String(item || '').trim()).filter(Boolean)
+      }
+    } catch { /* fallback sotto */ }
+  }
+  return raw
+    .split(/[\n,;]+/)
+    .map(item => item.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean)
+}
 
 function buildRagResolver(moduleId, tableId) {
   return async (template, vars) => {
@@ -264,7 +298,7 @@ function buildRagResolver(moduleId, tableId) {
     if (!matches.length) return template
 
     for (const match of matches) {
-      const [fullMatch, source, queryTemplate, cascadeFlag] = match
+      const [fullMatch, source, queryTemplate, mode = ''] = match
 
       // Interpola la stringa di query con le variabili runtime
       let query = queryTemplate
@@ -273,10 +307,20 @@ function buildRagResolver(moduleId, tableId) {
         query = query.replaceAll(`{{${key}}}`, value)
       }
 
-      const isCascade = cascadeFlag === ':cascade'
+      const isCascade = mode === 'cascade'
+      const isIterate = mode === 'iterate'
       let results = []
       try {
-        if (source === 'module') {
+        if (isIterate) {
+          const items = splitIterateItems(query)
+          for (const item of items) {
+            const partial = source === 'module'
+              ? await rag.queryModule(moduleId, item, RAG_PROMPT_TOP_K)
+              : await rag.queryTable(tableId, item, RAG_PROMPT_TOP_K)
+            results.push(...partial)
+          }
+          results = dedupeRagResults(results)
+        } else if (source === 'module') {
           results = isCascade
             ? await rag.cascadeQueryModule(moduleId, query, RAG_PROMPT_TOP_K)
             : await rag.queryModule(moduleId, query, RAG_PROMPT_TOP_K)
@@ -284,7 +328,8 @@ function buildRagResolver(moduleId, tableId) {
           results = await rag.queryTable(tableId, query, RAG_PROMPT_TOP_K)
         }
       } catch (err) {
-        console.warn(`[Custode] RAG resolver [${source}${isCascade ? ':cascade' : ''}] "${query}" fallita:`, err.message)
+        const suffix = isCascade ? ':cascade' : (isIterate ? ':iterate' : '')
+        console.warn(`[Custode] RAG resolver [${source}${suffix}] "${query}" fallita:`, err.message)
       }
 
       template = template.replaceAll(fullMatch, formatRagResults(results))
@@ -658,12 +703,12 @@ class CustodeEngine {
       .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
 
     const result = await this.llm('fase3b_narrazione.md', {
-      scena_focus:  JSON.stringify(focusScene),
-      progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       schede_PG,
-      diary:        diary || '(nessun diario disponibile)',
-      engagement:   JSON.stringify(engagement),
-      storia_recente: recentMsgs,
+      PNG: focusScene?.PNG || '',
+      opportunita: focusScene?.opportunita || '',
+      minacce: focusScene?.minacce || '',
+      indizi: focusScene?.indizi || '',
+      scena_focus_ID: focusScene?.id_scena || '',
       contesto_dove:  focusScene?.contesto_dove || ''
     })
     if (this.abortIfPaused()) return null
@@ -736,11 +781,7 @@ class CustodeEngine {
 
     // result è l'array piano — conversione nomi → email
     const pianoRaw = Array.isArray(result) ? result : (result.piano || [])
-    const pianoNormalized = pianoRaw.map((entry, index) => ({
-      ...entry,
-      priorita: Number.isInteger(entry?.priorita) ? entry.priorita : (index + 1)
-    }))
-    const piano = pianoToEmails(pianoNormalized, pgLookup)
+    const piano = pianoToEmails(pianoRaw, pgLookup)
 
     // Salva piano in sessione
     const ctx = svc.getSession(this.tableId)
@@ -752,6 +793,7 @@ class CustodeEngine {
     // Controlla completezza
     const isCompleto = piano.every(e =>
       e.stato === 'dichiarazione' ||
+      e.stato === 'domanda' ||
       (e.stato === 'prova' && e.risultato_prova != null)
     )
 
@@ -763,30 +805,34 @@ class CustodeEngine {
     // Trova prossima entry pendente per priorità
     const pending = piano
       .filter(e => e.stato === 'incompleta' || e.stato === 'assente' ||
-                   (e.stato === 'prova' && e.risultato_prova == null))
-      .sort((a, b) => (a.priorita || 99) - (b.priorita || 99))[0]
+                   (e.stato === 'prova' && e.risultato_prova == null))[0]
 
     // Costruisce l'entry con pg già convertito in nome per le sottofasi
     const entryPerLlm = (e, lookup) => ({ ...e, pg: lookup.toName[e.pg] || e.pg })
 
     if (pending.stato === 'incompleta')
-      return { next: 'sottofase-4a', data: { pg_target: pending.pg, richiesta_chiarimenti: entryPerLlm(pending, pgLookup) } }
+      return { next: 'sottofase-4a', data: { pg_target: pending.pg, dichiarazione: pending.azione || '', scena_focus_ID: focusScene?.id_scena || '' } }
     if (pending.stato === 'assente')
       return { next: 'sottofase-4b', data: { pg_target: pending.pg, richiesta_dichiarazione: entryPerLlm(pending, pgLookup) } }
     if (pending.stato === 'prova')
-      return { next: 'sottofase-4c', data: { pg_target: pending.pg, richiesta_prova: entryPerLlm(pending, pgLookup) } }
+      return { next: 'sottofase-4c', data: { pg_target: pending.pg, dichiarazione_con_richiesta_prova: {
+        azione: pending.azione || '',
+        abilita_o_caratteristica: pending.abilita_o_caratteristica || '',
+        difficolta: pending.difficolta || ''
+      }, scena_focus_ID: focusScene?.id_scena || '' } }
   }
 
   async fase4a(data) {
     await this.emitPhaseChange('fase-4a')
     await this.emitThinking('fase-4a')
-    const { worldState, pgLookup } = await this.buildContext()
+    const { worldState, pgLookup, schede_PG } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4a_chiarimenti.md', {
       pg_target: pgNome,
-      richiesta_chiarimenti: JSON.stringify(data.richiesta_chiarimenti),
-      scena_focus: JSON.stringify(focusScene),
+      scena_focus_ID: data.scena_focus_ID || focusScene?.id_scena || '',
+      schede_PG,
+      dichiarazione: data.dichiarazione || '',
       world_state: JSON.stringify(worldState)
     })
     if (this.abortIfPaused()) return null
@@ -822,17 +868,18 @@ class CustodeEngine {
   async fase4c(data) {
     await this.emitPhaseChange('fase-4c')
     await this.emitThinking('fase-4c')
-    const { worldState, pgLookup } = await this.buildContext()
+    const { worldState, pgLookup, schede_PG } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4c_necessita_prova.md', {
       pg_target: pgNome,
-      richiesta_prova: JSON.stringify(data.richiesta_prova),
-      scena_focus: JSON.stringify(focusScene),
+      scena_focus_ID: data.scena_focus_ID || focusScene?.id_scena || '',
+      schede_PG,
+      dichiarazione_con_richiesta_prova: JSON.stringify(data.dichiarazione_con_richiesta_prova),
       world_state: JSON.stringify(worldState)
     })
     if (this.abortIfPaused()) return null
-    await this.emitNarrative(result.narrativa)
+    await this.emitNarrative(result.progressione)
     const assigned = await this.setPlayerTurn(data.pg_target, 'mio-turno-prova')
     if (!assigned) {
       await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
@@ -880,9 +927,9 @@ class CustodeEngine {
     const agg = result.aggiornamenti || {}
 
     // Aggiorna progressione della scena (append)
-    if (agg.progressione && focusScene) {
+    if (result.progressione && focusScene) {
       const prev = focusScene.progressione || ''
-      focusScene.progressione = prev ? `${prev}\n${agg.progressione}` : agg.progressione
+      focusScene.progressione = prev ? `${prev}\n${result.progressione}` : result.progressione
       await saveScene(this.tableId, focusScene)
     }
 

@@ -34,9 +34,42 @@ const DEFAULT_MODEL = process.env.DEFAULT_HEAVY_LLM_MODEL
 const OUTPUT_DIR = path.join(__dirname, 'artifacts_prompt_rag')
 const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000', 10)
 
-const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"(:cascade)?\}\}/g
+const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"(?::(cascade|iterate))?\}\}/g
 const RAG_PROMPT_TOP_K = parseInt(process.env.RAG_PROMPT_TOP_K || '3', 10)
 const HEAVY_LLM_NUM_CTX = parseInt(process.env.HEAVY_LLM_NUM_CTX || '8192', 10)
+
+function dedupeRagResults(results) {
+  const seen = new Set()
+  return (results || []).filter(result => {
+    const key = [
+      result.type || '',
+      result.name || '',
+      result.chapter || '',
+      result.sessionNumber || '',
+      result.content || ''
+    ].join('::')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function splitIterateItems(query) {
+  const raw = String(query || '').trim()
+  if (!raw) return []
+  if (raw.startsWith('[') && raw.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => String(item || '').trim()).filter(Boolean)
+      }
+    } catch {}
+  }
+  return raw
+    .split(/[\n,;]+/)
+    .map(item => item.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean)
+}
 
 function parseArgs(argv) {
   const options = {}
@@ -63,21 +96,36 @@ function buildRagResolver(moduleId, tableId) {
     if (!matches.length) return template
 
     for (const match of matches) {
-      const [fullMatch, source, queryTemplate, cascadeFlag] = match
+      const [fullMatch, source, queryTemplate, mode = ''] = match
       let query = queryTemplate
       for (const [key, val] of Object.entries(vars)) {
         const value = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')
         query = query.replaceAll(`{{${key}}}`, value)
       }
 
-      const isCascade = cascadeFlag === ':cascade'
+      const isCascade = mode === 'cascade'
+      const isIterate = mode === 'iterate'
       let results = []
       if (source === 'module') {
-        results = isCascade
-          ? await rag.cascadeQueryModule(moduleId, query, RAG_PROMPT_TOP_K)
-          : await rag.queryModule(moduleId, query, RAG_PROMPT_TOP_K)
+        if (isIterate) {
+          for (const item of splitIterateItems(query)) {
+            results.push(...await rag.queryModule(moduleId, item, RAG_PROMPT_TOP_K))
+          }
+          results = dedupeRagResults(results)
+        } else {
+          results = isCascade
+            ? await rag.cascadeQueryModule(moduleId, query, RAG_PROMPT_TOP_K)
+            : await rag.queryModule(moduleId, query, RAG_PROMPT_TOP_K)
+        }
       } else if (tableId) {
-        results = await rag.queryTable(tableId, query, RAG_PROMPT_TOP_K)
+        if (isIterate) {
+          for (const item of splitIterateItems(query)) {
+            results.push(...await rag.queryTable(tableId, item, RAG_PROMPT_TOP_K))
+          }
+          results = dedupeRagResults(results)
+        } else {
+          results = await rag.queryTable(tableId, query, RAG_PROMPT_TOP_K)
+        }
       }
 
       template = template.replaceAll(fullMatch, formatRagResults(results))

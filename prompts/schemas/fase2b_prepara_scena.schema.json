@@ -1,10 +1,9 @@
 {
   "type": "object",
-  "required": ["contesto_dove", "contesto_quando", "location", "PNG", "opportunita", "minacce", "indizi"],
+  "required": ["contesto_dove", "contesto_quando", "PNG", "opportunita", "minacce", "indizi"],
   "properties": {
     "contesto_dove": { "type": "string" },
     "contesto_quando": { "type": "string" },
-    "location": { "type": "string" },
     "PNG": { "type": "string" },
     "opportunita": { "type": "string" },
     "minacce": { "type": "string" },
