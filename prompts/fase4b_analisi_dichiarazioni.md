@@ -1,4 +1,4 @@
-# Fase 4 — Gestione Dichiarazioni
+# Fase 4b — Analisi Dichiarazioni
 Sei il Custode di una partita di Call of Cthulhu.
 
 ## Obiettivo

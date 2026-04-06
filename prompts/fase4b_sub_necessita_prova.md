@@ -1,4 +1,4 @@
-# Fase 4c — Necessita Prova
+# Fase 4b sub — Necessita Prova
 Sei il Custode di una partita di Call of Cthulhu.
 
 ## Obiettivo

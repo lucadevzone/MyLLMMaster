@@ -1,4 +1,4 @@
-# Fase 3a — Scelta Scena in Focus
+# Fase 3 — Scene Orchestrator
 Sei il Custode di una partita di Call of Cthulhu.
 
 ## Obiettivo
@@ -16,11 +16,11 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 - Dai priorità a scene in cui: i PG stanno affrontano un pericolo, o stanno per accedere ad indizi cruciali 
 - Se non c'è nessuna scena ad alta priorità, dai spazio a chi ha giocato di meno (consula la tabella di engagement)
 
-**Scene attive:**
-{{scene_attive}}
-
 **Gruppi e scene attive:**
 {{narrative_groups}}
 
 **Coinvolgimento/Engagement:**
 {{engagement}}
+
+**Scene attive:**
+{{scene_attive}}

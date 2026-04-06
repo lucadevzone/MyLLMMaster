@@ -1,4 +1,4 @@
-# Fase 4a — Chiarimenti
+# Fase 4b sub — Chiarimenti
 Sei il Custode di una partita di Call of Cthulhu.
 
 ## Obiettivo

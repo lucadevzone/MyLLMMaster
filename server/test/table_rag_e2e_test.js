@@ -167,10 +167,10 @@ async function main() {
     preservedPrimaSessione: (indexAfterCreate?.chunks || []).some(c => c.type === 'prima_sessione')
   }
 
-  // Simulate a backend player message in fase-4a (no LLM tagging involved).
+  // Simulate a backend player message in sottofase-4b-chiarimenti (no LLM tagging involved).
   const io = fakeIo()
   const engine = custodeRegistry.getOrCreate(TABLE_ID, io)
-  sessionCtx.session.custodePhase = 'fase-4a'
+  sessionCtx.session.custodePhase = 'sottofase-4b-chiarimenti'
   await svc.saveSession(TABLE_ID, sessionCtx.session)
   await engine.onPlayerMessage({
     id: 'msg_backend_1',
@@ -186,7 +186,7 @@ async function main() {
   }
 
   // Simulate backend proof-result persistence without invoking the LLM loop.
-  sessionCtx.session.custodePhase = 'fase-4c'
+  sessionCtx.session.custodePhase = 'sottofase-4b-necessita-prova'
   sessionCtx.session.pianoAzione = [{
     pg: 'pg1@example.test',
     stato: 'prova',

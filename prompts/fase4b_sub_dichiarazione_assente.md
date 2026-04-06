@@ -1,4 +1,4 @@
-# Fase 4b — Dichiarazione Assente
+# Fase 4b sub — Dichiarazione Assente
 Sei il Custode di una partita di Call of Cthulhu.
 
 ## Obiettivo

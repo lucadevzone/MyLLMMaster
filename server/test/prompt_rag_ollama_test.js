@@ -3,7 +3,7 @@
  *
  * Genera i prompt completi dopo la risoluzione del RAG per:
  * - fase1a_prima_sessione.md
- * - fase2b_prepara_scena.md
+ * - fase2_opening_new_scene.md
  *
  * Poi invia i prompt a Ollama usando il modello di default configurato in env
  * (`DEFAULT_HEAVY_LLM_MODEL`) e salva su file:
@@ -15,7 +15,7 @@
  *   node test/prompt_rag_ollama_test.js
  *   node test/prompt_rag_ollama_test.js --table tbl_xxx
  *   node test/prompt_rag_ollama_test.js --table tbl_xxx --scene "asta al Grand Palais"
- *   node test/prompt_rag_ollama_test.js --only fase2b
+ *   node test/prompt_rag_ollama_test.js --only fase2
  */
 
 'use strict'
@@ -294,7 +294,7 @@ async function buildPromptArtifacts({ table, moduleData, sceneSuggestion }) {
   const phase2Vars = { suggerimento_scena: sceneSuggestion || 'scena introduttiva' }
 
   const phase1Prompt = await ollama.loadPrompt('fase1a_prima_sessione.md', phase1Vars, ragResolver)
-  const phase2Prompt = await ollama.loadPrompt('fase2b_prepara_scena.md', phase2Vars, ragResolver)
+  const phase2Prompt = await ollama.loadPrompt('fase2_opening_new_scene.md', phase2Vars, ragResolver)
 
   return {
     phase1Vars,
@@ -332,9 +332,9 @@ async function main() {
       phase1Prompt: 'fase1a_prima_sessione.prompt.txt',
       phase1ResponseRaw: 'fase1a_prima_sessione.response.raw.txt',
       phase1ResponseJson: 'fase1a_prima_sessione.response.json',
-      phase2Prompt: 'fase2b_prepara_scena.prompt.txt',
-      phase2ResponseRaw: 'fase2b_prepara_scena.response.raw.txt',
-      phase2ResponseJson: 'fase2b_prepara_scena.response.json'
+      phase2Prompt: 'fase2_opening_new_scene.prompt.txt',
+      phase2ResponseRaw: 'fase2_opening_new_scene.response.raw.txt',
+      phase2ResponseJson: 'fase2_opening_new_scene.response.json'
     }
   }
 
@@ -343,9 +343,9 @@ async function main() {
     await writeFile(path.join(outDir, 'fase1a_prima_sessione.prompt.txt'), artifacts.phase1Prompt + '\n')
     console.log(`[TEST] Prompt fase1a salvato in ${path.join(outDir, 'fase1a_prima_sessione.prompt.txt')}`)
   }
-  if (only === 'all' || only === 'fase2b') {
-    await writeFile(path.join(outDir, 'fase2b_prepara_scena.prompt.txt'), artifacts.phase2Prompt + '\n')
-    console.log(`[TEST] Prompt fase2b salvato in ${path.join(outDir, 'fase2b_prepara_scena.prompt.txt')}`)
+  if (only === 'all' || only === 'fase2' || only === 'fase2b') {
+    await writeFile(path.join(outDir, 'fase2_opening_new_scene.prompt.txt'), artifacts.phase2Prompt + '\n')
+    console.log(`[TEST] Prompt fase2 salvato in ${path.join(outDir, 'fase2_opening_new_scene.prompt.txt')}`)
   }
 
   if (only === 'all' || only === 'fase1a') {
@@ -356,10 +356,10 @@ async function main() {
       model: DEFAULT_MODEL
     })
   }
-  if (only === 'all' || only === 'fase2b') {
+  if (only === 'all' || only === 'fase2' || only === 'fase2b') {
     await runPhaseArtifact({
       outDir,
-      fileBase: 'fase2b_prepara_scena',
+      fileBase: 'fase2_opening_new_scene',
       prompt: artifacts.phase2Prompt,
       model: DEFAULT_MODEL
     })

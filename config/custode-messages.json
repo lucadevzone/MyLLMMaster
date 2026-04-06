@@ -24,15 +24,10 @@
     "Il Custode dà forma alla scena",
     "Il Custode organizza i dettagli della scena"
   ],
-  "fase-3a": [
+  "fase-3": [
     "Il Custode sceglie dove rivolgere l'attenzione",
     "Il Custode valuta la situazione",
     "Il Custode osserva il tavolo"
-  ],
-  "fase-3b": [
-    "Il Custode sta narrando",
-    "Il Custode intesse la storia",
-    "Il Custode descrive la scena"
   ],
   "fase-4": [
     "Il Custode valuta le dichiarazioni",
@@ -40,16 +35,26 @@
     "Il Custode pianifica il round"
   ],
   "fase-4a": [
+    "Il Custode fa avanzare la scena",
+    "Il Custode mostra le conseguenze immediate",
+    "Il Custode porta la scena al momento presente"
+  ],
+  "fase-4b": [
+    "Il Custode valuta le dichiarazioni",
+    "Il Custode interpreta le intenzioni dei giocatori",
+    "Il Custode pianifica il round"
+  ],
+  "sottofase-4b-chiarimenti": [
     "Il Custode chiede un chiarimento",
     "Il Custode ha bisogno di ulteriori dettagli",
     "Il Custode vuole capire meglio le intenzioni"
   ],
-  "fase-4b": [
+  "sottofase-4b-dichiarazione-assente": [
     "Il Custode attende una risposta",
     "Il Custode aspetta che tutti dichiarino",
     "Il Custode sollecita i giocatori assenti"
   ],
-  "fase-4c": [
+  "sottofase-4b-necessita-prova": [
     "Il Custode richiede una prova",
     "Il Custode stabilisce la difficoltà",
     "Il Custode prepara il tiro di dado"

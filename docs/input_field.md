@@ -92,7 +92,7 @@ Nota: `prevSession` è ancora passato dall'engine ma non è più usato dal promp
 
 ### Fase 2b
 
-Prompt: [fase2b_prepara_scena.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase2b_prepara_scena.md)
+Prompt: [fase2_opening_new_scene.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase2_opening_new_scene.md)
 
 | Campo | Tipo | Origine | Stato |
 |---|---|---|---|
@@ -101,9 +101,9 @@ Prompt: [fase2b_prepara_scena.md](/Users/luca/Documents/gamedev/MyLLMMaster/prom
 
 Nota: il campo `location` è stato rimosso dallo schema e dal prompt.
 
-### Fase 3a
+### Fase 3
 
-Prompt: [fase3a_scelta_focus.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase3a_scelta_focus.md)
+Prompt: [fase3_scene_orchestrator.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase3_scene_orchestrator.md)
 
 | Campo | Tipo | Origine | Stato |
 |---|---|---|---|
@@ -111,9 +111,9 @@ Prompt: [fase3a_scelta_focus.md](/Users/luca/Documents/gamedev/MyLLMMaster/promp
 | `narrative_groups` | variabile | `buildNarrativeGroups(...)` | OK |
 | `engagement` | variabile | `engagementForLlm(...)` | OK |
 
-### Fase 3b
+### Fase 4a
 
-Prompt: [fase3b_narrazione.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase3b_narrazione.md)
+Prompt: [fase4a_scene_progress.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4a_scene_progress.md)
 
 | Campo | Tipo | Origine | Stato |
 |---|---|---|---|
@@ -134,9 +134,9 @@ Prompt: [fase3b_narrazione.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts
 
 Nota: il diario non è più nel RAG tavolo; viene passato direttamente dal file `diary.txt`.
 
-### Fase 4
+### Fase 4b
 
-Prompt: [fase4_dichiarazioni.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4_dichiarazioni.md)
+Prompt: [fase4b_analisi_dichiarazioni.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_analisi_dichiarazioni.md)
 
 | Campo | Tipo | Origine | Stato |
 |---|---|---|---|
@@ -149,9 +149,9 @@ Prompt: [fase4_dichiarazioni.md](/Users/luca/Documents/gamedev/MyLLMMaster/promp
 
 Nota: `priorita` non esiste più. L'ordine del piano è quello naturale della lista.
 
-### Fase 4a
+### Fase 4b sub chiarimenti
 
-Prompt: [fase4a_chiarimenti.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4a_chiarimenti.md)
+Prompt: [fase4b_sub_chiarimenti.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_sub_chiarimenti.md)
 
 | Campo | Tipo | Origine | Stato |
 |---|---|---|---|
@@ -161,9 +161,9 @@ Prompt: [fase4a_chiarimenti.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompt
 | `world_state` | variabile | `buildContext().worldState` serializzato | OK |
 | `{{rag:table:"scene {{scena_focus_ID}}"}}` | RAG tavolo | query scena corrente | OK |
 
-### Fase 4b
+### Fase 4b sub dichiarazione assente
 
-Prompt: [fase4b_dichiarazione_assente.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_dichiarazione_assente.md)
+Prompt: [fase4b_sub_dichiarazione_assente.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_sub_dichiarazione_assente.md)
 
 | Campo | Tipo | Origine | Stato |
 |---|---|---|---|
@@ -171,9 +171,9 @@ Prompt: [fase4b_dichiarazione_assente.md](/Users/luca/Documents/gamedev/MyLLMMas
 | `scena_focus` | variabile | scena corrente serializzata in JSON | OK |
 | `world_state` | variabile | `buildContext().worldState` serializzato | OK |
 
-### Fase 4c
+### Fase 4b sub necessita prova
 
-Prompt: [fase4c_necessita_prova.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4c_necessita_prova.md)
+Prompt: [fase4b_sub_necessita_prova.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_sub_necessita_prova.md)
 
 | Campo | Tipo | Origine | Stato |
 |---|---|---|---|

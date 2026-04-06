@@ -39,8 +39,8 @@ Nota: non viene più letto nessun `diary` in questa fase.
 
 ### Fase 2b
 
-Prompt: [fase2b_prepara_scena.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase2b_prepara_scena.md)  
-Schema: [fase2b_prepara_scena.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase2b_prepara_scena.schema.json)
+Prompt: [fase2_opening_new_scene.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase2_opening_new_scene.md)  
+Schema: [fase2_opening_new_scene.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase2_opening_new_scene.schema.json)
 
 | Campo output | Tipo | Uso nell'engine | Stato |
 |---|---|---|---|
@@ -60,19 +60,19 @@ Campi aggiunti dal runtime dopo la risposta:
 
 Questi campi non devono essere prodotti dalla LLM.
 
-### Fase 3a
+### Fase 3
 
-Prompt: [fase3a_scelta_focus.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase3a_scelta_focus.md)  
-Schema: [fase3a_scelta_focus.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase3a_scelta_focus.schema.json)
+Prompt: [fase3_scene_orchestrator.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase3_scene_orchestrator.md)  
+Schema: [fase3_scene_orchestrator.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase3_scene_orchestrator.schema.json)
 
 | Campo output | Tipo | Uso nell'engine | Stato |
 |---|---|---|---|
 | `focus_scene` | string | aggiornamento di `worldState.focusScene` | OK |
 
-### Fase 3b
+### Fase 4a
 
-Prompt: [fase3b_narrazione.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase3b_narrazione.md)  
-Schema: [fase3b_narrazione.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase3b_narrazione.schema.json)
+Prompt: [fase4a_scene_progress.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4a_scene_progress.md)  
+Schema: [fase4a_scene_progress.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase4a_scene_progress.schema.json)
 
 | Campo output | Tipo | Uso nell'engine | Stato |
 |---|---|---|---|
@@ -85,12 +85,12 @@ Schema atteso per ogni elemento di `sussurri`:
 { "target": "Nome PG", "testo": "messaggio privato" }
 ```
 
-Nota: `fase3b` non produce più `focus_scene`; la scelta del focus appartiene a `fase3a`.
+Nota: questa fase non sceglie il focus; riceve la scena già scelta dall'orchestratore.
 
-### Fase 4
+### Fase 4b
 
-Prompt: [fase4_dichiarazioni.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4_dichiarazioni.md)  
-Schema: [fase4_dichiarazioni.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase4_dichiarazioni.schema.json)
+Prompt: [fase4b_analisi_dichiarazioni.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_analisi_dichiarazioni.md)  
+Schema: [fase4b_analisi_dichiarazioni.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase4b_analisi_dichiarazioni.schema.json)
 
 | Campo output | Tipo | Uso nell'engine | Stato |
 |---|---|---|---|
@@ -116,33 +116,33 @@ Valori ammessi per `stato`:
 Uso dell'engine:
 
 - controlla se il piano è completo
-- se non è completo avvia `fase4a`, `fase4b` o `fase4c`
+- se non è completo avvia una delle sottofasi `fase4b_sub_*`
 - se è completo passa a `fase5`
 
 Nota: l'engine accetta anche un array nudo come fallback, ma il formato corretto è `{ "piano": [...] }`.
 
-### Fase 4a
+### Fase 4b sub chiarimenti
 
-Prompt: [fase4a_chiarimenti.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4a_chiarimenti.md)  
-Schema: [fase4a_chiarimenti.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase4a_chiarimenti.schema.json)
+Prompt: [fase4b_sub_chiarimenti.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_sub_chiarimenti.md)  
+Schema: [fase4b_sub_chiarimenti.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase4b_sub_chiarimenti.schema.json)
 
 | Campo output | Tipo | Uso nell'engine | Stato |
 |---|---|---|---|
 | `narrativa` | string | inviato in chat per chiedere chiarimenti | OK |
 
-### Fase 4b
+### Fase 4b sub dichiarazione assente
 
-Prompt: [fase4b_dichiarazione_assente.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_dichiarazione_assente.md)  
-Schema: [fase4b_dichiarazione_assente.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase4b_dichiarazione_assente.schema.json)
+Prompt: [fase4b_sub_dichiarazione_assente.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_sub_dichiarazione_assente.md)  
+Schema: [fase4b_sub_dichiarazione_assente.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase4b_sub_dichiarazione_assente.schema.json)
 
 | Campo output | Tipo | Uso nell'engine | Stato |
 |---|---|---|---|
 | `narrativa` | string | inviato in chat come sollecito | OK |
 
-### Fase 4c
+### Fase 4b sub necessita prova
 
-Prompt: [fase4c_necessita_prova.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4c_necessita_prova.md)  
-Schema: [fase4c_necessita_prova.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase4c_necessita_prova.schema.json)
+Prompt: [fase4b_sub_necessita_prova.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/fase4b_sub_necessita_prova.md)  
+Schema: [fase4b_sub_necessita_prova.schema.json](/Users/luca/Documents/gamedev/MyLLMMaster/prompts/schemas/fase4b_sub_necessita_prova.schema.json)
 
 | Campo output | Tipo | Uso nell'engine | Stato |
 |---|---|---|---|
@@ -155,8 +155,7 @@ Schema: [fase5_risoluzione.schema.json](/Users/luca/Documents/gamedev/MyLLMMaste
 
 | Campo output | Tipo | Uso nell'engine | Stato |
 |---|---|---|---|
-| `progressione` | string | inviata in chat e appesa a `focusScene.progressione` | OK |
-| `sussurri` | array | inviati ai target in whisper | OK |
+| `progressione` | string | appesa a `focusScene.progressione` e passata come `ultimo_avanzamento` a `fase4a_scene_progress` | OK |
 | `divisione_gruppi` | boolean | decide il passaggio a `fase5a` | OK |
 | `ricongiungimento_gruppi` | boolean | decide il passaggio a `fase5b` | OK |
 | `chiusura_scena` | boolean | decide il passaggio a `fase5c` | OK |
@@ -164,7 +163,7 @@ Schema: [fase5_risoluzione.schema.json](/Users/luca/Documents/gamedev/MyLLMMaste
 | `aggiornamenti.npcs` | array | merge dentro `worldState.npcs` | OK |
 | `aggiornamenti.items` | array | merge dentro `worldState.items` | OK |
 
-Nota importante: l'output narrativo principale di questa fase è `progressione`, non `narrativa`.
+Nota importante: questa fase non scrive direttamente in chat; aggiorna solo lo stato della scena.
 
 ### Fase 5a
 

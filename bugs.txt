@@ -62,8 +62,8 @@ Ho reso più robusta l’interrogazione LLM in ollamaService.js: ora, oltre al p
 MIGLIORIA: il file LLM_log andrebbe creato nuovo per ogni sessione (mettendo il timestamp)
 PATCH: Fatto. In ollamaService.js il log LLM non va più sempre in LLM_log.txt: ora per ogni avvio/sessione applicativa viene creato un file dedicato con timestamp, nel formato LLM_log_YYYYMMDD_HHMMSS.txt, dentro la cartella logs. Inoltre, quando fai reset table, oltre a pulire sessione/scenes/diary del tavolo, il backend elimina anche tutti i file LLM_log_*.txt nella cartella logs. Quindi dopo il reset non ti restano più i vecchi log LLM e il prossimo uso ricreerà un file nuovo.
 
-BUG: fase4_dichiarazioni.md usa {{world_state}} ma fase4() non lo passa.
-PATCH: Ho corretto il passaggio di world_state a fase4_dichiarazioni in server/src/services/custodeEngine.js (line 438), così il prompt prompts/fase4_dichiarazioni.md ora riceve davvero tutti i placeholder che usa.
+BUG: fase4b_analisi_dichiarazioni.md usa {{world_state}} ma fase4() non lo passa.
+PATCH: Ho corretto il passaggio di world_state a fase4b_analisi_dichiarazioni in server/src/services/custodeEngine.js (line 438), così il prompt prompts/fase4b_analisi_dichiarazioni.md ora riceve davvero tutti i placeholder che usa.
 	
 BUG: dopo # Fase 4b — Dichiarazione Assente
 in cui la LLM ha generato

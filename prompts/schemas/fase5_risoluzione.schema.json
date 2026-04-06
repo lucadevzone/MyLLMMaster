@@ -1,19 +1,17 @@
 {
   "type": "object",
-  "required": ["progressione", "sussurri", "divisione_gruppi", "ricongiungimento_gruppi", "chiusura_scena", "aggiornamenti"],
+  "required": ["progressione", "durata", "divisione_gruppi", "ricongiungimento_gruppi", "chiusura_scena", "aggiornamenti"],
   "properties": {
     "progressione": { "type": "string" },
-    "sussurri": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["target", "testo"],
-        "properties": {
-          "target": { "type": "string" },
-          "testo": { "type": "string" }
-        },
-        "additionalProperties": true
-      }
+    "durata": {
+      "type": "object",
+      "required": ["giorni", "ore", "minuti"],
+      "properties": {
+        "giorni": { "type": "integer", "minimum": 0 },
+        "ore": { "type": "integer", "minimum": 0 },
+        "minuti": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
     },
     "divisione_gruppi": { "type": "boolean" },
     "ricongiungimento_gruppi": { "type": "boolean" },

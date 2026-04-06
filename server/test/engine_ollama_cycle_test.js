@@ -152,10 +152,15 @@ async function main() {
   report.phases.push({ phase: 'fase2', next: after2?.next || null })
   await snapshot('after_fase2')
 
-  // Fase 3
+  // Fase 3 orchestrator
   const after3 = await engine.fase3()
-  report.phases.push({ phase: 'fase3', next: after3?.next || null })
+  report.phases.push({ phase: 'fase3_scene_orchestrator', next: after3?.next || null })
   await snapshot('after_fase3')
+
+  // Fase 4a scene progress
+  const after4a = await engine.fase4aSceneProgress(after3?.data || after3)
+  report.phases.push({ phase: 'fase4a_scene_progress', next: after4a?.next || null })
+  await snapshot('after_fase4a_scene_progress')
 
   // Simulate player messages clearly enough to avoid clarification/proof branches if possible.
   engine.buffer = [
@@ -175,16 +180,16 @@ async function main() {
     }
   ]
 
-  // Fase 4
+  // Fase 4b analisi dichiarazioni
   const after4 = await engine.fase4()
   const ctxAfter4 = svc.getSession(TABLE_ID)
   report.phases.push({
-    phase: 'fase4',
+    phase: 'fase4b_analisi_dichiarazioni',
     next: after4?.next || null,
     pianoLength: ctxAfter4?.session?.pianoAzione?.length || 0,
     piano: ctxAfter4?.session?.pianoAzione || []
   })
-  await snapshot('after_fase4')
+  await snapshot('after_fase4b')
 
   let finalResult = null
 
@@ -192,18 +197,18 @@ async function main() {
     finalResult = await engine.fase5(after4.piano)
     report.phases.push({ phase: 'fase5', next: finalResult?.next || null })
     await snapshot('after_fase5')
-  } else if (after4?.next === 'sottofase-4a') {
-    const res4a = await engine.fase4a(after4.data)
-    report.phases.push({ phase: 'fase4a', next: res4a?.next || null, note: 'LLM requested clarification' })
-    await snapshot('after_fase4a')
-  } else if (after4?.next === 'sottofase-4b') {
-    const res4b = await engine.fase4b(after4.data)
-    report.phases.push({ phase: 'fase4b', next: res4b?.next || null, note: 'LLM requested declaration' })
-    await snapshot('after_fase4b')
-  } else if (after4?.next === 'sottofase-4c') {
-    const res4c = await engine.fase4c(after4.data)
-    report.phases.push({ phase: 'fase4c', next: res4c?.next || null, note: 'LLM required a proof roll' })
-    await snapshot('after_fase4c')
+  } else if (after4?.next === 'sottofase-4b-chiarimenti') {
+    const res4a = await engine.fase4bSubChiarimenti(after4.data)
+    report.phases.push({ phase: 'fase4b_sub_chiarimenti', next: res4a?.next || null, note: 'LLM requested clarification' })
+    await snapshot('after_fase4b_sub_chiarimenti')
+  } else if (after4?.next === 'sottofase-4b-dichiarazione-assente') {
+    const res4b = await engine.fase4bSubDichiarazioneAssente(after4.data)
+    report.phases.push({ phase: 'fase4b_sub_dichiarazione_assente', next: res4b?.next || null, note: 'LLM requested declaration' })
+    await snapshot('after_fase4b_sub_dichiarazione_assente')
+  } else if (after4?.next === 'sottofase-4b-necessita-prova') {
+    const res4c = await engine.fase4bSubNecessitaProva(after4.data)
+    report.phases.push({ phase: 'fase4b_sub_necessita_prova', next: res4c?.next || null, note: 'LLM required a proof roll' })
+    await snapshot('after_fase4b_sub_necessita_prova')
   }
 
   // Optionally close scene if engine chose that branch.
@@ -211,6 +216,10 @@ async function main() {
     const closeResult = await engine.fase5c(finalResult.data || finalResult)
     report.phases.push({ phase: 'fase5c', next: closeResult?.next || null })
     await snapshot('after_fase5c')
+  } else if (finalResult?.next === 'fase-4a') {
+    const afterCycle4a = await engine.fase4aSceneProgress(finalResult)
+    report.phases.push({ phase: 'fase4a_scene_progress_post_fase5', next: afterCycle4a?.next || null })
+    await snapshot('after_fase4a_post_fase5')
   }
 
   // Retrieval sanity checks at end.

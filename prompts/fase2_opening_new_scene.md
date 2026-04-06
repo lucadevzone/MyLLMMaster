@@ -1,4 +1,4 @@
-# Fase 2 — Preparazione Scena
+# Fase 2 — Opening New Scene
 Sei il Custode di una partita di Call of Cthulhu.
 
 ## Contesto
@@ -28,7 +28,11 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 - Descrizione dettagliata dei personaggi non giocanti (PNG)
 - Elenco delle opportunità, delle minacce e degli indizi (con eventuali prove da affrontare e difficoltà)
 - Attieniti solo al materiale fornito, non inventare elementi aggiuntivi
+- Se `data_corrente` è valorizzata, usa quel riferimento temporale come ancora della scena e non cambiare giorno/anno senza motivo esplicito
 
 ## Input
 **Contesto:**
 {{rag:module:"{{suggerimento_scena}}":cascade}}
+
+**Data corrente del tavolo (se già nota):**
+{{data_corrente}}

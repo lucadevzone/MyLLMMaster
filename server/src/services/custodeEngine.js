@@ -1,7 +1,8 @@
 /**
  * Custode Engine — macchina a stati procedurale del Game Master LLM
  *
- * Fasi: 1 → 2 → 3 → 4[a/b/c] → 5[a/b/c] → torna a 3 o 2
+ * Fasi: 1 → 2(opening) → 3(orchestrator) → 4a(scene progress) →
+ * 4b(analisi dichiarazioni + sottofasi) → 5(risoluzione stato) → torna a 4a o 2
  */
 
 const path = require('path')
@@ -28,7 +29,7 @@ async function loadThinkingMessages() {
 }
 
 function phaseLabel(phaseKey) {
-  // "fase-1a" → "[1a]", "fase-3b" → "[3b]", ecc.
+  // "fase-1a" → "[1a]", "sottofase-4b-chiarimenti" → "[sottofase-4b-chiarimenti]"
   return phaseKey.replace('fase-', '[') + ']'
 }
 
@@ -80,11 +81,25 @@ async function getModule(moduleId) {
 async function getWorldState(tableId) {
   const p = path.join(tDir(tableId), 'world_state.json')
   if (!await fileExists(p)) {
-    const ws = { currentChapter: 1, focusScene: null, groups: [], npcs: [], items: [] }
+    const ws = {
+      currentChapter: 1,
+      focusScene: null,
+      groups: [],
+      npcs: [],
+      items: [],
+      data_corrente: { testo: '', iso: '' }
+    }
     await writeJSON(p, ws)
     return ws
   }
-  return readJSON(p)
+  const ws = await readJSON(p)
+  if (!ws.data_corrente || typeof ws.data_corrente !== 'object') {
+    ws.data_corrente = { testo: '', iso: '' }
+  } else {
+    ws.data_corrente.testo = typeof ws.data_corrente.testo === 'string' ? ws.data_corrente.testo : ''
+    ws.data_corrente.iso = typeof ws.data_corrente.iso === 'string' ? ws.data_corrente.iso : ''
+  }
+  return ws
 }
 
 async function saveWorldState(tableId, ws) {
@@ -258,6 +273,93 @@ function normalizeSceneListOutput(value) {
     .split(/[\n,;]+/)
     .map(item => item.replace(/^[-*]\s*/, '').trim())
     .filter(Boolean)
+}
+
+const IT_MONTHS = {
+  gennaio: 0,
+  febbraio: 1,
+  marzo: 2,
+  aprile: 3,
+  maggio: 4,
+  giugno: 5,
+  luglio: 6,
+  agosto: 7,
+  settembre: 8,
+  ottobre: 9,
+  novembre: 10,
+  dicembre: 11
+}
+
+function normalizeDurationOutput(value) {
+  const base = { giorni: 0, ore: 0, minuti: 0 }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return base
+  const giorni = Number.parseInt(value.giorni, 10)
+  const ore = Number.parseInt(value.ore, 10)
+  const minuti = Number.parseInt(value.minuti, 10)
+  return {
+    giorni: Number.isFinite(giorni) && giorni > 0 ? giorni : 0,
+    ore: Number.isFinite(ore) && ore > 0 ? ore : 0,
+    minuti: Number.isFinite(minuti) && minuti > 0 ? minuti : 0
+  }
+}
+
+function parseItalianDate(text) {
+  const raw = normalizeNarrativeText(text)
+  if (!raw) return null
+
+  const isoCandidate = new Date(raw)
+  if (!Number.isNaN(isoCandidate.getTime())) return isoCandidate
+
+  const lower = raw.toLowerCase()
+  const dateMatch = lower.match(/(\d{1,2})\s+([a-zà]+)\s+(\d{4})/)
+  if (!dateMatch) return null
+
+  const day = Number.parseInt(dateMatch[1], 10)
+  const month = IT_MONTHS[dateMatch[2]]
+  const year = Number.parseInt(dateMatch[3], 10)
+  if (!Number.isFinite(day) || month == null || !Number.isFinite(year)) return null
+
+  let hours = 12
+  let minutes = 0
+  const timeMatch = lower.match(/ore\s+(\d{1,2})(?::(\d{2}))?/)
+  if (timeMatch) {
+    hours = Number.parseInt(timeMatch[1], 10)
+    minutes = Number.parseInt(timeMatch[2] || '0', 10)
+  } else if (lower.includes('notte')) {
+    hours = 23
+  } else if (lower.includes('sera')) {
+    hours = 20
+  } else if (lower.includes('pomeriggio')) {
+    hours = 16
+  } else if (lower.includes('mattina')) {
+    hours = 9
+  } else if (lower.includes('alba')) {
+    hours = 6
+  }
+
+  const date = new Date(year, month, day, hours, minutes, 0, 0)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatItalianDate(date, fallbackText = '') {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return normalizeNarrativeText(fallbackText)
+  const formatter = new Intl.DateTimeFormat('it-IT', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+  return formatter.format(date)
+}
+
+function advanceDateByDuration(date, durata) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null
+  const next = new Date(date.getTime())
+  next.setDate(next.getDate() + (durata.giorni || 0))
+  next.setHours(next.getHours() + (durata.ore || 0))
+  next.setMinutes(next.getMinutes() + (durata.minuti || 0))
+  return next
 }
 
 function formatRagResults(results) {
@@ -650,7 +752,7 @@ class CustodeEngine {
     return hasActiveScene ? 'fase-3' : 'fase-2'
   }
 
-  // ── FASE 2: Preparazione Scena ────────────────────────────────────────────
+  // ── FASE 2: Opening New Scene ─────────────────────────────────────────────
 
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
@@ -658,14 +760,36 @@ class CustodeEngine {
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const suggerimento_scena = suggerimento || 'scena introduttiva'
 
-    await this.emitThinking('fase-2b')
-    const result = await this.llm('fase2b_prepara_scena.md', { suggerimento_scena })
+    await this.emitThinking('fase-2')
+    const result = await this.llm('fase2_opening_new_scene.md', {
+      suggerimento_scena,
+      data_corrente: worldState.data_corrente?.testo || ''
+    })
     if (this.abortIfPaused()) return null
 
     result.PNG = normalizeSceneListOutput(result.PNG)
     result.opportunita = normalizeSceneListOutput(result.opportunita)
     result.minacce = normalizeSceneListOutput(result.minacce)
     result.indizi = normalizeSceneListOutput(result.indizi)
+
+    const existingCurrentDate = worldState.data_corrente?.iso
+      ? new Date(worldState.data_corrente.iso)
+      : parseItalianDate(worldState.data_corrente?.testo || '')
+    const inferredSceneDate = existingCurrentDate || parseItalianDate(result.contesto_quando)
+    if (existingCurrentDate) {
+      result.contesto_quando = formatItalianDate(existingCurrentDate, worldState.data_corrente?.testo || result.contesto_quando)
+    } else if (inferredSceneDate) {
+      result.contesto_quando = formatItalianDate(inferredSceneDate, result.contesto_quando)
+      worldState.data_corrente = {
+        testo: result.contesto_quando,
+        iso: inferredSceneDate.toISOString()
+      }
+    } else {
+      worldState.data_corrente = {
+        testo: normalizeNarrativeText(result.contesto_quando),
+        iso: ''
+      }
+    }
 
     // Assegna ID progressivo e inizializza progressione
     result.id_scena = await nextSceneId(this.tableId)
@@ -695,10 +819,10 @@ class CustodeEngine {
     return { next: 'fase-3' }
   }
 
-  // ── FASE 3: Scena e Gioco Libero ──────────────────────────────────────────
+  // ── FASE 3: Scene Orchestrator ────────────────────────────────────────────
 
   async fase3() {
-    const { worldState, schede_PG, pgLookup, diary, table } = await this.buildContext()
+    const { worldState, pgLookup } = await this.buildContext()
     const ctx = svc.getSession(this.tableId)
     const engagement = engagementForLlm(ctx?.session?.engagement || {}, pgLookup)
 
@@ -708,14 +832,14 @@ class CustodeEngine {
       activeSceneFiles.filter(f => f.endsWith('.json')).length > 1
 
     if (needsFocusChoice) {
-      await this.emitPhaseChange('fase-3a')
-      await this.emitThinking('fase-3a')
+      await this.emitPhaseChange('fase-3')
+      await this.emitThinking('fase-3')
       const activeScenes = await Promise.all(
         activeSceneFiles.filter(f => f.endsWith('.json'))
           .map(f => readJSON(path.join(tDir(this.tableId), 'active_scenes', f)))
       )
       const narrativeGroups = await buildNarrativeGroups(this.tableId, worldState, pgLookup)
-      const result3a = await this.llm('fase3a_scelta_focus.md', {
+      const result3a = await this.llm('fase3_scene_orchestrator.md', {
         narrative_groups: narrativeGroups,
         engagement: JSON.stringify(engagement),
         scene_attive: JSON.stringify(activeScenes)
@@ -726,14 +850,23 @@ class CustodeEngine {
       await saveWorldState(this.tableId, worldState)
     }
 
-    // ── 3b (sempre): narrazione scena ──
-    await this.emitPhaseChange('fase-3b')
-    await this.emitThinking('fase-3b')
-    const focusScene = await getScene(this.tableId, worldState.focusScene)
-    const recentMsgs = ctx?.messages.slice(-10)
-      .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
+    return { next: 'fase-4a' }
+  }
 
-    const result = await this.llm('fase3b_narrazione.md', {
+  // ── FASE 4a: Scene Progress ───────────────────────────────────────────────
+
+  async fase4aSceneProgress(data = null) {
+    await this.emitPhaseChange('fase-4a')
+    await this.emitThinking('fase-4a')
+    const { worldState, schede_PG, pgLookup, diary } = await this.buildContext()
+    const focusScene = await getScene(this.tableId, worldState.focusScene)
+    if (!focusScene) return null
+
+    const promptName = focusScene.openingNarratedAt
+      ? 'fase4a_scene_progress.md'
+      : 'fase4a_scene_opening.md'
+
+    const result = await this.llm(promptName, {
       schede_PG,
       diary: diary || '(nessun diario disponibile)',
       PNG: focusScene?.PNG || '',
@@ -741,7 +874,8 @@ class CustodeEngine {
       minacce: focusScene?.minacce || '',
       indizi: focusScene?.indizi || '',
       scena_focus_ID: focusScene?.id_scena || '',
-      contesto_dove:  focusScene?.contesto_dove || ''
+      contesto_dove:  focusScene?.contesto_dove || '',
+      ultimo_avanzamento: data?.ultimo_avanzamento || ''
     })
     if (this.abortIfPaused()) return null
 
@@ -753,12 +887,17 @@ class CustodeEngine {
       await this.emitNarrative(s.testo, { whisper: true, to: targetEmail, type: 'whisper' })
     }
 
+    if (!focusScene.openingNarratedAt) {
+      focusScene.openingNarratedAt = new Date().toISOString()
+      await saveScene(this.tableId, focusScene)
+    }
+
     // Imposta tutti i PG del gruppo in focus a gioco-libero
     await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
 
     // Avvia timer proattività
     svc.setTimer(this.tableId, 'proattivita', PROACTIVITY_TIMER_MS, async () => {
-      if (!this.paused) await this.fase3()
+      if (!this.paused) await this.runLoop('fase-3')
     })
 
     // Avvia raccolta buffer
@@ -767,10 +906,10 @@ class CustodeEngine {
     return null  // attende messaggi
   }
 
-  // ── FASE 4: Gestione Dichiarazioni ────────────────────────────────────────
+  // ── FASE 4b: Analisi Dichiarazioni ────────────────────────────────────────
 
   async fase4(pianoParziale = null) {
-    await this.emitPhaseChange('fase-4')
+    await this.emitPhaseChange('fase-4b')
     svc.clearTimer(this.tableId, 'proattivita')
     svc.clearTimer(this.tableId, 'silenzio')
     svc.clearTimer(this.tableId, 'early-flush')
@@ -781,7 +920,7 @@ class CustodeEngine {
         email: p.email, connected: p.connected, playerState: 'turno-custode'
       })
     })
-    await this.emitThinking('fase-4')
+    await this.emitThinking('fase-4b')
 
     // Round fresco: azzera il piano residuo da round precedenti
     if (!pianoParziale) {
@@ -796,7 +935,7 @@ class CustodeEngine {
     const { worldState, schede_PG, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
-    const result = await this.llm('fase4_dichiarazioni.md', {
+    const result = await this.llm('fase4b_analisi_dichiarazioni.md', {
       scena_focus_ID: focusScene?.id_scena || '',
       schede_PG,
       messaggi_buffer: msgs,
@@ -838,41 +977,41 @@ class CustodeEngine {
     if (!pending) {
       console.warn(`[Custode] Nessuna entry pendente trovata nonostante il piano risulti incompleto [${this.tableId}] piano=${debugString(piano)}`)
       this.buffer = []
-      return { next: 'fase-3' }
+      return { next: 'fase-4a' }
     }
 
     if (!pending.pg) {
       console.warn(`[Custode] Entry pendente senza pg_target [${this.tableId}] entry=${debugString(pending)} piano=${debugString(piano)}`)
       this.buffer = []
-      return { next: 'fase-3' }
+      return { next: 'fase-4a' }
     }
 
     // Costruisce l'entry con pg già convertito in nome per le sottofasi
     const entryPerLlm = (e, lookup) => ({ ...e, pg: lookup.toName[e.pg] || e.pg })
 
     if (pending.stato === 'incompleta')
-      return { next: 'sottofase-4a', data: { pg_target: pending.pg, dichiarazione: pending.azione || '', scena_focus_ID: focusScene?.id_scena || '' } }
+      return { next: 'sottofase-4b-chiarimenti', data: { pg_target: pending.pg, dichiarazione: pending.azione || '', scena_focus_ID: focusScene?.id_scena || '' } }
     if (pending.stato === 'assente')
-      return { next: 'sottofase-4b', data: { pg_target: pending.pg, richiesta_dichiarazione: entryPerLlm(pending, pgLookup) } }
+      return { next: 'sottofase-4b-dichiarazione-assente', data: { pg_target: pending.pg, richiesta_dichiarazione: entryPerLlm(pending, pgLookup) } }
     if (pending.stato === 'prova')
-      return { next: 'sottofase-4c', data: { pg_target: pending.pg, dichiarazione_con_richiesta_prova: {
+      return { next: 'sottofase-4b-necessita-prova', data: { pg_target: pending.pg, dichiarazione_con_richiesta_prova: {
         azione: pending.azione || '',
         abilita_o_caratteristica: pending.abilita_o_caratteristica || '',
         difficolta: pending.difficolta || ''
       }, scena_focus_ID: focusScene?.id_scena || '' } }
   }
 
-  async fase4a(data) {
-    await this.emitPhaseChange('fase-4a')
-    await this.emitThinking('fase-4a')
+  async fase4bSubChiarimenti(data) {
+    await this.emitPhaseChange('sottofase-4b-chiarimenti')
+    await this.emitThinking('sottofase-4b-chiarimenti')
     const { worldState, pgLookup, schede_PG } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     if (!data?.pg_target) {
-      console.warn(`[Custode] sottofase-4a senza pg_target [${this.tableId}] data=${debugString(data)}`)
-      return { next: 'fase-3' }
+      console.warn(`[Custode] sottofase-4b-chiarimenti senza pg_target [${this.tableId}] data=${debugString(data)}`)
+      return { next: 'fase-4a' }
     }
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
-    const result = await this.llm('fase4a_chiarimenti.md', {
+    const result = await this.llm('fase4b_sub_chiarimenti.md', {
       pg_target: pgNome,
       scena_focus_ID: data.scena_focus_ID || focusScene?.id_scena || '',
       schede_PG,
@@ -888,17 +1027,17 @@ class CustodeEngine {
     return null
   }
 
-  async fase4b(data) {
-    await this.emitPhaseChange('fase-4b')
-    await this.emitThinking('fase-4b')
+  async fase4bSubDichiarazioneAssente(data) {
+    await this.emitPhaseChange('sottofase-4b-dichiarazione-assente')
+    await this.emitThinking('sottofase-4b-dichiarazione-assente')
     const { worldState, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     if (!data?.pg_target) {
-      console.warn(`[Custode] sottofase-4b senza pg_target [${this.tableId}] data=${debugString(data)}`)
-      return { next: 'fase-3' }
+      console.warn(`[Custode] sottofase-4b-dichiarazione-assente senza pg_target [${this.tableId}] data=${debugString(data)}`)
+      return { next: 'fase-4a' }
     }
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
-    const result = await this.llm('fase4b_dichiarazione_assente.md', {
+    const result = await this.llm('fase4b_sub_dichiarazione_assente.md', {
       pg_target: pgNome,
       richiesta_dichiarazione: JSON.stringify(data.richiesta_dichiarazione),
       scena_focus: JSON.stringify(focusScene),
@@ -913,17 +1052,17 @@ class CustodeEngine {
     return null
   }
 
-  async fase4c(data) {
-    await this.emitPhaseChange('fase-4c')
-    await this.emitThinking('fase-4c')
+  async fase4bSubNecessitaProva(data) {
+    await this.emitPhaseChange('sottofase-4b-necessita-prova')
+    await this.emitThinking('sottofase-4b-necessita-prova')
     const { worldState, pgLookup, schede_PG } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     if (!data?.pg_target) {
-      console.warn(`[Custode] sottofase-4c senza pg_target [${this.tableId}] data=${debugString(data)}`)
-      return { next: 'fase-3' }
+      console.warn(`[Custode] sottofase-4b-necessita-prova senza pg_target [${this.tableId}] data=${debugString(data)}`)
+      return { next: 'fase-4a' }
     }
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
-    const result = await this.llm('fase4c_necessita_prova.md', {
+    const result = await this.llm('fase4b_sub_necessita_prova.md', {
       pg_target: pgNome,
       scena_focus_ID: data.scena_focus_ID || focusScene?.id_scena || '',
       schede_PG,
@@ -939,12 +1078,12 @@ class CustodeEngine {
     return null
   }
 
-  // ── FASE 5: Risoluzione ───────────────────────────────────────────────────
+  // ── FASE 5: Risoluzione Stato Scena ───────────────────────────────────────
 
   async fase5(piano) {
     await this.emitPhaseChange('fase-5')
     await this.emitThinking('fase-5')
-    const { worldState, schede_PG, pgLookup, mod } = await this.buildContext()
+    const { worldState, schede_PG, mod } = await this.buildContext()
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
@@ -957,12 +1096,7 @@ class CustodeEngine {
     })
     if (this.abortIfPaused()) return null
 
-    await this.emitNarrative(result.progressione)
-
-    for (const s of result.sussurri || []) {
-      const targetEmail = pgLookup.toEmail[s.target?.toLowerCase()] || s.target
-      await this.emitNarrative(s.testo, { whisper: true, to: targetEmail, type: 'whisper' })
-    }
+    result.durata = normalizeDurationOutput(result.durata)
 
     // Aggiorna engagement: incrementa i PG presenti nel piano
     const ctx = svc.getSession(this.tableId)
@@ -1013,11 +1147,26 @@ class CustodeEngine {
       await saveWorldState(this.tableId, ws)
     }
 
+    if (result.durata.giorni || result.durata.ore || result.durata.minuti) {
+      const ws = await getWorldState(this.tableId)
+      const current = ws.data_corrente?.iso
+        ? new Date(ws.data_corrente.iso)
+        : parseItalianDate(ws.data_corrente?.testo || focusScene?.contesto_quando || '')
+      const advanced = advanceDateByDuration(current, result.durata)
+      if (advanced) {
+        ws.data_corrente = {
+          testo: formatItalianDate(advanced, ws.data_corrente?.testo || ''),
+          iso: advanced.toISOString()
+        }
+        await saveWorldState(this.tableId, ws)
+      }
+    }
+
     if (result.divisione_gruppi) return { next: 'fase-5a' }
     if (result.ricongiungimento_gruppi) return { next: 'fase-5b' }
     if (result.chiusura_scena) return { next: 'fase-5c' }
 
-    return { next: 'fase-3' }
+    return { next: 'fase-4a', ultimo_avanzamento: result.progressione || '' }
   }
 
   async fase5a(data) {
@@ -1168,10 +1317,11 @@ class CustodeEngine {
 
         if (current === 'fase-2') result = await this.fase2(data?.suggerimento)
         else if (current === 'fase-3') result = await this.fase3()
-        else if (current === 'fase-4') result = await this.fase4(data)
-        else if (current === 'sottofase-4a') result = await this.fase4a(data)
-        else if (current === 'sottofase-4b') result = await this.fase4b(data)
-        else if (current === 'sottofase-4c') result = await this.fase4c(data)
+        else if (current === 'fase-4a') result = await this.fase4aSceneProgress(data)
+        else if (current === 'fase-4b') result = await this.fase4(data)
+        else if (current === 'sottofase-4b-chiarimenti') result = await this.fase4bSubChiarimenti(data)
+        else if (current === 'sottofase-4b-dichiarazione-assente') result = await this.fase4bSubDichiarazioneAssente(data)
+        else if (current === 'sottofase-4b-necessita-prova') result = await this.fase4bSubNecessitaProva(data)
         else if (current === 'fase-5') result = await this.fase5(data?.piano || data)
         else if (current === 'fase-5a') result = await this.fase5a(data?.data || data)
         else if (current === 'fase-5b') result = await this.fase5b(data?.data || data)
@@ -1208,10 +1358,10 @@ class CustodeEngine {
     const phase = ctx.session.custodePhase
 
     // Dopo tiro dado: gestito interamente da onDiceRoll
-    if (phase === 'fase-4c') return
+    if (phase === 'sottofase-4b-necessita-prova') return
 
-    // Turno singolo (dopo 4a o 4b): accumula senza tagging, timer silenzio
-    if (phase === 'fase-4a' || phase === 'fase-4b') {
+    // Turno singolo dopo una sottofase: accumula senza tagging, timer silenzio
+    if (phase === 'sottofase-4b-chiarimenti' || phase === 'sottofase-4b-dichiarazione-assente') {
       this.buffer.push({ ...message, tag: 'dichiarazione' })
       console.log(`[Custode] Buffer add [${this.tableId}] phase=${phase} msg=${message.fromName || message.from}: ${message.text}`)
       svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
@@ -1241,7 +1391,7 @@ class CustodeEngine {
 
   async onDiceRoll(email, valore, soglia, caratteristica) {
     const ctx = svc.getSession(this.tableId)
-    if (!ctx || ctx.session.custodePhase !== 'fase-4c') return
+    if (!ctx || ctx.session.custodePhase !== 'sottofase-4b-necessita-prova') return
 
     const esito = valore <= soglia ? 'successo' : 'fallimento'
     const piano = ctx.session.pianoAzione || []
@@ -1260,7 +1410,7 @@ class CustodeEngine {
       text: `[Tiro dado] ${caratteristica}: ${valore}/${soglia} → ${esito}`
     })
 
-    await this.runLoop('fase-4', piano)
+    await this.runLoop('fase-4b', piano)
   }
 
   async getFlushParticipants() {
@@ -1268,7 +1418,11 @@ class CustodeEngine {
     if (!ctx) return []
     const phase = ctx.session.custodePhase
 
-    if (phase === 'fase-4a' || phase === 'fase-4b' || phase === 'fase-4c') {
+    if (
+      phase === 'sottofase-4b-chiarimenti' ||
+      phase === 'sottofase-4b-dichiarazione-assente' ||
+      phase === 'sottofase-4b-necessita-prova'
+    ) {
       return ctx.session.players
         .filter(p => p.playerState === 'mio-turno-libero' || p.playerState === 'mio-turno-prova')
         .map(p => p.email)
@@ -1300,10 +1454,13 @@ class CustodeEngine {
     // In turno singolo passa il piano parziale corrente, altrimenti null (round fresco)
     const ctx = svc.getSession(this.tableId)
     const phase = ctx?.session?.custodePhase
-    const piano = (phase === 'fase-4a' || phase === 'fase-4b')
+    const piano = (
+      phase === 'sottofase-4b-chiarimenti' ||
+      phase === 'sottofase-4b-dichiarazione-assente'
+    )
       ? (ctx?.session?.pianoAzione || null)
       : null
-    this.runLoop('fase-4', piano)
+    this.runLoop('fase-4b', piano)
       .catch(console.error)
       .finally(() => {
         this.flushInProgress = false
@@ -1343,7 +1500,7 @@ class CustodeEngine {
     if (!this.bufferActive || this.flushInProgress || !this.buffer.length) return
 
     const ctx = svc.getSession(this.tableId)
-    if (!ctx || ctx.session.custodePhase !== 'fase-3') return
+    if (!ctx || ctx.session.custodePhase !== 'fase-4a') return
 
     const worldState = await getWorldState(this.tableId)
     const focusGroup = worldState.groups?.find(g => g.sceneId === worldState.focusScene)
