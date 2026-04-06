@@ -46,10 +46,10 @@ Schema: [fase2b_prepara_scena.schema.json](/Users/luca/Documents/gamedev/MyLLMMa
 |---|---|---|---|
 | `contesto_dove` | string | salvato nel file scena | OK |
 | `contesto_quando` | string | salvato nel file scena | OK |
-| `PNG` | string | salvato nel file scena | OK |
-| `opportunita` | string | salvato nel file scena | OK |
-| `minacce` | string | salvato nel file scena | OK |
-| `indizi` | string | salvato nel file scena | OK |
+| `PNG` | array di stringhe | salvato nel file scena | OK |
+| `opportunita` | array di stringhe | salvato nel file scena | OK |
+| `minacce` | array di stringhe | salvato nel file scena | OK |
+| `indizi` | array di stringhe | salvato nel file scena | OK |
 
 Campi aggiunti dal runtime dopo la risposta:
 

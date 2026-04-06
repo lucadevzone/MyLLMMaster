@@ -4,10 +4,10 @@
   "properties": {
     "contesto_dove": { "type": "string" },
     "contesto_quando": { "type": "string" },
-    "PNG": { "type": "string" },
-    "opportunita": { "type": "string" },
-    "minacce": { "type": "string" },
-    "indizi": { "type": "string" }
+    "PNG": { "type": "array", "items": { "type": "string" } },
+    "opportunita": { "type": "array", "items": { "type": "string" } },
+    "minacce": { "type": "array", "items": { "type": "string" } },
+    "indizi": { "type": "array", "items": { "type": "string" } }
   },
   "additionalProperties": true
 }

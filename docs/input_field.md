@@ -120,10 +120,10 @@ Prompt: [fase3b_narrazione.md](/Users/luca/Documents/gamedev/MyLLMMaster/prompts
 | `schede_PG` | variabile | `buildContext().schede_PG` | OK |
 | `diary` | variabile | `buildContext().diary` | OK |
 | `contesto_dove` | variabile | `focusScene.contesto_dove` | OK |
-| `PNG` | variabile | `focusScene.PNG` | OK |
-| `opportunita` | variabile | `focusScene.opportunita` | OK |
-| `minacce` | variabile | `focusScene.minacce` | OK |
-| `indizi` | variabile | `focusScene.indizi` | OK |
+| `PNG` | variabile | `focusScene.PNG` (array di stringhe) | OK |
+| `opportunita` | variabile | `focusScene.opportunita` (array di stringhe) | OK |
+| `minacce` | variabile | `focusScene.minacce` (array di stringhe) | OK |
+| `indizi` | variabile | `focusScene.indizi` (array di stringhe) | OK |
 | `scena_focus_ID` | variabile | `focusScene.id_scena` | OK |
 | `{{rag:module:"{{contesto_dove}}"}}` | RAG modulo | query singola | OK |
 | `{{rag:module:"{{PNG}}":iterate}}` | RAG modulo iterate | query per ogni PNG | OK |

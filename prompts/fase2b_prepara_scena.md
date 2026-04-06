@@ -10,14 +10,20 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 {
   "contesto_dove": "nome della location in cui si svolge la scena",
   "contesto_quando": "che giorno è? che ora è? non è necessario essere precisi",
-  "PNG": "Lista dei nomi dei PNG in scena",
-  "opportunita": "Lista delle opportunità",
-  "minacce": "Lista delle minacce",
-  "indizi": "Lista degli indizi"
+  "PNG": ["Lista dei nomi dei PNG in scena"],
+  "opportunita": ["Lista delle opportunità"],
+  "minacce": ["Lista delle minacce"],
+  "indizi": ["Lista degli indizi"]
 }
 
 ## Istruzioni
 - Struttura il materiale estratto nei campi JSON richiesti
+- I campi `PNG`, `opportunita`, `minacce` e `indizi` devono essere array JSON di stringhe
+- Esempio di formato corretto:
+  - `"PNG": ["Sophia Hapgood", "Marcel Dumont"]`
+  - `"opportunita": ["Osservare la tavoletta", "Parlare con Dumont"]`
+  - `"minacce": ["Un uomo tedesco osserva la sala"]`
+  - `"indizi": ["Tavoletta di pietra scura", "Simboli sconosciuti"]`
 - Descrizione dettagliata della location: 
 - Descrizione dettagliata dei personaggi non giocanti (PNG)
 - Elenco delle opportunità, delle minacce e degli indizi (con eventuali prove da affrontare e difficoltà)

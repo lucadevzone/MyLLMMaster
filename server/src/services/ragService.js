@@ -237,9 +237,11 @@ function tableIndexPath(tableId) {
 }
 
 function splitSceneListField(value) {
-  return String(value || '')
-    .split(/[\n,;]+/)
-    .map(item => item.replace(/^[-*]\s*/, '').trim())
+  const items = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[\n,;]+/)
+  return items
+    .map(item => String(item || '').replace(/^[-*]\s*/, '').trim())
     .filter(item => item && item.length <= 80)
 }
 
@@ -1209,6 +1211,9 @@ async function queryTable(tableId, queryText, topK = RAG_TOP_K) {
       type:    chunk.type,
       name:    chunk.name,
       content: chunk.content,
+      sessionNumber: chunk.sessionNumber || 0,
+      sequenceNumber: chunk.sequenceNumber || 0,
+      sceneId: chunk.sceneId || '',
       score:   cosineSimilarity(queryEmbedding, chunk.embedding)
     }))
     .sort((a, b) => b.score - a.score)

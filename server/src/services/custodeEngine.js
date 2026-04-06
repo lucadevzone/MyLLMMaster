@@ -240,6 +240,26 @@ function normalizeNarrativeText(text) {
   return String(text).trim()
 }
 
+function debugString(value) {
+  try {
+    return typeof value === 'string' ? value : JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function normalizeSceneListOutput(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => normalizeNarrativeText(item)).filter(Boolean)
+  }
+  const text = normalizeNarrativeText(value)
+  if (!text) return []
+  return text
+    .split(/[\n,;]+/)
+    .map(item => item.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean)
+}
+
 function formatRagResults(results) {
   if (!results?.length) return '(nessun contesto disponibile)'
   return results
@@ -493,6 +513,7 @@ class CustodeEngine {
       ctx.session.custodePhase = phase
       await svc.saveSession(this.tableId, ctx.session)
     }
+    console.log(`[Custode] Phase change [${this.tableId}] -> ${phase}`)
     this.io.to(this.room).emit('session:phase-update', { phase })
   }
 
@@ -641,6 +662,11 @@ class CustodeEngine {
     const result = await this.llm('fase2b_prepara_scena.md', { suggerimento_scena })
     if (this.abortIfPaused()) return null
 
+    result.PNG = normalizeSceneListOutput(result.PNG)
+    result.opportunita = normalizeSceneListOutput(result.opportunita)
+    result.minacce = normalizeSceneListOutput(result.minacce)
+    result.indizi = normalizeSceneListOutput(result.indizi)
+
     // Assegna ID progressivo e inizializza progressione
     result.id_scena = await nextSceneId(this.tableId)
     result.progressione = ''
@@ -782,6 +808,8 @@ class CustodeEngine {
     // result è l'array piano — conversione nomi → email
     const pianoRaw = Array.isArray(result) ? result : (result.piano || [])
     const piano = pianoToEmails(pianoRaw, pgLookup)
+    console.log(`[Custode] Piano azione [${this.tableId}] raw=${debugString(pianoRaw)}`)
+    console.log(`[Custode] Piano azione [${this.tableId}] normalized=${debugString(piano)}`)
 
     // Salva piano in sessione
     const ctx = svc.getSession(this.tableId)
@@ -807,6 +835,18 @@ class CustodeEngine {
       .filter(e => e.stato === 'incompleta' || e.stato === 'assente' ||
                    (e.stato === 'prova' && e.risultato_prova == null))[0]
 
+    if (!pending) {
+      console.warn(`[Custode] Nessuna entry pendente trovata nonostante il piano risulti incompleto [${this.tableId}] piano=${debugString(piano)}`)
+      this.buffer = []
+      return { next: 'fase-3' }
+    }
+
+    if (!pending.pg) {
+      console.warn(`[Custode] Entry pendente senza pg_target [${this.tableId}] entry=${debugString(pending)} piano=${debugString(piano)}`)
+      this.buffer = []
+      return { next: 'fase-3' }
+    }
+
     // Costruisce l'entry con pg già convertito in nome per le sottofasi
     const entryPerLlm = (e, lookup) => ({ ...e, pg: lookup.toName[e.pg] || e.pg })
 
@@ -827,6 +867,10 @@ class CustodeEngine {
     await this.emitThinking('fase-4a')
     const { worldState, pgLookup, schede_PG } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
+    if (!data?.pg_target) {
+      console.warn(`[Custode] sottofase-4a senza pg_target [${this.tableId}] data=${debugString(data)}`)
+      return { next: 'fase-3' }
+    }
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4a_chiarimenti.md', {
       pg_target: pgNome,
@@ -849,6 +893,10 @@ class CustodeEngine {
     await this.emitThinking('fase-4b')
     const { worldState, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
+    if (!data?.pg_target) {
+      console.warn(`[Custode] sottofase-4b senza pg_target [${this.tableId}] data=${debugString(data)}`)
+      return { next: 'fase-3' }
+    }
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4b_dichiarazione_assente.md', {
       pg_target: pgNome,
@@ -870,6 +918,10 @@ class CustodeEngine {
     await this.emitThinking('fase-4c')
     const { worldState, pgLookup, schede_PG } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
+    if (!data?.pg_target) {
+      console.warn(`[Custode] sottofase-4c senza pg_target [${this.tableId}] data=${debugString(data)}`)
+      return { next: 'fase-3' }
+    }
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4c_necessita_prova.md', {
       pg_target: pgNome,
@@ -1111,6 +1163,7 @@ class CustodeEngine {
 
     while (current && !this.paused) {
       try {
+        console.log(`[Custode] runLoop [${this.tableId}] entering ${current} data=${debugString(data)}`)
         let result
 
         if (current === 'fase-2') result = await this.fase2(data?.suggerimento)
@@ -1126,6 +1179,8 @@ class CustodeEngine {
         else break  // fase-1 già eseguita, fase-3 attende input
 
         if (!result) break  // in attesa di input giocatori
+
+        console.log(`[Custode] runLoop [${this.tableId}] phase ${current} -> next ${result.next || '(none)'} result=${debugString(result)}`)
 
         current = result.next
         data = result
@@ -1144,6 +1199,7 @@ class CustodeEngine {
   startBuffer() {
     this.bufferActive = true
     this.flushInProgress = false
+    console.log(`[Custode] Buffer start [${this.tableId}]`)
   }
 
   async onPlayerMessage(message) {
@@ -1157,8 +1213,9 @@ class CustodeEngine {
     // Turno singolo (dopo 4a o 4b): accumula senza tagging, timer silenzio
     if (phase === 'fase-4a' || phase === 'fase-4b') {
       this.buffer.push({ ...message, tag: 'dichiarazione' })
+      console.log(`[Custode] Buffer add [${this.tableId}] phase=${phase} msg=${message.fromName || message.from}: ${message.text}`)
       svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
-        this.flushBuffer('turno-singolo')
+        this.flushBuffer('turno-singolo').catch(console.error)
       })
       return
     }
@@ -1166,15 +1223,16 @@ class CustodeEngine {
     // Gioco libero: accumula nel buffer
     if (!this.bufferActive) return
     this.buffer.push(message)
+    console.log(`[Custode] Buffer add [${this.tableId}] phase=${phase} msg=${message.fromName || message.from}: ${message.text}`)
     this.tagMessageAsync(message)
 
     if (this.buffer.length >= MSG_BUFFER_SIZE) {
-      this.flushBuffer('buffer-pieno')
+      this.flushBuffer('buffer-pieno').catch(console.error)
       return
     }
 
     svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
-      this.flushBuffer('timer-silenzio')
+      this.flushBuffer('timer-silenzio').catch(console.error)
     })
     svc.setTimer(this.tableId, 'early-flush', EARLY_FLUSH_IDLE_MS, () => {
       this.evaluateEarlyFlush().catch(console.error)
@@ -1205,12 +1263,39 @@ class CustodeEngine {
     await this.runLoop('fase-4', piano)
   }
 
-  flushBuffer(reason) {
+  async getFlushParticipants() {
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx) return []
+    const phase = ctx.session.custodePhase
+
+    if (phase === 'fase-4a' || phase === 'fase-4b' || phase === 'fase-4c') {
+      return ctx.session.players
+        .filter(p => p.playerState === 'mio-turno-libero' || p.playerState === 'mio-turno-prova')
+        .map(p => p.email)
+    }
+
+    const worldState = await getWorldState(this.tableId)
+    const focusGroup = worldState.groups?.find(g => g.sceneId === worldState.focusScene)
+    return focusGroup?.participants || []
+  }
+
+  async flushBuffer(reason) {
     if (!this.running || !this.buffer.length || this.flushInProgress) return
+    const participants = await this.getFlushParticipants()
+    const typingPlayers = svc.getTypingPlayers(this.tableId)
+    if (hasActiveTypingInFocus(typingPlayers, participants)) {
+      console.log(`[Custode] Buffer flush postponed [${this.tableId}] reason=${reason} participants=${debugString(participants)} typing=${debugString(typingPlayers)}`)
+      svc.clearTimer(this.tableId, 'silenzio')
+      svc.setTimer(this.tableId, 'silenzio', Math.max(EARLY_FLUSH_IDLE_MS, 3000), () => {
+        this.flushBuffer(`retry-${reason}`).catch(console.error)
+      })
+      return
+    }
+
     this.flushInProgress = true
     svc.clearTimer(this.tableId, 'silenzio')
     svc.clearTimer(this.tableId, 'early-flush')
-    console.log(`[Custode] Buffer flush: ${reason} (${this.buffer.length} msgs)`)
+    console.log(`[Custode] Buffer flush [${this.tableId}] reason=${reason} msgs=${this.buffer.length} payload=${debugString(this.buffer.map(m => ({ from: m.fromName || m.from, tag: m.tag, text: m.text })))}`)
     this.bufferActive = false
     // In turno singolo passa il piano parziale corrente, altrimenti null (round fresco)
     const ctx = svc.getSession(this.tableId)
@@ -1245,6 +1330,7 @@ class CustodeEngine {
       const msg = this.buffer.find(m => m.id === message.id)
       if (msg && Object.prototype.hasOwnProperty.call(result, 'annotazione')) {
         msg.tag = result.annotazione
+        console.log(`[Custode] Tagging buffer [${this.tableId}] message=${message.id} tag=${result.annotazione}`)
       }
 
       await this.evaluateEarlyFlush()
@@ -1264,10 +1350,14 @@ class CustodeEngine {
     const focusParticipants = focusGroup?.participants || []
     const typingPlayers = svc.getTypingPlayers(this.tableId)
 
-    if (hasActiveTypingInFocus(typingPlayers, focusParticipants)) return
+    if (hasActiveTypingInFocus(typingPlayers, focusParticipants)) {
+      console.log(`[Custode] Early flush blocked by typing [${this.tableId}] participants=${debugString(focusParticipants)} typing=${debugString(typingPlayers)}`)
+      return
+    }
 
     if (shouldProcessByAnnotations(this.buffer, focusParticipants)) {
-      this.flushBuffer('annotazioni')
+      console.log(`[Custode] Early flush triggered by annotations [${this.tableId}] participants=${debugString(focusParticipants)}`)
+      this.flushBuffer('annotazioni').catch(console.error)
     }
   }
 
@@ -1289,7 +1379,7 @@ class CustodeEngine {
     if (!ctx) return false
     const targetExists = ctx.session.players.some(p => p.email === email)
     if (!targetExists) {
-      console.warn(`[Custode] Target turno non valido: ${email}`)
+      console.warn(`[Custode] Target turno non valido [${this.tableId}] target=${email} phase=${ctx.session.custodePhase} players=${debugString(ctx.session.players.map(p => ({ email: p.email, playerState: p.playerState })))} piano=${debugString(ctx.session.pianoAzione)}`)
       return false
     }
     // Tutti gli altri: fuori-turno
