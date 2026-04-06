@@ -249,8 +249,8 @@ router.post('/:id/reset', authMiddleware, adminOnly, async (req, res) => {
 
   const tableDir = path.join(TABLES_DIR, tableId)
 
-  // Cancella directory di sessione, scene e log
-  for (const dir of ['sessions', 'active_scenes', 'closed_scenes', 'logs']) {
+  // Cancella directory di sessione, scene, log e indice RAG del tavolo
+  for (const dir of ['sessions', 'active_scenes', 'closed_scenes', 'logs', 'rag']) {
     const p = path.join(tableDir, dir)
     try { await fs.rm(p, { recursive: true, force: true }) } catch { /* già assente */ }
   }

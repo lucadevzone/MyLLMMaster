@@ -41,7 +41,9 @@ const TYPE_LABELS = {
   ambientazione: 'Ambientazione del modulo',
   raw:           'Sezione del modulo',
   diario:        'Diario di sessione',
-  prima_sessione: 'Prima sessione'
+  prima_sessione: 'Prima sessione',
+  scene_progressione: 'Progressione scena',
+  scene_conclusione: 'Conclusione scena'
 }
 
 /**
@@ -59,6 +61,8 @@ function buildEmbedText(chunk) {
   if (chunk.moduleTitle)   parts.push(`[${chunk.moduleTitle}]`)
   if (chunk.chapter)       parts.push(`[Atto ${chunk.chapter}]`)
   if (chunk.sessionNumber) parts.push(`[Sessione ${chunk.sessionNumber}]`)
+  if (chunk.sequenceNumber) parts.push(`[Sequenza ${chunk.sequenceNumber}]`)
+  if (chunk.sceneId)       parts.push(`[Scena ${chunk.sceneId}]`)
   let text = parts.join(' ') + '\n' + chunk.content
   if (chunk.relatedTags?.length) {
     text += '\nRicerche correlate: ' + chunk.relatedTags.map(t => `[${t}]`).join(' ')
@@ -230,6 +234,79 @@ function tableRagDir(tableId) {
 
 function tableIndexPath(tableId) {
   return path.join(tableRagDir(tableId), 'index.json')
+}
+
+function splitSceneListField(value) {
+  return String(value || '')
+    .split(/[\n,;]+/)
+    .map(item => item.replace(/^[-*]\s*/, '').trim())
+    .filter(item => item && item.length <= 80)
+}
+
+function buildSceneRelatedTags(scene) {
+  const tags = new Set()
+  for (const field of [
+    scene?.id_scena,
+    scene?.contesto_dove,
+    ...splitSceneListField(scene?.PNG),
+    ...splitSceneListField(scene?.opportunita),
+    ...splitSceneListField(scene?.minacce),
+    ...splitSceneListField(scene?.indizi)
+  ]) {
+    const clean = String(field || '').trim()
+    if (clean) tags.add(clean)
+  }
+  return [...tags]
+}
+
+function buildSceneProgressioneChunk(scene, moduleTitle = '') {
+  const progressione = String(scene?.progressione || '').trim() || '(nessuna progressione ancora)'
+  return {
+    id: `scene_${scene.id_scena}_progressione`,
+    type: 'scene_progressione',
+    name: `Scena ${scene.id_scena}`,
+    sceneId: scene.id_scena,
+    sessionNumber: scene.sessionNumber || 0,
+    sequenceNumber: scene.sequenceNumber || 0,
+    moduleTitle,
+    relatedTags: buildSceneRelatedTags(scene),
+    content: [
+      `Dove: ${scene.contesto_dove || 'sconosciuto'}`,
+      `Quando: ${scene.contesto_quando || 'non specificato'}`,
+      `Scena: ${scene.id_scena}`,
+      '',
+      'Progressione:',
+      progressione
+    ].join('\n')
+  }
+}
+
+function buildSceneConclusioneChunk(scene, moduleTitle = '') {
+  const summary = String(scene?.summary || '').trim()
+  if (!summary) return null
+  const suggestion = String(scene?.suggerimento_prossima_scena || '').trim()
+  const lines = [
+    `Dove: ${scene.contesto_dove || 'sconosciuto'}`,
+    `Quando: ${scene.contesto_quando || 'non specificato'}`,
+    `Scena: ${scene.id_scena}`,
+    '',
+    'Conclusione:',
+    summary
+  ]
+  if (suggestion) {
+    lines.push('', 'Suggerimento prossima scena:', suggestion)
+  }
+  return {
+    id: `scene_${scene.id_scena}_conclusione`,
+    type: 'scene_conclusione',
+    name: `Conclusione ${scene.id_scena}`,
+    sceneId: scene.id_scena,
+    sessionNumber: scene.sessionNumber || 0,
+    sequenceNumber: scene.closingSequenceNumber || scene.sequenceNumber || 0,
+    moduleTitle,
+    relatedTags: buildSceneRelatedTags(scene),
+    content: lines.join('\n')
+  }
 }
 
 // ── Embedding ─────────────────────────────────────────────────────────────────
@@ -1060,6 +1137,60 @@ async function indexDiaryEntry(tableId, entryText, sessionNumber = 0, moduleTitl
   await saveIndex(indexPath, index)
 }
 
+async function rebuildTableIndex(tableId, moduleTitle = '') {
+  const ragDir = tableRagDir(tableId)
+  const indexPath = tableIndexPath(tableId)
+  const existingIndex = await loadIndex(indexPath)
+  const preservedChunks = (existingIndex.chunks || []).filter(chunk => chunk.type === 'prima_sessione')
+
+  const tableDir = path.join(DATA_DIR, 'tables', tableId)
+  const sceneFiles = []
+  for (const dir of ['active_scenes', 'closed_scenes']) {
+    const sceneDir = path.join(tableDir, dir)
+    try {
+      const files = await fs.readdir(sceneDir)
+      for (const file of files.filter(f => f.endsWith('.json'))) {
+        sceneFiles.push(path.join(sceneDir, file))
+      }
+    } catch { /* dir assente */ }
+  }
+
+  const scenes = []
+  for (const file of sceneFiles) {
+    try {
+      scenes.push(JSON.parse(await fs.readFile(file, 'utf-8')))
+    } catch { /* scena corrotta, ignora */ }
+  }
+
+  const sceneChunks = []
+  for (const scene of scenes) {
+    if (!scene?.id_scena) continue
+    sceneChunks.push(buildSceneProgressioneChunk(scene, moduleTitle))
+    const finalChunk = buildSceneConclusioneChunk(scene, moduleTitle)
+    if (finalChunk) sceneChunks.push(finalChunk)
+  }
+
+  const embeddedChunks = [...preservedChunks]
+  for (const chunk of sceneChunks) {
+    try {
+      const embedding = await embed(buildEmbedText(chunk))
+      embeddedChunks.push({ ...chunk, embedding })
+    } catch (err) {
+      console.warn(`[RAG] Embedding tavolo fallito per chunk "${chunk.name}" (${tableId}):`, err.message)
+    }
+  }
+
+  await ensureDir(ragDir)
+  await saveIndex(indexPath, {
+    tableId,
+    embedModel: EMBED_MODEL,
+    indexedAt: new Date().toISOString(),
+    chunks: embeddedChunks
+  })
+  console.log(`[RAG] Tavolo ${tableId}: indice ricostruito con ${embeddedChunks.length} chunk`)
+  return embeddedChunks.length
+}
+
 /**
  * Recupera i topK chunk più rilevanti dall'indice del tavolo (diary + scene).
  * Restituisce array di { type, name, content, score }.
@@ -1093,6 +1224,7 @@ module.exports = {
   cascadeQueryModule,
   indexSessionIntro,
   indexDiaryEntry,
+  rebuildTableIndex,
   queryTable,
   // Esposto solo per test
   _test: {

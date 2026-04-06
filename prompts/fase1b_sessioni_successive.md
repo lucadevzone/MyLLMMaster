@@ -17,9 +17,9 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 - Il tono deve essere evocativo e atmosferico, ma non svelare mai trama né misteri che non siano stati già svelati
 - Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori
 
-**Diario sessione precedente:**
-Usa gli appunti della sessione precedente
-{{rag:table:"avvenimenti sessione {{prevSession}}"}}
+**Diario del tavolo:**
+Usa gli appunti accumulati nel diario del tavolo
+{{diary}}
 
 **Scena corrente:**
 Qui trovi la descrizione della scena corrente
