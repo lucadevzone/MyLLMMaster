@@ -27,29 +27,11 @@ const TAG_CHUNK_SIZE = parseInt(
   process.env.RAG_TAG_CHUNK_SIZE || String(Math.max(1000, Math.floor(PRELIM_CHUNK_SIZE * 2 / 3)))
 )
 
-// Configurazione per il prompt pass1 — solo i tipi più affidabili per estrazione semantica.
-// Tutto il resto (indizi, risorse, eventi, scene, mostri) è coperto dai chunk raw.
-const TYPE_CONFIG = {
-  location: {
-    descrizione: 'luoghi fisici con un nome proprio o nome comune (città, aree geografiche, location specifiche)',
-    esempi:      'Il Giappone, Londra, Roma, una biblioteca, un porto abbandonato, Viale Della Libertà',
-    escludi:     'personaggi, oggetti, eventi, informazioni — solo luoghi con un nome proprio'
-  },
-  personaggio: {
-    descrizione: 'persone con nome proprio (protagonisti, comprimari, dramatis personae) con un ruolo nella storia',
-    esempi:      'Dr. Brown, Alice Meraviglia, John Mylopoulos, Mister X',
-    escludi:     'luoghi, oggetti, eventi, informazioni astratte — solo esseri umani identificati con un nome'
-  }
-}
-
 const TAG_EXTRACTION_PROMPTS = {
   location: 'rag_pass1_tags_location.md',
   personaggio: 'rag_pass1_tags_personaggio.md',
   indizio: 'rag_pass1_tags_indizio.md'
 }
-
-// Priorità per deduplicazione cross-tipo (tipo con indice più basso "vince" in caso di nome identico)
-const TYPE_PRIORITY = ['personaggio', 'location']
 
 // Etichette leggibili usate nell'header di embedding per migliorare il retrieval
 // con query categoriali ("personaggi non giocanti", "luoghi dell'atto I", ecc.)
@@ -59,7 +41,9 @@ const TYPE_LABELS = {
   ambientazione: 'Ambientazione del modulo',
   raw:           'Sezione del modulo',
   diario:        'Diario di sessione',
-  prima_sessione: 'Prima sessione'
+  prima_sessione: 'Prima sessione',
+  scene_progressione: 'Progressione scena',
+  scene_conclusione: 'Conclusione scena'
 }
 
 /**
@@ -77,6 +61,8 @@ function buildEmbedText(chunk) {
   if (chunk.moduleTitle)   parts.push(`[${chunk.moduleTitle}]`)
   if (chunk.chapter)       parts.push(`[Atto ${chunk.chapter}]`)
   if (chunk.sessionNumber) parts.push(`[Sessione ${chunk.sessionNumber}]`)
+  if (chunk.sequenceNumber) parts.push(`[Sequenza ${chunk.sequenceNumber}]`)
+  if (chunk.sceneId)       parts.push(`[Scena ${chunk.sceneId}]`)
   let text = parts.join(' ') + '\n' + chunk.content
   if (chunk.relatedTags?.length) {
     text += '\nRicerche correlate: ' + chunk.relatedTags.map(t => `[${t}]`).join(' ')
@@ -248,6 +234,81 @@ function tableRagDir(tableId) {
 
 function tableIndexPath(tableId) {
   return path.join(tableRagDir(tableId), 'index.json')
+}
+
+function splitSceneListField(value) {
+  const items = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[\n,;]+/)
+  return items
+    .map(item => String(item || '').replace(/^[-*]\s*/, '').trim())
+    .filter(item => item && item.length <= 80)
+}
+
+function buildSceneRelatedTags(scene) {
+  const tags = new Set()
+  for (const field of [
+    scene?.id_scena,
+    scene?.contesto_dove,
+    ...splitSceneListField(scene?.PNG),
+    ...splitSceneListField(scene?.opportunita),
+    ...splitSceneListField(scene?.minacce),
+    ...splitSceneListField(scene?.indizi)
+  ]) {
+    const clean = String(field || '').trim()
+    if (clean) tags.add(clean)
+  }
+  return [...tags]
+}
+
+function buildSceneProgressioneChunk(scene, moduleTitle = '') {
+  const progressione = String(scene?.progressione || '').trim() || '(nessuna progressione ancora)'
+  return {
+    id: `scene_${scene.id_scena}_progressione`,
+    type: 'scene_progressione',
+    name: `Scena ${scene.id_scena}`,
+    sceneId: scene.id_scena,
+    sessionNumber: scene.sessionNumber || 0,
+    sequenceNumber: scene.sequenceNumber || 0,
+    moduleTitle,
+    relatedTags: buildSceneRelatedTags(scene),
+    content: [
+      `Dove: ${scene.contesto_dove || 'sconosciuto'}`,
+      `Quando: ${scene.contesto_quando || 'non specificato'}`,
+      `Scena: ${scene.id_scena}`,
+      '',
+      'Progressione:',
+      progressione
+    ].join('\n')
+  }
+}
+
+function buildSceneConclusioneChunk(scene, moduleTitle = '') {
+  const summary = String(scene?.summary || '').trim()
+  if (!summary) return null
+  const suggestion = String(scene?.suggerimento_prossima_scena || '').trim()
+  const lines = [
+    `Dove: ${scene.contesto_dove || 'sconosciuto'}`,
+    `Quando: ${scene.contesto_quando || 'non specificato'}`,
+    `Scena: ${scene.id_scena}`,
+    '',
+    'Conclusione:',
+    summary
+  ]
+  if (suggestion) {
+    lines.push('', 'Suggerimento prossima scena:', suggestion)
+  }
+  return {
+    id: `scene_${scene.id_scena}_conclusione`,
+    type: 'scene_conclusione',
+    name: `Conclusione ${scene.id_scena}`,
+    sceneId: scene.id_scena,
+    sessionNumber: scene.sessionNumber || 0,
+    sequenceNumber: scene.closingSequenceNumber || scene.sequenceNumber || 0,
+    moduleTitle,
+    relatedTags: buildSceneRelatedTags(scene),
+    content: lines.join('\n')
+  }
 }
 
 // ── Embedding ─────────────────────────────────────────────────────────────────
@@ -704,9 +765,6 @@ function splitIntoRawChunks(text) {
 // Strategia A: accumula paragrafi fino a PRELIM_CHUNK_SIZE senza tagliare a metà
 // paragrafo. Overlap di 1 paragrafo tra chunk consecutivi.
 //
-// Strategia B (usata via rawChunksToTextArray): usa i chunk raw già calcolati
-// da splitIntoRawChunks — sono sezione-aware e hanno titoli impliciti.
-
 function splitTextIntoChunks(text, size = PRELIM_CHUNK_SIZE) {
   const paragraphs = text.split(/\n\n+/).map(p => p.trim()).filter(Boolean)
   const chunks = []
@@ -729,151 +787,6 @@ function splitTextIntoChunks(text, size = PRELIM_CHUNK_SIZE) {
 
 function splitTextIntoTagChunks(text) {
   return splitTextIntoChunks(text, TAG_CHUNK_SIZE)
-}
-
-// Converte chunk raw in array di stringhe testuali per il pass1 (strategia B)
-function rawChunksToTextArray(rawChunks) {
-  return rawChunks.map(c => c.content)
-}
-
-// ── Preprocessing LLM — Pass 1: lista entità per tipo ────────────────────────
-
-async function extractEntitiesForType(type, textChunks) {
-  const cfg = TYPE_CONFIG[type]
-  const found = new Set()
-
-  for (let i = 0; i < textChunks.length; i++) {
-    try {
-      const raw = await ollama.runTextPhase(
-        DEFAULT_HEAVY_MODEL,
-        'rag_pass1_entita.md',
-        {
-          tipo_descrizione: cfg.descrizione,
-          tipo_esempi:      cfg.esempi,
-          tipo_escludi:     cfg.escludi,
-          testo_chunk:      textChunks[i]
-        }
-      )
-      for (const line of raw.split('\n')) {
-        const name = line.replace(/^[-•*]\s*/, '').trim()  // rimuove bullet list
-        if (!name || name.toLowerCase() === 'nessuno') continue
-        if (name.length > 120) continue  // scarta righe troppo lunghe (spiegazioni)
-        found.add(name)
-      }
-    } catch (err) {
-      console.warn(`[RAG] Pass 1 "${type}" chunk ${i + 1} fallito:`, err.message)
-    }
-  }
-
-  return [...found].map(name => ({ type, name }))
-}
-
-// ── Deduplicazione entità cross-tipo ─────────────────────────────────────────
-// Rimuove duplicati e forme brevi: "Sophia" viene eliminata se esiste "Sophia Hapgood".
-// In caso di stesso nome in tipi diversi, vince quello con priorità più alta.
-
-function deduplicateEntities(allEntities) {
-  // 1. Rimuove forme brevi NELLO STESSO TIPO
-  //    "Sophia" viene eliminata se nello stesso tipo esiste "Sophia Hapgood"
-  const withoutIntraTypeDups = allEntities.filter(entity => {
-    const key = entity.name.toLowerCase()
-    return !allEntities.some(other =>
-      other !== entity &&
-      other.type === entity.type &&
-      other.name.toLowerCase().includes(key) &&
-      other.name.toLowerCase() !== key
-    )
-  })
-
-  // 2. In caso di stesso nome identico tra tipi diversi, tieni il tipo con priorità più alta
-  const byName = new Map()
-  for (const entity of withoutIntraTypeDups) {
-    const key = entity.name.toLowerCase()
-    const existing = byName.get(key)
-    if (!existing) {
-      byName.set(key, entity)
-      continue
-    }
-    if (TYPE_PRIORITY.indexOf(entity.type) < TYPE_PRIORITY.indexOf(existing.type)) {
-      byName.set(key, entity)
-    }
-  }
-
-  return [...byName.values()]
-}
-
-// ── Preprocessing LLM — Pass 2: estrai contenuto per entità ──────────────────
-
-async function extractEntityContent(type, name, textChunks) {
-  // Usa solo i chunk che menzionano l'entità; fallback ai primi 2 chunk
-  const lowerName = name.toLowerCase()
-  const relevant = textChunks.filter(c => c.toLowerCase().includes(lowerName))
-  const context = (relevant.length > 0 ? relevant : textChunks.slice(0, 2)).join('\n\n---\n\n')
-
-  return ollama.runTextPhase(
-    DEFAULT_HEAVY_MODEL,
-    'rag_pass2_estrai.md',
-    { tipo: type, nome: name, testo_estratto: context }
-  )
-}
-
-// ── Pipeline completa: preprocessing LLM → chunks ────────────────────────────
-
-async function preprocessModuleWithLLM(chapterText, chapterNumber = 1) {
-  const textChunks = splitTextIntoChunks(chapterText)
-  console.log(`[RAG] Testo diviso in ${textChunks.length} chunk preliminari`)
-
-  // Pass 1: un tipo alla volta, su tutti i chunk
-  console.log('[RAG] Pass 1 — identificazione entità per tipo...')
-  const allEntities = []
-  for (const type of Object.keys(TYPE_CONFIG)) {
-    const found = await extractEntitiesForType(type, textChunks)
-    console.log(`[RAG] Pass 1 "${type}": ${found.length} entità trovate`)
-    allEntities.push(...found)
-  }
-
-  if (!allEntities.length) {
-    console.warn('[RAG] Pass 1 non ha prodotto entità, uso fallback paragrafi')
-    return splitTextIntoChunks(chapterText).map((content, i) => ({
-      id:      `fallback_${String(i).padStart(3, '0')}`,
-      type:    'raw',
-      name:    `Estratto capitolo ${chapterNumber}`,
-      chapter: chapterNumber,
-      content
-    }))
-  }
-
-  console.log(`[RAG] Pass 1 completato: ${allEntities.length} entità totali`)
-
-  const deduplicated = deduplicateEntities(allEntities)
-  console.log(`[RAG] Dopo deduplicazione: ${deduplicated.length} entità uniche`)
-  const entities = deduplicated
-
-  // Pass 2: estrai contenuto per ogni entità con contesto mirato
-  const chunks = []
-  for (let i = 0; i < entities.length; i++) {
-    const { type, name } = entities[i]
-    console.log(`[RAG] Pass 2 [${i + 1}/${allEntities.length}] — ${type} | ${name}`)
-    try {
-      const content = await extractEntityContent(type, name, textChunks)
-      if (content?.trim()) {
-        chunks.push({
-          id:      `chunk_${String(i).padStart(3, '0')}`,
-          type,
-          name,
-          chapter: chapterNumber,
-          content: content.trim()
-        })
-      } else {
-        console.warn(`[RAG] Contenuto vuoto per "${name}", chunk ignorato`)
-      }
-    } catch (err) {
-      console.warn(`[RAG] Pass 2 fallito per "${name}":`, err.message)
-    }
-  }
-
-  console.log(`[RAG] Pass 2 completato: ${chunks.length}/${entities.length} chunk generati`)
-  return chunks
 }
 
 // ── Module indexing ───────────────────────────────────────────────────────────
@@ -1226,6 +1139,60 @@ async function indexDiaryEntry(tableId, entryText, sessionNumber = 0, moduleTitl
   await saveIndex(indexPath, index)
 }
 
+async function rebuildTableIndex(tableId, moduleTitle = '') {
+  const ragDir = tableRagDir(tableId)
+  const indexPath = tableIndexPath(tableId)
+  const existingIndex = await loadIndex(indexPath)
+  const preservedChunks = (existingIndex.chunks || []).filter(chunk => chunk.type === 'prima_sessione')
+
+  const tableDir = path.join(DATA_DIR, 'tables', tableId)
+  const sceneFiles = []
+  for (const dir of ['active_scenes', 'closed_scenes']) {
+    const sceneDir = path.join(tableDir, dir)
+    try {
+      const files = await fs.readdir(sceneDir)
+      for (const file of files.filter(f => f.endsWith('.json'))) {
+        sceneFiles.push(path.join(sceneDir, file))
+      }
+    } catch { /* dir assente */ }
+  }
+
+  const scenes = []
+  for (const file of sceneFiles) {
+    try {
+      scenes.push(JSON.parse(await fs.readFile(file, 'utf-8')))
+    } catch { /* scena corrotta, ignora */ }
+  }
+
+  const sceneChunks = []
+  for (const scene of scenes) {
+    if (!scene?.id_scena) continue
+    sceneChunks.push(buildSceneProgressioneChunk(scene, moduleTitle))
+    const finalChunk = buildSceneConclusioneChunk(scene, moduleTitle)
+    if (finalChunk) sceneChunks.push(finalChunk)
+  }
+
+  const embeddedChunks = [...preservedChunks]
+  for (const chunk of sceneChunks) {
+    try {
+      const embedding = await embed(buildEmbedText(chunk))
+      embeddedChunks.push({ ...chunk, embedding })
+    } catch (err) {
+      console.warn(`[RAG] Embedding tavolo fallito per chunk "${chunk.name}" (${tableId}):`, err.message)
+    }
+  }
+
+  await ensureDir(ragDir)
+  await saveIndex(indexPath, {
+    tableId,
+    embedModel: EMBED_MODEL,
+    indexedAt: new Date().toISOString(),
+    chunks: embeddedChunks
+  })
+  console.log(`[RAG] Tavolo ${tableId}: indice ricostruito con ${embeddedChunks.length} chunk`)
+  return embeddedChunks.length
+}
+
 /**
  * Recupera i topK chunk più rilevanti dall'indice del tavolo (diary + scene).
  * Restituisce array di { type, name, content, score }.
@@ -1244,6 +1211,9 @@ async function queryTable(tableId, queryText, topK = RAG_TOP_K) {
       type:    chunk.type,
       name:    chunk.name,
       content: chunk.content,
+      sessionNumber: chunk.sessionNumber || 0,
+      sequenceNumber: chunk.sequenceNumber || 0,
+      sceneId: chunk.sceneId || '',
       score:   cosineSimilarity(queryEmbedding, chunk.embedding)
     }))
     .sort((a, b) => b.score - a.score)
@@ -1259,15 +1229,13 @@ module.exports = {
   cascadeQueryModule,
   indexSessionIntro,
   indexDiaryEntry,
+  rebuildTableIndex,
   queryTable,
   // Esposto solo per test
   _test: {
-    extractEntitiesForType,
-    deduplicateEntities,
     splitTextIntoChunks,
     splitTextIntoTagChunks,
     splitIntoRawChunks,
-    rawChunksToTextArray,
     extractTagCandidates,
     deduplicateTagCandidates,
     serializeKnownTagsForPrompt,
@@ -1275,6 +1243,5 @@ module.exports = {
     consolidateTagsByType,
     consolidateExtractedTags,
     annotateRawChunksWithTagCatalog
-  },
-  _typeConfig: TYPE_CONFIG
+  }
 }

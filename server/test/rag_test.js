@@ -12,14 +12,13 @@ const ragService = require('../src/services/ragService')
 const MODULES_DIR = path.join(__dirname, '../../data/modules')
 
 const {
-  extractEntitiesForType,
-  deduplicateEntities,
   splitTextIntoChunks,
   splitTextIntoTagChunks,
   splitIntoRawChunks,
-  rawChunksToTextArray,
   extractTagCandidates,
-  deduplicateTagCandidates
+  deduplicateTagCandidates,
+  consolidateExtractedTags,
+  annotateRawChunksWithTagCatalog
 } = ragService._test || {}
 
 async function loadModule() {
@@ -28,31 +27,31 @@ async function loadModule() {
   return JSON.parse(await fs.readFile(path.join(MODULES_DIR, files[0]), 'utf-8'))
 }
 
-async function runPass1(label, textChunks) {
+async function runTagExtractionPreview(label, textChunks) {
   console.log(`\n${'='.repeat(60)}`)
-  console.log(`PASS 1 — ${label} (${textChunks.length} chunk)\n`)
+  console.log(`TAG EXTRACTION PREVIEW — ${label} (${textChunks.length} chunk)\n`)
 
-  const allEntities = []
-  for (const type of Object.keys(ragService._typeConfig || {})) {
-    process.stdout.write(`  "${type}"... `)
-    const found = await extractEntitiesForType(type, textChunks)
-    console.log(`${found.length} entità`)
-    allEntities.push(...found)
-  }
+  const rawCandidates = await extractTagCandidates(textChunks)
+  const deduped = deduplicateTagCandidates(rawCandidates)
+  const consolidated = consolidateExtractedTags(rawCandidates)
 
-  const deduped = deduplicateEntities(allEntities)
-  console.log(`\nTotale grezzo: ${allEntities.length} → dopo deduplicazione: ${deduped.length}`)
+  console.log(`Candidati grezzi: ${rawCandidates.length}`)
+  console.log(`Dopo deduplica esatta: ${deduped.length}`)
+  console.log(`Dopo consolidamento finale: ${consolidated.length}`)
 
   const byType = {}
-  for (const e of deduped) {
+  for (const e of consolidated) {
     if (!byType[e.type]) byType[e.type] = []
-    byType[e.type].push(e.name)
+    byType[e.type].push(e)
   }
-  for (const [type, names] of Object.entries(byType)) {
-    console.log(`\n  [${type}] (${names.length})`)
-    for (const name of names) console.log(`    - ${name}`)
+  for (const [type, tags] of Object.entries(byType)) {
+    console.log(`\n  [${type}] (${tags.length})`)
+    for (const tag of tags) {
+      const aliasText = tag.aliases?.length ? ` | alias: ${tag.aliases.join(', ')}` : ''
+      console.log(`    - ${tag.canonical}${aliasText}`)
+    }
   }
-  return deduped
+  return consolidated
 }
 
 function showRawChunks(chapterText) {
@@ -117,6 +116,26 @@ async function runTagExtraction(mod) {
   }
 }
 
+async function runAnnotatedRawPreview(mod) {
+  const chapterText = mod.chapters[0]?.content || ''
+  const rawChunks = splitIntoRawChunks(chapterText)
+  const tagChunks = splitTextIntoTagChunks(chapterText)
+  const rawCandidates = await extractTagCandidates(tagChunks)
+  const consolidated = consolidateExtractedTags(rawCandidates)
+  const annotated = annotateRawChunksWithTagCatalog(rawChunks, consolidated)
+
+  console.log(`\n${'='.repeat(60)}`)
+  console.log(`RAW ANNOTATI (${annotated.length} chunk)\n`)
+
+  for (const chunk of annotated) {
+    const preview = chunk.content.replace(/\n/g, ' ').slice(0, 90)
+    const tags = chunk.relatedTags?.length ? chunk.relatedTags.join(', ') : 'nessuno'
+    console.log(`  [${chunk.id}] "${chunk.name}"`)
+    console.log(`    relatedTags: ${tags}`)
+    console.log(`    ${preview}...`)
+  }
+}
+
 async function main() {
   const mod = await loadModule()
   console.log(`\nModulo: ${mod.title} (${mod.id})`)
@@ -147,24 +166,17 @@ async function main() {
     return
   }
 
-  // Default: mostra chunk raw + pass1 (come prima)
+  if (args[0] === 'annotated') {
+    await runAnnotatedRawPreview(mod)
+    return
+  }
+
+  // Default: mostra chunk raw + preview pipeline nuova
   const chapterText = mod.chapters[0]?.content || ''
   const rawChunks = showRawChunks(chapterText)
   const chunksA = splitTextIntoChunks(chapterText)
-  const resultA = await runPass1('Strategia A — paragrafo-aware', chunksA)
-  const chunksB = rawChunksToTextArray(rawChunks)
-  const resultB = await runPass1('Strategia B — chunk raw', chunksB)
-
-  console.log(`\n${'='.repeat(60)}`)
-  console.log('CONFRONTO\n')
-  const namesA = new Set(resultA.map(e => e.name.toLowerCase()))
-  const namesB = new Set(resultB.map(e => e.name.toLowerCase()))
-  const onlyA = resultA.filter(e => !namesB.has(e.name.toLowerCase())).map(e => `${e.name} (${e.type})`)
-  const onlyB = resultB.filter(e => !namesA.has(e.name.toLowerCase())).map(e => `${e.name} (${e.type})`)
-  const both  = resultA.filter(e =>  namesB.has(e.name.toLowerCase())).map(e => `${e.name} (${e.type})`)
-  console.log(`  Comuni (${both.length}):      ${both.join(', ') || '—'}`)
-  console.log(`  Solo A (${onlyA.length}):     ${onlyA.join(', ') || '—'}`)
-  console.log(`  Solo B (${onlyB.length}):     ${onlyB.join(', ') || '—'}`)
+  await runTagExtractionPreview('chunk tag-aware', chunksA)
+  console.log(`\nChunk raw disponibili: ${rawChunks.length}`)
 }
 
 main().catch(err => { console.error('\nErrore:', err.message); process.exit(1) })

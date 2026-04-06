@@ -1,3 +1,17 @@
+MIGLIORIA: quando scade il token, anzichè dare il messaggio "Token non valido o scaduto" perchè non mandi direttamente alla pagina di login
+
+POSSIBILE CODICE LEGACY: Nella lobby è apparsa la scritta "Il Custode sta lavorando all'avventura…", Ma nom avevamo disattivato la preparazione preliminare dopo la creazione dei PG?
+Poi entro e il server avverte "fase1a: uso cache pre-generata per"
+
+MIGLIORIA PER IL DEBUG: vorrei che il server scrivesse in console la fase che sta affrontando. Vorrei anche stampato il piano azione quando presente.
+
+PROMTP: nella presentazione del turno un PNG è presentato per nome, ma i PG non lo conoscono ancora. Un altro PNG viene subuto presentato con molti dettagli "uomo elegante in abito scuro scrive ossessivamente su un taccuino lo stesso simbolo ripetuto" In generale presentare le cose con calma, non avere fretta si svelare dettagli.
+Forse la 3B se si è appena svolta la 5, potrebbe essere saltata.
+
+BUG: eravamo in fase gioc libero. Uno dei due giocatori stava ancora scrivendo ed è scattato il turno custode. Questo non dovrebbe succedere se funziona il meccanismo di avviso di scrittura
+
+BUG: il server ha comunicato: Target turno non valido: undefined
+
 Bug: resume() riavvia da fase1 dopo errore in runLoop
   Quando runLoop termina per errore LLM, running=false e paused=false. resume() non distingue questo stato da "engine mai avviato" e chiama start(), rieseguendo fase1()
   invece di riprendere dal punto di interruzione.

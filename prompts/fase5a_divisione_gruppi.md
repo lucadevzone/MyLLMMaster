@@ -6,7 +6,7 @@ Il gruppo di PG si è diviso. Descrivi la separazione in modo naturale come cons
 
 ## Output atteso (JSON)
 {
-  "narrativa": "testo che descrive come il gruppo si divide e dove si dirige ciascuno (2-3 frasi)"
+  "narrativa": "testo che descrive come il gruppo si divide"
 }
 
 ## Istruzioni

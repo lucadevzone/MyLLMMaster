@@ -14,18 +14,18 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 ## Istruzioni
 Questa è la prima sessione:
-- Introduci l'ambientazione raccontando luogo, atmosfera e anni in maniera evocativa
-- Poi presenta brevemente i PG come i protagonisti di questa avventura, menziona solo nome, professione e aspetto (se disponibile)
-- Prova a dare una motivazione del perché i PG sono coinvolti
-
-- Usa uno stile evocativo e atmosferico ma senza esagerare
-- Non svelare nulla della trama, dei misteri e dei png che potrebbero incontrare
+- Introduci l'ambientazione raccontando località, e l'atmosfera di quegli anni in maniera evocativa
+- Decidi una data specifica: sarà la data di inizio dell'avventura
+- Non anticipare nulla della trama, dei misteri e dei personaggi non giocanti (sia alleati che antagonisti): narra la normalità
+- Poi presenta brevemente i PG come i protagonisti di questa avventura
+- Menziona solo nome, professione e aspetto (se disponibile)
+- Prova a dare una motivazione del loro coinvolgimento (e' successo qualcosa e loro sono chiamati in causa: interesse personale, interesse professionale, sono ingaggiati per risolvere un caso, etc etc)
 - Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori
-- Usa come base solo l'ambientazione preparata qui sotto, che è una sintesi del primo capitolo
 
-## Input
 **Ambientazione del modulo:**
+Per l'ambientazione usa come base i tuoi appunti preparatai qui sotto
 {{rag:module:"ambientazione atmosfera setting"}}
 
 **Schede PG:**
+Per descrivere i PG usa le schede reassunte qui sotto
 {{schede_PG}}

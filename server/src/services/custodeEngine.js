@@ -99,9 +99,6 @@ async function getDiary(tableId) {
 async function appendDiary(tableId, entry, sessionNumber = 0, moduleTitle = '') {
   const p = path.join(tDir(tableId), 'diary.txt')
   await fs.appendFile(p, '\n\n' + entry)
-  rag.indexDiaryEntry(tableId, entry, sessionNumber, moduleTitle).catch(err =>
-    console.warn(`[Custode] Indicizzazione diary entry fallita per ${tableId}:`, err.message)
-  )
 }
 
 async function readPreparedFile(tableId, filename) {
@@ -196,10 +193,12 @@ async function saveScene(tableId, scene, closed = false) {
   await writeJSON(path.join(tDir(tableId), dir, `${scene.id_scena}.json`), scene)
 }
 
-async function closeScene(tableId, sceneId, riepilogo) {
+async function closeScene(tableId, sceneId, riepilogo, suggerimentoProssimaScena = '', closingSequenceNumber = 0) {
   const scene = await getScene(tableId, sceneId)
   if (!scene) return
   scene.summary = riepilogo
+  scene.suggerimento_prossima_scena = suggerimentoProssimaScena || ''
+  if (closingSequenceNumber) scene.closingSequenceNumber = closingSequenceNumber
   // Sposta in closed_scenes
   const src = path.join(tDir(tableId), 'active_scenes', `${sceneId}.json`)
   const dst = path.join(tDir(tableId), 'closed_scenes', `${sceneId}.json`)
@@ -241,6 +240,26 @@ function normalizeNarrativeText(text) {
   return String(text).trim()
 }
 
+function debugString(value) {
+  try {
+    return typeof value === 'string' ? value : JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function normalizeSceneListOutput(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => normalizeNarrativeText(item)).filter(Boolean)
+  }
+  const text = normalizeNarrativeText(value)
+  if (!text) return []
+  return text
+    .split(/[\n,;]+/)
+    .map(item => item.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean)
+}
+
 function formatRagResults(results) {
   if (!results?.length) return '(nessun contesto disponibile)'
   return results
@@ -254,9 +273,43 @@ function formatRagResults(results) {
 // prima della normale sostituzione delle variabili.
 // La query può contenere riferimenti a variabili runtime: {{rag:module:"{{suggerimento_scena}}"}}
 
-// Sintassi: {{rag:source:"query"}} oppure {{rag:source:"query":cascade}}
-const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"(:cascade)?\}\}/g
+// Sintassi: {{rag:source:"query"}}, {{rag:source:"query":cascade}} oppure
+// {{rag:source:"query1, query2":iterate}}
+const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"(?::(cascade|iterate))?\}\}/g
 const RAG_PROMPT_TOP_K = parseInt(process.env.RAG_PROMPT_TOP_K || '3')
+
+function dedupeRagResults(results) {
+  const seen = new Set()
+  return (results || []).filter(result => {
+    const key = [
+      result.type || '',
+      result.name || '',
+      result.chapter || '',
+      result.sessionNumber || '',
+      result.content || ''
+    ].join('::')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function splitIterateItems(query) {
+  const raw = String(query || '').trim()
+  if (!raw) return []
+  if (raw.startsWith('[') && raw.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => String(item || '').trim()).filter(Boolean)
+      }
+    } catch { /* fallback sotto */ }
+  }
+  return raw
+    .split(/[\n,;]+/)
+    .map(item => item.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean)
+}
 
 function buildRagResolver(moduleId, tableId) {
   return async (template, vars) => {
@@ -264,7 +317,7 @@ function buildRagResolver(moduleId, tableId) {
     if (!matches.length) return template
 
     for (const match of matches) {
-      const [fullMatch, source, queryTemplate, cascadeFlag] = match
+      const [fullMatch, source, queryTemplate, mode = ''] = match
 
       // Interpola la stringa di query con le variabili runtime
       let query = queryTemplate
@@ -273,10 +326,20 @@ function buildRagResolver(moduleId, tableId) {
         query = query.replaceAll(`{{${key}}}`, value)
       }
 
-      const isCascade = cascadeFlag === ':cascade'
+      const isCascade = mode === 'cascade'
+      const isIterate = mode === 'iterate'
       let results = []
       try {
-        if (source === 'module') {
+        if (isIterate) {
+          const items = splitIterateItems(query)
+          for (const item of items) {
+            const partial = source === 'module'
+              ? await rag.queryModule(moduleId, item, RAG_PROMPT_TOP_K)
+              : await rag.queryTable(tableId, item, RAG_PROMPT_TOP_K)
+            results.push(...partial)
+          }
+          results = dedupeRagResults(results)
+        } else if (source === 'module') {
           results = isCascade
             ? await rag.cascadeQueryModule(moduleId, query, RAG_PROMPT_TOP_K)
             : await rag.queryModule(moduleId, query, RAG_PROMPT_TOP_K)
@@ -284,7 +347,8 @@ function buildRagResolver(moduleId, tableId) {
           results = await rag.queryTable(tableId, query, RAG_PROMPT_TOP_K)
         }
       } catch (err) {
-        console.warn(`[Custode] RAG resolver [${source}${isCascade ? ':cascade' : ''}] "${query}" fallita:`, err.message)
+        const suffix = isCascade ? ':cascade' : (isIterate ? ':iterate' : '')
+        console.warn(`[Custode] RAG resolver [${source}${suffix}] "${query}" fallita:`, err.message)
       }
 
       template = template.replaceAll(fullMatch, formatRagResults(results))
@@ -449,6 +513,7 @@ class CustodeEngine {
       ctx.session.custodePhase = phase
       await svc.saveSession(this.tableId, ctx.session)
     }
+    console.log(`[Custode] Phase change [${this.tableId}] -> ${phase}`)
     this.io.to(this.room).emit('session:phase-update', { phase })
   }
 
@@ -570,12 +635,12 @@ class CustodeEngine {
       const prevSession = Math.max(1, sessionNumber - 1)
       const vars = {
         prevSession,
+        diary: diary || '(nessun diario disponibile)',
         scena_in_focus: focusScene ? JSON.stringify(focusScene) : ''
       }
       const result = await this.llm('fase1b_sessioni_successive.md', vars)
       if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
-      if (result.diary) await appendDiary(this.tableId, result.diary, sessionNumber, mod.title)
     }
 
     // Prossima fase
@@ -589,19 +654,30 @@ class CustodeEngine {
 
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
-    const { worldState } = await this.buildContext()
+    const { worldState, mod } = await this.buildContext()
+    const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const suggerimento_scena = suggerimento || 'scena introduttiva'
 
     await this.emitThinking('fase-2b')
     const result = await this.llm('fase2b_prepara_scena.md', { suggerimento_scena })
     if (this.abortIfPaused()) return null
 
+    result.PNG = normalizeSceneListOutput(result.PNG)
+    result.opportunita = normalizeSceneListOutput(result.opportunita)
+    result.minacce = normalizeSceneListOutput(result.minacce)
+    result.indizi = normalizeSceneListOutput(result.indizi)
+
     // Assegna ID progressivo e inizializza progressione
     result.id_scena = await nextSceneId(this.tableId)
     result.progressione = ''
+    result.sessionNumber = sessionNumber
+    result.sequenceNumber = await svc.nextRagSequenceNumber(this.tableId)
 
     // Salva scena in active_scenes
     await saveScene(this.tableId, result)
+    await rag.rebuildTableIndex(this.tableId, mod.title).catch(err =>
+      console.warn(`[Custode] Rebuild RAG tavolo fallito per ${this.tableId}:`, err.message)
+    )
 
     // Aggiorna world_state: sceneId del gruppo in focus
     const focusGroup = worldState.groups.find(g => g.groupId === (worldState.focusGroupId || 'group01'))
@@ -658,21 +734,16 @@ class CustodeEngine {
       .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
 
     const result = await this.llm('fase3b_narrazione.md', {
-      scena_focus:  JSON.stringify(focusScene),
-      progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       schede_PG,
-      diary:        diary || '(nessun diario disponibile)',
-      engagement:   JSON.stringify(engagement),
-      storia_recente: recentMsgs,
+      diary: diary || '(nessun diario disponibile)',
+      PNG: focusScene?.PNG || '',
+      opportunita: focusScene?.opportunita || '',
+      minacce: focusScene?.minacce || '',
+      indizi: focusScene?.indizi || '',
+      scena_focus_ID: focusScene?.id_scena || '',
       contesto_dove:  focusScene?.contesto_dove || ''
     })
     if (this.abortIfPaused()) return null
-
-    // Aggiorna focusScene se la LLM l'ha confermata/cambiata
-    if (result.focus_scene && result.focus_scene !== worldState.focusScene) {
-      worldState.focusScene = result.focus_scene
-      await saveWorldState(this.tableId, worldState)
-    }
 
     await this.emitNarrative(result.narrativa)
 
@@ -726,7 +797,7 @@ class CustodeEngine {
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase4_dichiarazioni.md', {
-      scena_focus: JSON.stringify(focusScene),
+      scena_focus_ID: focusScene?.id_scena || '',
       schede_PG,
       messaggi_buffer: msgs,
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno',
@@ -736,11 +807,9 @@ class CustodeEngine {
 
     // result è l'array piano — conversione nomi → email
     const pianoRaw = Array.isArray(result) ? result : (result.piano || [])
-    const pianoNormalized = pianoRaw.map((entry, index) => ({
-      ...entry,
-      priorita: Number.isInteger(entry?.priorita) ? entry.priorita : (index + 1)
-    }))
-    const piano = pianoToEmails(pianoNormalized, pgLookup)
+    const piano = pianoToEmails(pianoRaw, pgLookup)
+    console.log(`[Custode] Piano azione [${this.tableId}] raw=${debugString(pianoRaw)}`)
+    console.log(`[Custode] Piano azione [${this.tableId}] normalized=${debugString(piano)}`)
 
     // Salva piano in sessione
     const ctx = svc.getSession(this.tableId)
@@ -752,6 +821,7 @@ class CustodeEngine {
     // Controlla completezza
     const isCompleto = piano.every(e =>
       e.stato === 'dichiarazione' ||
+      e.stato === 'domanda' ||
       (e.stato === 'prova' && e.risultato_prova != null)
     )
 
@@ -763,30 +833,50 @@ class CustodeEngine {
     // Trova prossima entry pendente per priorità
     const pending = piano
       .filter(e => e.stato === 'incompleta' || e.stato === 'assente' ||
-                   (e.stato === 'prova' && e.risultato_prova == null))
-      .sort((a, b) => (a.priorita || 99) - (b.priorita || 99))[0]
+                   (e.stato === 'prova' && e.risultato_prova == null))[0]
+
+    if (!pending) {
+      console.warn(`[Custode] Nessuna entry pendente trovata nonostante il piano risulti incompleto [${this.tableId}] piano=${debugString(piano)}`)
+      this.buffer = []
+      return { next: 'fase-3' }
+    }
+
+    if (!pending.pg) {
+      console.warn(`[Custode] Entry pendente senza pg_target [${this.tableId}] entry=${debugString(pending)} piano=${debugString(piano)}`)
+      this.buffer = []
+      return { next: 'fase-3' }
+    }
 
     // Costruisce l'entry con pg già convertito in nome per le sottofasi
     const entryPerLlm = (e, lookup) => ({ ...e, pg: lookup.toName[e.pg] || e.pg })
 
     if (pending.stato === 'incompleta')
-      return { next: 'sottofase-4a', data: { pg_target: pending.pg, richiesta_chiarimenti: entryPerLlm(pending, pgLookup) } }
+      return { next: 'sottofase-4a', data: { pg_target: pending.pg, dichiarazione: pending.azione || '', scena_focus_ID: focusScene?.id_scena || '' } }
     if (pending.stato === 'assente')
       return { next: 'sottofase-4b', data: { pg_target: pending.pg, richiesta_dichiarazione: entryPerLlm(pending, pgLookup) } }
     if (pending.stato === 'prova')
-      return { next: 'sottofase-4c', data: { pg_target: pending.pg, richiesta_prova: entryPerLlm(pending, pgLookup) } }
+      return { next: 'sottofase-4c', data: { pg_target: pending.pg, dichiarazione_con_richiesta_prova: {
+        azione: pending.azione || '',
+        abilita_o_caratteristica: pending.abilita_o_caratteristica || '',
+        difficolta: pending.difficolta || ''
+      }, scena_focus_ID: focusScene?.id_scena || '' } }
   }
 
   async fase4a(data) {
     await this.emitPhaseChange('fase-4a')
     await this.emitThinking('fase-4a')
-    const { worldState, pgLookup } = await this.buildContext()
+    const { worldState, pgLookup, schede_PG } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
+    if (!data?.pg_target) {
+      console.warn(`[Custode] sottofase-4a senza pg_target [${this.tableId}] data=${debugString(data)}`)
+      return { next: 'fase-3' }
+    }
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4a_chiarimenti.md', {
       pg_target: pgNome,
-      richiesta_chiarimenti: JSON.stringify(data.richiesta_chiarimenti),
-      scena_focus: JSON.stringify(focusScene),
+      scena_focus_ID: data.scena_focus_ID || focusScene?.id_scena || '',
+      schede_PG,
+      dichiarazione: data.dichiarazione || '',
       world_state: JSON.stringify(worldState)
     })
     if (this.abortIfPaused()) return null
@@ -803,6 +893,10 @@ class CustodeEngine {
     await this.emitThinking('fase-4b')
     const { worldState, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
+    if (!data?.pg_target) {
+      console.warn(`[Custode] sottofase-4b senza pg_target [${this.tableId}] data=${debugString(data)}`)
+      return { next: 'fase-3' }
+    }
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4b_dichiarazione_assente.md', {
       pg_target: pgNome,
@@ -822,13 +916,18 @@ class CustodeEngine {
   async fase4c(data) {
     await this.emitPhaseChange('fase-4c')
     await this.emitThinking('fase-4c')
-    const { worldState, pgLookup } = await this.buildContext()
+    const { worldState, pgLookup, schede_PG } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
+    if (!data?.pg_target) {
+      console.warn(`[Custode] sottofase-4c senza pg_target [${this.tableId}] data=${debugString(data)}`)
+      return { next: 'fase-3' }
+    }
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4c_necessita_prova.md', {
       pg_target: pgNome,
-      richiesta_prova: JSON.stringify(data.richiesta_prova),
-      scena_focus: JSON.stringify(focusScene),
+      scena_focus_ID: data.scena_focus_ID || focusScene?.id_scena || '',
+      schede_PG,
+      dichiarazione_con_richiesta_prova: JSON.stringify(data.dichiarazione_con_richiesta_prova),
       world_state: JSON.stringify(worldState)
     })
     if (this.abortIfPaused()) return null
@@ -858,7 +957,7 @@ class CustodeEngine {
     })
     if (this.abortIfPaused()) return null
 
-    await this.emitNarrative(result.narrativa)
+    await this.emitNarrative(result.progressione)
 
     for (const s of result.sussurri || []) {
       const targetEmail = pgLookup.toEmail[s.target?.toLowerCase()] || s.target
@@ -880,10 +979,15 @@ class CustodeEngine {
     const agg = result.aggiornamenti || {}
 
     // Aggiorna progressione della scena (append)
-    if (agg.progressione && focusScene) {
+    if (result.progressione && focusScene) {
       const prev = focusScene.progressione || ''
-      focusScene.progressione = prev ? `${prev}\n${agg.progressione}` : agg.progressione
+      focusScene.progressione = prev ? `${prev}\n${result.progressione}` : result.progressione
+      focusScene.sessionNumber = sessionNumber
+      focusScene.sequenceNumber = await svc.nextRagSequenceNumber(this.tableId)
       await saveScene(this.tableId, focusScene)
+      await rag.rebuildTableIndex(this.tableId, mod.title).catch(err =>
+        console.warn(`[Custode] Rebuild RAG tavolo fallito per ${this.tableId}:`, err.message)
+      )
     }
 
     // Aggiorna diario
@@ -971,10 +1075,20 @@ class CustodeEngine {
 
     if (result.aggiornamenti?.diary) await appendDiary(this.tableId, result.aggiornamenti.diary, sessionNumber, mod.title)
     if (result.aggiornamenti?.scena_chiusa) {
-      await closeScene(this.tableId, result.aggiornamenti.scena_chiusa, result.riepilogo_scena)
+      const closingSequenceNumber = await svc.nextRagSequenceNumber(this.tableId)
+      await closeScene(
+        this.tableId,
+        result.aggiornamenti.scena_chiusa,
+        result.riepilogo_scena,
+        result.suggerimento_prossima_scena || '',
+        closingSequenceNumber
+      )
       const ws = await getWorldState(this.tableId)
       ws.focusScene = null
       await saveWorldState(this.tableId, ws)
+      await rag.rebuildTableIndex(this.tableId, mod.title).catch(err =>
+        console.warn(`[Custode] Rebuild RAG tavolo fallito per ${this.tableId}:`, err.message)
+      )
     }
 
     // Invia aggiornamento diario ai client
@@ -1049,6 +1163,7 @@ class CustodeEngine {
 
     while (current && !this.paused) {
       try {
+        console.log(`[Custode] runLoop [${this.tableId}] entering ${current} data=${debugString(data)}`)
         let result
 
         if (current === 'fase-2') result = await this.fase2(data?.suggerimento)
@@ -1064,6 +1179,8 @@ class CustodeEngine {
         else break  // fase-1 già eseguita, fase-3 attende input
 
         if (!result) break  // in attesa di input giocatori
+
+        console.log(`[Custode] runLoop [${this.tableId}] phase ${current} -> next ${result.next || '(none)'} result=${debugString(result)}`)
 
         current = result.next
         data = result
@@ -1082,6 +1199,7 @@ class CustodeEngine {
   startBuffer() {
     this.bufferActive = true
     this.flushInProgress = false
+    console.log(`[Custode] Buffer start [${this.tableId}]`)
   }
 
   async onPlayerMessage(message) {
@@ -1095,8 +1213,9 @@ class CustodeEngine {
     // Turno singolo (dopo 4a o 4b): accumula senza tagging, timer silenzio
     if (phase === 'fase-4a' || phase === 'fase-4b') {
       this.buffer.push({ ...message, tag: 'dichiarazione' })
+      console.log(`[Custode] Buffer add [${this.tableId}] phase=${phase} msg=${message.fromName || message.from}: ${message.text}`)
       svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
-        this.flushBuffer('turno-singolo')
+        this.flushBuffer('turno-singolo').catch(console.error)
       })
       return
     }
@@ -1104,15 +1223,16 @@ class CustodeEngine {
     // Gioco libero: accumula nel buffer
     if (!this.bufferActive) return
     this.buffer.push(message)
+    console.log(`[Custode] Buffer add [${this.tableId}] phase=${phase} msg=${message.fromName || message.from}: ${message.text}`)
     this.tagMessageAsync(message)
 
     if (this.buffer.length >= MSG_BUFFER_SIZE) {
-      this.flushBuffer('buffer-pieno')
+      this.flushBuffer('buffer-pieno').catch(console.error)
       return
     }
 
     svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
-      this.flushBuffer('timer-silenzio')
+      this.flushBuffer('timer-silenzio').catch(console.error)
     })
     svc.setTimer(this.tableId, 'early-flush', EARLY_FLUSH_IDLE_MS, () => {
       this.evaluateEarlyFlush().catch(console.error)
@@ -1143,12 +1263,39 @@ class CustodeEngine {
     await this.runLoop('fase-4', piano)
   }
 
-  flushBuffer(reason) {
+  async getFlushParticipants() {
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx) return []
+    const phase = ctx.session.custodePhase
+
+    if (phase === 'fase-4a' || phase === 'fase-4b' || phase === 'fase-4c') {
+      return ctx.session.players
+        .filter(p => p.playerState === 'mio-turno-libero' || p.playerState === 'mio-turno-prova')
+        .map(p => p.email)
+    }
+
+    const worldState = await getWorldState(this.tableId)
+    const focusGroup = worldState.groups?.find(g => g.sceneId === worldState.focusScene)
+    return focusGroup?.participants || []
+  }
+
+  async flushBuffer(reason) {
     if (!this.running || !this.buffer.length || this.flushInProgress) return
+    const participants = await this.getFlushParticipants()
+    const typingPlayers = svc.getTypingPlayers(this.tableId)
+    if (hasActiveTypingInFocus(typingPlayers, participants)) {
+      console.log(`[Custode] Buffer flush postponed [${this.tableId}] reason=${reason} participants=${debugString(participants)} typing=${debugString(typingPlayers)}`)
+      svc.clearTimer(this.tableId, 'silenzio')
+      svc.setTimer(this.tableId, 'silenzio', Math.max(EARLY_FLUSH_IDLE_MS, 3000), () => {
+        this.flushBuffer(`retry-${reason}`).catch(console.error)
+      })
+      return
+    }
+
     this.flushInProgress = true
     svc.clearTimer(this.tableId, 'silenzio')
     svc.clearTimer(this.tableId, 'early-flush')
-    console.log(`[Custode] Buffer flush: ${reason} (${this.buffer.length} msgs)`)
+    console.log(`[Custode] Buffer flush [${this.tableId}] reason=${reason} msgs=${this.buffer.length} payload=${debugString(this.buffer.map(m => ({ from: m.fromName || m.from, tag: m.tag, text: m.text })))}`)
     this.bufferActive = false
     // In turno singolo passa il piano parziale corrente, altrimenti null (round fresco)
     const ctx = svc.getSession(this.tableId)
@@ -1183,6 +1330,7 @@ class CustodeEngine {
       const msg = this.buffer.find(m => m.id === message.id)
       if (msg && Object.prototype.hasOwnProperty.call(result, 'annotazione')) {
         msg.tag = result.annotazione
+        console.log(`[Custode] Tagging buffer [${this.tableId}] message=${message.id} tag=${result.annotazione}`)
       }
 
       await this.evaluateEarlyFlush()
@@ -1202,10 +1350,14 @@ class CustodeEngine {
     const focusParticipants = focusGroup?.participants || []
     const typingPlayers = svc.getTypingPlayers(this.tableId)
 
-    if (hasActiveTypingInFocus(typingPlayers, focusParticipants)) return
+    if (hasActiveTypingInFocus(typingPlayers, focusParticipants)) {
+      console.log(`[Custode] Early flush blocked by typing [${this.tableId}] participants=${debugString(focusParticipants)} typing=${debugString(typingPlayers)}`)
+      return
+    }
 
     if (shouldProcessByAnnotations(this.buffer, focusParticipants)) {
-      this.flushBuffer('annotazioni')
+      console.log(`[Custode] Early flush triggered by annotations [${this.tableId}] participants=${debugString(focusParticipants)}`)
+      this.flushBuffer('annotazioni').catch(console.error)
     }
   }
 
@@ -1227,7 +1379,7 @@ class CustodeEngine {
     if (!ctx) return false
     const targetExists = ctx.session.players.some(p => p.email === email)
     if (!targetExists) {
-      console.warn(`[Custode] Target turno non valido: ${email}`)
+      console.warn(`[Custode] Target turno non valido [${this.tableId}] target=${email} phase=${ctx.session.custodePhase} players=${debugString(ctx.session.players.map(p => ({ email: p.email, playerState: p.playerState })))} piano=${debugString(ctx.session.pianoAzione)}`)
       return false
     }
     // Tutti gli altri: fuori-turno

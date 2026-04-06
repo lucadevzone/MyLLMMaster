@@ -1,8 +1,8 @@
 {
   "type": "object",
-  "required": ["narrativa", "sussurri", "divisione_gruppi", "ricongiungimento_gruppi", "chiusura_scena", "aggiornamenti"],
+  "required": ["progressione", "sussurri", "divisione_gruppi", "ricongiungimento_gruppi", "chiusura_scena", "aggiornamenti"],
   "properties": {
-    "narrativa": { "type": "string" },
+    "progressione": { "type": "string" },
     "sussurri": {
       "type": "array",
       "items": {
@@ -20,9 +20,8 @@
     "chiusura_scena": { "type": "boolean" },
     "aggiornamenti": {
       "type": "object",
-      "required": ["progressione", "diary", "npcs", "items"],
+      "required": ["diary", "npcs", "items"],
       "properties": {
-        "progressione": { "type": "string" },
         "diary": { "type": "string" },
         "npcs": { "type": "array" },
         "items": { "type": "array" }

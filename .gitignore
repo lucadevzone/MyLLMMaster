@@ -34,3 +34,10 @@ Thumbs.db
 # Temporary
 tmp/
 temp/
+
+# Test artifacts
+server/test/artifacts_prompt_fields/
+server/test/artifacts_prompt_rag/
+server/test/artifacts_tag_extraction/
+server/test/artifacts_engine_cycle/
+server/test/artifacts_table_rag_e2e/

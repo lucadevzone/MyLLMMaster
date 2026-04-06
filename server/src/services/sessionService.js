@@ -90,6 +90,7 @@ async function getOrCreateSession(tableId, invitedPlayers) {
     session = {
       sessionId: uuidv4(),
       sessionNumber,
+      ragSequenceNumber: 0,
       state: 'custode-pronto',
       custodePhase: null,
       focusGroupId: null,
@@ -121,6 +122,19 @@ async function getOrCreateSession(tableId, invitedPlayers) {
 
 function getSession(tableId) {
   return activeSessions.get(tableId) || null
+}
+
+async function nextRagSequenceNumber(tableId) {
+  const ctx = getSession(tableId)
+  if (!ctx) return 0
+  ctx.session.ragSequenceNumber = (ctx.session.ragSequenceNumber || 0) + 1
+  await saveSession(tableId, ctx.session)
+  await appendLog(tableId, ctx.session.sessionId, {
+    event: 'rag-sequence',
+    sessionNumber: ctx.session.sessionNumber,
+    sequenceNumber: ctx.session.ragSequenceNumber
+  })
+  return ctx.session.ragSequenceNumber
 }
 
 // ── Giocatori ─────────────────────────────────────────────────────────────────
@@ -364,5 +378,6 @@ module.exports = {
   pauseAllTimers,
   resumeAllTimers,
   destroySession,
-  saveSession
+  saveSession,
+  nextRagSequenceNumber
 }
