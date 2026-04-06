@@ -99,9 +99,6 @@ async function getDiary(tableId) {
 async function appendDiary(tableId, entry, sessionNumber = 0, moduleTitle = '') {
   const p = path.join(tDir(tableId), 'diary.txt')
   await fs.appendFile(p, '\n\n' + entry)
-  rag.indexDiaryEntry(tableId, entry, sessionNumber, moduleTitle).catch(err =>
-    console.warn(`[Custode] Indicizzazione diary entry fallita per ${tableId}:`, err.message)
-  )
 }
 
 async function readPreparedFile(tableId, filename) {
@@ -196,10 +193,12 @@ async function saveScene(tableId, scene, closed = false) {
   await writeJSON(path.join(tDir(tableId), dir, `${scene.id_scena}.json`), scene)
 }
 
-async function closeScene(tableId, sceneId, riepilogo) {
+async function closeScene(tableId, sceneId, riepilogo, suggerimentoProssimaScena = '', closingSequenceNumber = 0) {
   const scene = await getScene(tableId, sceneId)
   if (!scene) return
   scene.summary = riepilogo
+  scene.suggerimento_prossima_scena = suggerimentoProssimaScena || ''
+  if (closingSequenceNumber) scene.closingSequenceNumber = closingSequenceNumber
   // Sposta in closed_scenes
   const src = path.join(tDir(tableId), 'active_scenes', `${sceneId}.json`)
   const dst = path.join(tDir(tableId), 'closed_scenes', `${sceneId}.json`)
@@ -615,12 +614,12 @@ class CustodeEngine {
       const prevSession = Math.max(1, sessionNumber - 1)
       const vars = {
         prevSession,
+        diary: diary || '(nessun diario disponibile)',
         scena_in_focus: focusScene ? JSON.stringify(focusScene) : ''
       }
       const result = await this.llm('fase1b_sessioni_successive.md', vars)
       if (this.abortIfPaused()) return null
       await this.emitNarrative(result.narrativa)
-      if (result.diary) await appendDiary(this.tableId, result.diary, sessionNumber, mod.title)
     }
 
     // Prossima fase
@@ -634,7 +633,8 @@ class CustodeEngine {
 
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
-    const { worldState } = await this.buildContext()
+    const { worldState, mod } = await this.buildContext()
+    const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const suggerimento_scena = suggerimento || 'scena introduttiva'
 
     await this.emitThinking('fase-2b')
@@ -644,9 +644,14 @@ class CustodeEngine {
     // Assegna ID progressivo e inizializza progressione
     result.id_scena = await nextSceneId(this.tableId)
     result.progressione = ''
+    result.sessionNumber = sessionNumber
+    result.sequenceNumber = await svc.nextRagSequenceNumber(this.tableId)
 
     // Salva scena in active_scenes
     await saveScene(this.tableId, result)
+    await rag.rebuildTableIndex(this.tableId, mod.title).catch(err =>
+      console.warn(`[Custode] Rebuild RAG tavolo fallito per ${this.tableId}:`, err.message)
+    )
 
     // Aggiorna world_state: sceneId del gruppo in focus
     const focusGroup = worldState.groups.find(g => g.groupId === (worldState.focusGroupId || 'group01'))
@@ -704,6 +709,7 @@ class CustodeEngine {
 
     const result = await this.llm('fase3b_narrazione.md', {
       schede_PG,
+      diary: diary || '(nessun diario disponibile)',
       PNG: focusScene?.PNG || '',
       opportunita: focusScene?.opportunita || '',
       minacce: focusScene?.minacce || '',
@@ -712,12 +718,6 @@ class CustodeEngine {
       contesto_dove:  focusScene?.contesto_dove || ''
     })
     if (this.abortIfPaused()) return null
-
-    // Aggiorna focusScene se la LLM l'ha confermata/cambiata
-    if (result.focus_scene && result.focus_scene !== worldState.focusScene) {
-      worldState.focusScene = result.focus_scene
-      await saveWorldState(this.tableId, worldState)
-    }
 
     await this.emitNarrative(result.narrativa)
 
@@ -771,7 +771,7 @@ class CustodeEngine {
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase4_dichiarazioni.md', {
-      scena_focus: JSON.stringify(focusScene),
+      scena_focus_ID: focusScene?.id_scena || '',
       schede_PG,
       messaggi_buffer: msgs,
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno',
@@ -879,7 +879,7 @@ class CustodeEngine {
       world_state: JSON.stringify(worldState)
     })
     if (this.abortIfPaused()) return null
-    await this.emitNarrative(result.progressione)
+    await this.emitNarrative(result.narrativa)
     const assigned = await this.setPlayerTurn(data.pg_target, 'mio-turno-prova')
     if (!assigned) {
       await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
@@ -905,7 +905,7 @@ class CustodeEngine {
     })
     if (this.abortIfPaused()) return null
 
-    await this.emitNarrative(result.narrativa)
+    await this.emitNarrative(result.progressione)
 
     for (const s of result.sussurri || []) {
       const targetEmail = pgLookup.toEmail[s.target?.toLowerCase()] || s.target
@@ -930,7 +930,12 @@ class CustodeEngine {
     if (result.progressione && focusScene) {
       const prev = focusScene.progressione || ''
       focusScene.progressione = prev ? `${prev}\n${result.progressione}` : result.progressione
+      focusScene.sessionNumber = sessionNumber
+      focusScene.sequenceNumber = await svc.nextRagSequenceNumber(this.tableId)
       await saveScene(this.tableId, focusScene)
+      await rag.rebuildTableIndex(this.tableId, mod.title).catch(err =>
+        console.warn(`[Custode] Rebuild RAG tavolo fallito per ${this.tableId}:`, err.message)
+      )
     }
 
     // Aggiorna diario
@@ -1018,10 +1023,20 @@ class CustodeEngine {
 
     if (result.aggiornamenti?.diary) await appendDiary(this.tableId, result.aggiornamenti.diary, sessionNumber, mod.title)
     if (result.aggiornamenti?.scena_chiusa) {
-      await closeScene(this.tableId, result.aggiornamenti.scena_chiusa, result.riepilogo_scena)
+      const closingSequenceNumber = await svc.nextRagSequenceNumber(this.tableId)
+      await closeScene(
+        this.tableId,
+        result.aggiornamenti.scena_chiusa,
+        result.riepilogo_scena,
+        result.suggerimento_prossima_scena || '',
+        closingSequenceNumber
+      )
       const ws = await getWorldState(this.tableId)
       ws.focusScene = null
       await saveWorldState(this.tableId, ws)
+      await rag.rebuildTableIndex(this.tableId, mod.title).catch(err =>
+        console.warn(`[Custode] Rebuild RAG tavolo fallito per ${this.tableId}:`, err.message)
+      )
     }
 
     // Invia aggiornamento diario ai client

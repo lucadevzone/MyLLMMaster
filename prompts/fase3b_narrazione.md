@@ -28,7 +28,7 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 {{schede_PG}}
 
 **Diario delle sessioni precedenti:**
-{{rag:table:"diary"}}
+{{diary}}
 
 **Contesto della scena):**
 Dove si svolge la scena: {{rag:module:"{{contesto_dove}}"}}
