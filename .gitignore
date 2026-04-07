@@ -41,3 +41,7 @@ server/test/artifacts_prompt_rag/
 server/test/artifacts_tag_extraction/
 server/test/artifacts_engine_cycle/
 server/test/artifacts_table_rag_e2e/
+server/test/artifacts_rag_directives/
+server/test/artifacts_rag_cascade_debug/
+server/test/artifacts_prompt_review/
+server/test/artifacts_prompt_review_tbl_*/

@@ -20,6 +20,12 @@ const ollama = require('./ollamaService')
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 const EMBED_MODEL = process.env.RAG_EMBED_MODEL || 'nomic-embed-text'
 const RAG_TOP_K = parseInt(process.env.RAG_TOP_K || '5')
+const RAG_CASCADE_TOP_K_L1 = parseInt(process.env.RAG_CASCADE_TOP_K_L1 || '1')
+const RAG_CASCADE_TOP_K_L2 = parseInt(process.env.RAG_CASCADE_TOP_K_L2 || '1')
+const RAG_CASCADE_MAX_TAGS = parseInt(process.env.RAG_CASCADE_MAX_TAGS || '5')
+const RAG_CATEGORY_TOP_K_PER_TAG = parseInt(process.env.RAG_CATEGORY_TOP_K_PER_TAG || '1')
+const RAG_CATEGORY_MAX_TAGS = parseInt(process.env.RAG_CATEGORY_MAX_TAGS || '8')
+const RAG_ITERATE_MAX_ITEMS = parseInt(process.env.RAG_ITERATE_MAX_ITEMS || '8')
 const DEFAULT_HEAVY_MODEL = process.env.DEFAULT_HEAVY_LLM_MODEL
 const PRELIM_CHUNK_SIZE = parseInt(process.env.RAG_CHUNK_SIZE || '3000')
 const PRELIM_CHUNK_OVERLAP = parseInt(process.env.RAG_CHUNK_OVERLAP || '200')
@@ -66,6 +72,11 @@ function buildEmbedText(chunk) {
   let text = parts.join(' ') + '\n' + chunk.content
   if (chunk.relatedTags?.length) {
     text += '\nRicerche correlate: ' + chunk.relatedTags.map(t => `[${t}]`).join(' ')
+  }
+  if (chunk.relatedTagsDetailed?.length) {
+    text += '\nTag semantici: ' + chunk.relatedTagsDetailed
+      .map(tag => `[${tag.type || 'tag'}: ${tag.canonical}]`)
+      .join(' ')
   }
   return text
 }
@@ -171,43 +182,56 @@ function enrichRawChunks(rawChunks, semanticChunks) {
 }
 
 function buildTagCatalogMap(tagCatalog) {
-  const tagMap = new Map() // normalizedTag -> canonical
+  const tagMap = new Map() // normalizedTag -> { canonical, type }
 
   for (const tag of tagCatalog || []) {
     const canonical = String(tag.canonical || '').trim()
     if (!canonical) continue
+    const type = String(tag.type || '').trim()
 
     const candidates = [canonical, ...(tag.aliases || [])]
     for (const candidate of candidates) {
       const normalized = normalizeText(candidate)
       if (!normalized || normalized.length < MIN_TAG_LENGTH) continue
-      tagMap.set(normalized, canonical)
+      tagMap.set(normalized, { canonical, type })
     }
   }
 
   return tagMap
 }
 
-function annotateRawChunksWithTagCatalog(rawChunks, tagCatalog) {
+function annotateChunksWithTagCatalog(chunks, tagCatalog) {
   const tagMap = buildTagCatalogMap(tagCatalog)
-  if (!tagMap.size) return rawChunks
+  if (!tagMap.size) return chunks
 
-  return rawChunks.map(chunk => {
+  return chunks.map(chunk => {
     const normalizedContent = normalizeText(chunk.content)
-    const related = new Set()
+    const related = new Map() // canonical -> type
 
-    for (const [normalizedTag, canonical] of tagMap) {
+    for (const [normalizedTag, tagInfo] of tagMap) {
       if (containsWholeTag(normalizedContent, normalizedTag)) {
-        related.add(canonical)
+        related.set(tagInfo.canonical, tagInfo.type)
       }
     }
 
     if (!related.size) return chunk
+    const relatedTagsDetailed = [...related.entries()]
+      .map(([canonical, type]) => ({ canonical, type }))
+      .sort((a, b) =>
+        (a.type || '').localeCompare(b.type || '', 'it') ||
+        a.canonical.localeCompare(b.canonical, 'it')
+      )
+
     return {
       ...chunk,
-      relatedTags: [...related].sort((a, b) => a.localeCompare(b, 'it'))
+      relatedTags: [...related.keys()].sort((a, b) => a.localeCompare(b, 'it')),
+      relatedTagsDetailed
     }
   })
+}
+
+function annotateRawChunksWithTagCatalog(rawChunks, tagCatalog) {
+  return annotateChunksWithTagCatalog(rawChunks, tagCatalog)
 }
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
@@ -346,11 +370,236 @@ function scoreChunks(chunks, queryEmbedding, topK = null) {
       chapter:     chunk.chapter,
       content:     chunk.content,
       relatedTags: chunk.relatedTags,
+      relatedTagsDetailed: chunk.relatedTagsDetailed,
       score:       cosineSimilarity(queryEmbedding, chunk.embedding)
     }))
     .sort((a, b) => b.score - a.score)
 
   return topK == null ? scored : scored.slice(0, topK)
+}
+
+function getMatchedCatalogTags(queryText, tagCatalogPayload) {
+  const tags = Array.isArray(tagCatalogPayload?.tags) ? tagCatalogPayload.tags : []
+  if (!tags.length) return []
+
+  const normalizedQuery = normalizeText(queryText)
+  if (!normalizedQuery) return []
+
+  const matched = new Map()
+  for (const tag of tags) {
+    const canonical = String(tag.canonical || '').trim()
+    if (!canonical) continue
+    const candidates = [canonical, ...(tag.aliases || [])]
+    for (const candidate of candidates) {
+      if (containsWholeTag(normalizedQuery, candidate)) {
+        matched.set(canonical, {
+          type: String(tag.type || '').trim(),
+          canonical
+        })
+        break
+      }
+    }
+  }
+  return [...matched.values()]
+}
+
+function getCanonicalTagsFromQuery(queryText, tagCatalogPayload) {
+  return getMatchedCatalogTags(queryText, tagCatalogPayload).map(tag => tag.canonical)
+}
+
+function tokenizeForRetrieval(text) {
+  return normalizeText(text)
+    .split(' ')
+    .filter(token => token && token.length >= 3 && !STOP_WORDS.has(token))
+}
+
+function countUniqueOverlap(a, b) {
+  const setA = new Set(a)
+  const setB = new Set(b)
+  let count = 0
+  for (const item of setA) {
+    if (setB.has(item)) count++
+  }
+  return count
+}
+
+function isMetaChunkName(name) {
+  const normalized = normalizeText(name)
+  return [
+    'rivelazione opzionale',
+    'uso del soprannaturale',
+    'guida i pg verso questi punti',
+    'come interpretare i png'
+  ].includes(normalized)
+}
+
+function getTagTypeMap(tagCatalogPayload) {
+  const tags = Array.isArray(tagCatalogPayload?.tags) ? tagCatalogPayload.tags : []
+  const map = new Map()
+  for (const tag of tags) {
+    const canonical = String(tag.canonical || '').trim()
+    const type = String(tag.type || '').trim()
+    if (canonical && type) map.set(canonical, type)
+  }
+  return map
+}
+
+function inferQueryCategory(queryTerms) {
+  const hasAny = (...terms) => terms.some(term => queryTerms.includes(term))
+  if (hasAny('location', 'locations', 'luogo', 'luoghi')) return 'location'
+  if (hasAny('personaggio', 'personaggi', 'png', 'npc', 'npcs')) return 'personaggio'
+  if (hasAny('indizio', 'indizi', 'oggetto', 'oggetti', 'reperto', 'reperti')) return 'indizio'
+  return ''
+}
+
+function getCategoryQueryLabel(mode, filterText = '') {
+  const normalized = String(mode || '').trim().toLowerCase()
+  const base =
+    normalized === 'locations' ? 'luoghi del modulo' :
+    normalized === 'personaggi' ? 'personaggi del modulo' :
+    normalized === 'indizi' ? 'indizi del modulo' :
+    normalized
+  return filterText ? `${base} ${filterText}` : base
+}
+
+function isSpecificEntityLikeQuery(queryText, explicitCategory) {
+  const normalized = String(queryText || '').trim()
+  if (!normalized) return false
+  if (explicitCategory) return false
+  if (/[,;]/.test(normalized)) return false
+  return tokenizeForRetrieval(normalized).length >= 1
+}
+
+function rerankModuleResults(results, queryText, tagCatalogPayload, topK = RAG_TOP_K) {
+  if (!Array.isArray(results) || !results.length) return []
+
+  const queryTerms = tokenizeForRetrieval(queryText)
+  const matchedCatalogTags = getMatchedCatalogTags(queryText, tagCatalogPayload)
+  const matchedCanonicals = new Set(matchedCatalogTags.map(tag => tag.canonical))
+  const tagTypeMap = getTagTypeMap(tagCatalogPayload)
+  const explicitCategory = inferQueryCategory(queryTerms)
+  const strictEntityQuery = isSpecificEntityLikeQuery(queryText, explicitCategory)
+  const normalizedQuery = normalizeText(queryText)
+  const locationLikeQuery = explicitCategory === 'location'
+    || matchedCatalogTags.some(tag => tag.type === 'location')
+    || queryTerms.some(term => ['via', 'piazza', 'porto', 'isola', 'museo', 'palais', 'hotel', 'villa', 'grand'].includes(term))
+
+  return results
+    .map(result => {
+      const relatedTags = Array.isArray(result.relatedTags) ? result.relatedTags : []
+      const relatedTagsDetailed = Array.isArray(result.relatedTagsDetailed) ? result.relatedTagsDetailed : []
+      const detailedTags = relatedTagsDetailed.length
+        ? relatedTagsDetailed
+        : relatedTags.map(canonical => ({
+            canonical,
+            type: tagTypeMap.get(canonical) || ''
+          }))
+      const normalizedName = normalizeText(result.name)
+      const lexicalHaystack = tokenizeForRetrieval([
+        result.name,
+        ...relatedTags,
+        String(result.content || '').slice(0, 500)
+      ].join(' '))
+
+      const lexicalOverlap = countUniqueOverlap(queryTerms, lexicalHaystack)
+      const lexicalScore = Math.min(1, lexicalOverlap / Math.max(1, Math.min(4, queryTerms.length || 1)))
+
+      const directTagMatches = relatedTags.filter(tag => matchedCanonicals.has(tag)).length
+      const fuzzyTagMatches = relatedTags.filter(tag => containsWholeTag(normalizeText(queryText), tag)).length
+      const tagMatchScore = Math.min(1, directTagMatches * 1 + fuzzyTagMatches * 0.6)
+
+      const contentHasQuery = containsWholeTag(normalizeText(result.content), queryText)
+      const tagsHaveQuery = relatedTags.some(tag => containsWholeTag(normalizedQuery, tag))
+      const strictEntityScore = strictEntityQuery
+        ? ((contentHasQuery ? 0.6 : 0) + (tagsHaveQuery ? 0.4 : 0))
+        : 0
+      const strictEntityPenalty = strictEntityQuery && strictEntityScore === 0 ? 0.18 : 0
+
+      let categoryScore = 0
+      if (explicitCategory) {
+        const typedCount = detailedTags.filter(tag => tag.type === explicitCategory).length
+        categoryScore = Math.min(1, typedCount / 2)
+      }
+
+      let nameMatchScore = 0
+      if (containsWholeTag(normalizedName, queryText) || containsWholeTag(normalizeText(queryText), result.name)) {
+        nameMatchScore = 1
+      } else {
+        const nameTerms = tokenizeForRetrieval(result.name)
+        const nameOverlap = countUniqueOverlap(queryTerms, nameTerms)
+        nameMatchScore = Math.min(1, nameOverlap / Math.max(1, Math.min(3, nameTerms.length || 1)))
+      }
+
+      let metaPenalty = 0
+      if (locationLikeQuery && isMetaChunkName(result.name)) metaPenalty = 0.12
+
+      const finalScore =
+        (result.score || 0) * 0.44 +
+        tagMatchScore * 0.20 +
+        strictEntityScore * 0.18 +
+        categoryScore * 0.12 +
+        nameMatchScore * 0.10 +
+        lexicalScore * 0.06 -
+        strictEntityPenalty -
+        metaPenalty
+
+      return {
+        ...result,
+        relatedTagsDetailed: detailedTags,
+        score: finalScore
+      }
+    })
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .slice(0, topK)
+}
+
+async function listModuleCategory(moduleId, mode, filterText = '') {
+  const categoryType = getCategoryType(mode)
+  if (!categoryType) return []
+
+  const [tagCatalogPayload, index] = await Promise.all([
+    loadModuleTagCatalogPayload(moduleId),
+    loadIndex(moduleIndexPath(moduleId))
+  ])
+
+  const tags = Array.isArray(tagCatalogPayload?.tags)
+    ? tagCatalogPayload.tags.filter(tag => tag.type === categoryType)
+    : []
+  if (!tags.length) return []
+  if (!filterText) {
+    return tags.map(tag => tag.canonical).sort((a, b) => a.localeCompare(b, 'it'))
+  }
+
+  const matchingCanonicals = new Set()
+  const chunks = Array.isArray(index.chunks) ? index.chunks : []
+  for (const chunk of chunks) {
+    if (!chunkMatchesCategoryFilter(chunk, filterText)) continue
+    const detailed = Array.isArray(chunk.relatedTagsDetailed) ? chunk.relatedTagsDetailed : []
+    for (const tag of detailed) {
+      if (tag.type === categoryType) matchingCanonicals.add(tag.canonical)
+    }
+  }
+
+  return tags
+    .map(tag => tag.canonical)
+    .filter(canonical => matchingCanonicals.has(canonical))
+    .sort((a, b) => a.localeCompare(b, 'it'))
+}
+
+async function queryModuleCategory(moduleId, mode, filterText = '', topK = RAG_TOP_K) {
+  const categoryType = getCategoryType(mode)
+  if (!categoryType) return []
+
+  const tagCatalogPayload = await loadModuleTagCatalogPayload(moduleId)
+  const queryLabel = getCategoryQueryLabel(mode, filterText)
+  const baseResults = await queryModule(moduleId, queryLabel, Math.max(topK * 3, 8))
+  const filtered = baseResults.filter(result => {
+    if (!chunkMatchesCategoryFilter(result, filterText)) return false
+    const detailed = Array.isArray(result.relatedTagsDetailed) ? result.relatedTagsDetailed : []
+    return detailed.some(tag => tag.type === categoryType)
+  })
+
+  return rerankModuleResults(filtered, queryLabel, tagCatalogPayload, topK)
 }
 
 function deduplicateTagCandidates(candidates) {
@@ -673,6 +922,66 @@ async function loadModuleTagCatalog(moduleId) {
   }
 }
 
+async function loadModuleTagCatalogPayload(moduleId) {
+  try {
+    if (!await fileExists(moduleTagCatalogPath(moduleId))) return null
+    return JSON.parse(await fs.readFile(moduleTagCatalogPath(moduleId), 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+function getCategoryType(mode) {
+  const normalized = String(mode || '').trim().toLowerCase()
+  if (normalized === 'locations' || normalized === 'location_list') return 'location'
+  if (normalized === 'personaggi' || normalized === 'personaggi_list') return 'personaggio'
+  if (normalized === 'indizi' || normalized === 'indizi_list') return 'indizio'
+  return ''
+}
+
+function matchesFilterText(text, filterText) {
+  const normalizedFilter = normalizeText(filterText)
+  if (!normalizedFilter) return true
+  return containsWholeTag(normalizeText(text), normalizedFilter)
+}
+
+function chunkMatchesCategoryFilter(chunk, filterText) {
+  const filter = String(filterText || '').trim()
+  if (!filter) return true
+
+  const chapterMatch = filter.match(/^capitolo\s+(\d+)$/i)
+  if (chapterMatch) {
+    return Number(chunk.chapter || 0) === Number(chapterMatch[1])
+  }
+
+  const haystack = [
+    chunk.name,
+    chunk.content,
+    ...(chunk.relatedTags || []),
+    ...((chunk.relatedTagsDetailed || []).map(tag => `${tag.type} ${tag.canonical}`))
+  ].join(' ')
+
+  return matchesFilterText(haystack, filter)
+}
+
+function dedupeScoredResults(results) {
+  const bestByKey = new Map()
+  for (const result of results || []) {
+    const key = [
+      result.type || '',
+      result.name || '',
+      result.chapter || '',
+      result.sessionNumber || '',
+      result.content || ''
+    ].join('::')
+    const previous = bestByKey.get(key)
+    if (!previous || (result.score || 0) > (previous.score || 0)) {
+      bestByKey.set(key, result)
+    }
+  }
+  return [...bestByKey.values()].sort((a, b) => (b.score || 0) - (a.score || 0))
+}
+
 // ── Chunking raw del testo originale (strategia 1+3) ─────────────────────────
 //
 // Strategia combinata:
@@ -830,6 +1139,7 @@ async function indexModuleChunks(moduleId, chunks) {
  */
 async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
   const allChunks = []
+  let ambientazioneChunk = null
 
   // Carica titolo del modulo per arricchire l'header di embedding
   let moduleTitle = ''
@@ -846,13 +1156,13 @@ async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
   try {
     const ambText = await fs.readFile(ambientazionePath, 'utf-8')
     if (ambText.trim()) {
-      allChunks.push(tag({
+      ambientazioneChunk = tag({
         id:      'special_ambientazione',
         type:    'ambientazione',
         name:    'Ambientazione',
         content: ambText.trim()
-      }))
-      console.log(`[RAG] Chunk "Ambientazione" aggiunto dall'ambientazione pre-generata`)
+      })
+      console.log(`[RAG] Chunk "Ambientazione" caricato dall'ambientazione pre-generata`)
     }
   } catch { /* file non ancora generato, ignorato */ }
 
@@ -918,11 +1228,19 @@ async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
     console.log(`[RAG] Modulo ${moduleId}: catalogo consolidato con ${tagCatalog.length} TAG`)
   }
 
+  if (ambientazioneChunk) {
+    const [annotatedAmbientazione] = tagCatalog.length
+      ? annotateChunksWithTagCatalog([ambientazioneChunk], tagCatalog)
+      : [{ ...ambientazioneChunk, relatedTags: [], relatedTagsDetailed: [] }]
+    allChunks.push(annotatedAmbientazione)
+    console.log(`[RAG] Chunk "Ambientazione" aggiunto${annotatedAmbientazione.relatedTags?.length ? ' e annotato' : ''}`)
+  }
+
   const annotatedRawDebug = []
   for (const chapterData of rawChunksByChapter) {
     const annotatedRawChunks = tagCatalog.length
       ? annotateRawChunksWithTagCatalog(chapterData.chunks, tagCatalog)
-      : chapterData.chunks.map(chunk => ({ ...chunk, relatedTags: [] }))
+      : chapterData.chunks.map(chunk => ({ ...chunk, relatedTags: [], relatedTagsDetailed: [] }))
     const enrichedCount = annotatedRawChunks.filter(c => c.relatedTags?.length).length
     console.log(`[RAG] Capitolo ${chapterData.chapter}: ${annotatedRawChunks.length} chunk raw generati (${enrichedCount} annotati con relatedTags)`)
     annotatedRawDebug.push({
@@ -991,23 +1309,37 @@ async function indexSessionIntro(tableId, introText, moduleTitle = '') {
 async function indexAmbientazione(moduleId, ambientazioneText) {
   const indexPath = moduleIndexPath(moduleId)
   const index = await loadIndex(indexPath)
+  const tagCatalog = await loadModuleTagCatalog(moduleId)
 
   // Rimuovi eventuale chunk precedente
   index.chunks = index.chunks.filter(c => c.id !== 'special_ambientazione')
 
+  const [chunk] = tagCatalog.length
+    ? annotateChunksWithTagCatalog([{
+        id: 'special_ambientazione',
+        type: 'ambientazione',
+        name: 'Ambientazione',
+        content: ambientazioneText
+      }], tagCatalog)
+    : [{
+        id: 'special_ambientazione',
+        type: 'ambientazione',
+        name: 'Ambientazione',
+        content: ambientazioneText,
+        relatedTags: [],
+        relatedTagsDetailed: []
+      }]
+
   let embedding
   try {
-    embedding = await embed(ambientazioneText)
+    embedding = await embed(buildEmbedText(chunk))
   } catch (err) {
     console.warn(`[RAG] Embedding Ambientazione fallito per modulo ${moduleId}:`, err.message)
     return
   }
 
   index.chunks.unshift({
-    id:      'special_ambientazione',
-    type:    'ambientazione',
-    name:    'Ambientazione',
-    content: ambientazioneText,
+    ...chunk,
     embedding,
     addedAt: new Date().toISOString()
   })
@@ -1038,69 +1370,121 @@ async function queryModule(moduleId, queryText, topK = RAG_TOP_K) {
   if (!index.chunks?.length) return []
 
   const queryEmbedding = await embed(queryText)
-  return scoreChunks(index.chunks, queryEmbedding, topK)
+  const tagCatalogPayload = await loadModuleTagCatalogPayload(moduleId)
+  const scored = scoreChunks(index.chunks, queryEmbedding, null)
+  return rerankModuleResults(scored, queryText, tagCatalogPayload, topK)
 }
 
 /**
- * Query a cascata su due livelli:
- *  Livello 1 — query semantica normale (topK risultati)
- *  Livello 2 — per ogni relatedTag nei risultati del L1, recupera il chunk
- *              semantico corrispondente (location/personaggio) direttamente
- *              dall'indice per nome, senza ulteriori chiamate embedding.
+ * Query a cascata su due livelli sul nuovo indice raw-tagged:
+ *  Livello 1 — retrieval semantico sui chunk raw
+ *  Livello 2 — espansione verso altri chunk raw che condividono relatedTags
+ *              con la query o con i risultati del livello 1
  *
- * I risultati L2 vengono aggiunti solo se non già presenti nel L1.
+ * I risultati vengono poi rerankati con un piccolo boost per i chunk che
+ * hanno relatedTags esplicitamente coerenti con la query.
  * Usato con la sintassi {{rag:module:cascade:"query"}} nei prompt.
  */
 async function cascadeQueryModule(moduleId, queryText, topK = RAG_TOP_K) {
-  const indexPath = moduleIndexPath(moduleId)
-  if (!await fileExists(indexPath)) return []
+  const tagCatalogPayload = await loadModuleTagCatalogPayload(moduleId)
+  const level1Base = await queryModule(moduleId, queryText, topK)
+  if (!level1Base.length) return []
+  const directMatched = getMatchedCatalogTags(queryText, tagCatalogPayload)
+  const directQueryTags = new Set(directMatched.map(tag => tag.canonical))
+  const directQueryTypes = new Set(directMatched.map(tag => tag.type).filter(Boolean))
 
-  const index = await loadIndex(indexPath)
-  if (!index.chunks?.length) return []
+  const tagStats = new Map() // canonical -> { canonical, type, count, firstPos, inSeed }
+  for (let idx = 0; idx < level1Base.length; idx++) {
+    const result = level1Base[idx]
+    const detailed = Array.isArray(result.relatedTagsDetailed) ? result.relatedTagsDetailed : []
+    const tags = detailed.length
+      ? detailed
+      : (result.relatedTags || []).map(canonical => ({ canonical, type: '' }))
 
-  const queryEmbedding = await embed(queryText)
-  const rawChunks = index.chunks.filter(chunk => chunk.type === 'raw')
+    for (const tag of tags) {
+      const canonical = String(tag.canonical || '').trim()
+      if (!canonical) continue
+      if (directQueryTags.has(canonical)) continue
 
-  // Livello 1: raw-first per sfruttare relatedTags come ponte verso i chunk semantici.
-  let level1 = scoreChunks(rawChunks, queryEmbedding, topK)
-
-  // Fallback: se il retrieval raw non produce nulla, torna al retrieval misto classico.
-  if (!level1.length) {
-    console.log('[RAG] Cascade fallback: nessun chunk raw, uso retrieval misto')
-    return scoreChunks(index.chunks, queryEmbedding, topK)
-  }
-
-  // Livello 2: lookup per nome dei tag correlati trovati nel L1
-  const included = new Set(level1.map(r => r.name.toLowerCase()))
-  const semanticByName = new Map(
-    index.chunks
-      .filter(c => c.type === 'location' || c.type === 'personaggio')
-      .map(c => [c.name.toLowerCase(), c])
-  )
-
-  const level2 = []
-  for (const result of level1) {
-    for (const tag of result.relatedTags || []) {
-      const key = tag.toLowerCase()
-      if (!included.has(key) && semanticByName.has(key)) {
-        const chunk = semanticByName.get(key)
-        level2.push({
-          type:    chunk.type,
-          name:    chunk.name,
-          chapter: chunk.chapter,
-          content: chunk.content,
-          score:   null   // risultato cascade, non scoring diretto
+      if (!tagStats.has(canonical)) {
+        tagStats.set(canonical, {
+          canonical,
+          type: String(tag.type || '').trim(),
+          count: 0,
+          firstPos: idx,
+          inSeed: idx < Math.min(RAG_CASCADE_TOP_K_L1, level1Base.length)
         })
-        included.add(key)
       }
+
+      const entry = tagStats.get(canonical)
+      entry.count += 1
+      entry.firstPos = Math.min(entry.firstPos, idx)
+      entry.inSeed = entry.inSeed || idx < Math.min(RAG_CASCADE_TOP_K_L1, level1Base.length)
+      if (!entry.type && tag.type) entry.type = String(tag.type || '').trim()
     }
   }
 
-  if (level2.length) {
-    console.log(`[RAG] Cascade L2: +${level2.length} chunk da relatedTags`)
+  const limitedSeedTags = [...tagStats.values()]
+    .sort((a, b) =>
+      b.count - a.count ||
+      Number((directQueryTypes.size > 0 && directQueryTypes.has(b.type)) || b.inSeed) -
+      Number((directQueryTypes.size > 0 && directQueryTypes.has(a.type)) || a.inSeed) ||
+      a.firstPos - b.firstPos ||
+      a.canonical.localeCompare(b.canonical, 'it')
+    )
+    .slice(0, RAG_CASCADE_MAX_TAGS)
+    .map(entry => entry.canonical)
+
+  const level1Boosted = level1Base.map(result => ({ ...result, score: (result.score || 0) + 0.15 }))
+  const level2Collected = []
+
+  for (const tag of limitedSeedTags) {
+    const partial = await queryModule(moduleId, tag, RAG_CASCADE_TOP_K_L2)
+    for (const result of partial) {
+      level2Collected.push({ ...result, score: (result.score || 0) - 0.03 })
+    }
   }
 
-  return [...level1, ...level2]
+  if (limitedSeedTags.length) {
+    console.log(`[RAG] Cascade L2: ${limitedSeedTags.length} relatedTags espansi`)
+  }
+
+  const dedupedL1 = dedupeScoredResults(level1Boosted)
+  const seen = new Set(dedupedL1.map(result => [
+    result.type || '',
+    result.name || '',
+    result.chapter || '',
+    result.sessionNumber || '',
+    result.content || ''
+  ].join('::')))
+  const dedupedL2 = dedupeScoredResults(level2Collected).filter(result => {
+    const key = [
+      result.type || '',
+      result.name || '',
+      result.chapter || '',
+      result.sessionNumber || '',
+      result.content || ''
+    ].join('::')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  return [...dedupedL1, ...dedupedL2]
+}
+
+async function queryModuleIterate(moduleId, itemsText, topK = RAG_TOP_K, options = {}) {
+  const items = splitSceneListField(itemsText).slice(0, RAG_ITERATE_MAX_ITEMS)
+  const collected = []
+
+  for (const item of items) {
+    const partial = options.cascade
+      ? await cascadeQueryModule(moduleId, item, topK)
+      : await queryModule(moduleId, item, topK)
+    collected.push(...partial)
+  }
+
+  return dedupeScoredResults(collected).slice(0, topK)
 }
 
 // ── Table (diary) indexing ────────────────────────────────────────────────────
@@ -1227,6 +1611,9 @@ module.exports = {
   deleteModuleIndex,
   queryModule,
   cascadeQueryModule,
+  queryModuleCategory,
+  listModuleCategory,
+  queryModuleIterate,
   indexSessionIntro,
   indexDiaryEntry,
   rebuildTableIndex,

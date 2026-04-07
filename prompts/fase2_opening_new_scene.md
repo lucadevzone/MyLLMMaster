@@ -48,7 +48,8 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 **Contesto del modulo:**
 {{rag:module:"{{suggerimento_scena}}":cascade}}
 
-**Momento attuale (se già noto):** {{momento_corrente}}
+**Momento attuale (se già noto):** 
+{{momento_corrente}}
 
 **Stato attuale dei PG:**
 {{stato_pgs}}

@@ -1,7 +1,8 @@
 {
   "type": "object",
-  "required": ["narrativa", "diary"],
+  "required": ["data_inizio_avventura", "narrativa", "diary"],
   "properties": {
+    "data_inizio_avventura": { "type": "string" },
     "narrativa": { "type": "string" },
     "diary": { "type": "string" }
   },

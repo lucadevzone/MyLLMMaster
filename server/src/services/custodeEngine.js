@@ -86,6 +86,7 @@ async function getWorldState(tableId) {
       groups: [],
       stato_pgs: {},
       conoscenze_party: '',
+      data_inizio_avventura: '',
       npcs: [],
       items: []
     }
@@ -96,6 +97,7 @@ async function getWorldState(tableId) {
   // Migrazione da vecchio schema
   if (!ws.stato_pgs || typeof ws.stato_pgs !== 'object') ws.stato_pgs = {}
   if (typeof ws.conoscenze_party !== 'string') ws.conoscenze_party = ''
+  if (typeof ws.data_inizio_avventura !== 'string') ws.data_inizio_avventura = ''
   if (!Array.isArray(ws.npcs)) ws.npcs = []
   if (!Array.isArray(ws.items)) ws.items = []
   return ws
@@ -399,10 +401,27 @@ function advanceSceneTime(scene, minutiFloat) {
   if (advanced) scene.momento_corrente = advanced.toISOString()
 }
 
+function compactRagText(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function formatRagResults(results) {
   if (!results?.length) return '(nessun contesto disponibile)'
   return results
-    .map(r => `[${r.type}] ${r.name}:\n${r.content}`)
+    .map((r) => {
+      const normalizedName = String(r.name || '').trim()
+      const displayName = normalizedName.replace(/:+\s*$/, '')
+      const normalizedContent = compactRagText(r.content)
+        .replace(new RegExp(`^${escapeRegExp(normalizedName)}:?\\s*\\n?`, 'i'), '')
+        .replace(new RegExp(`^${escapeRegExp(displayName)}:?\\s*\\n?`, 'i'), '')
+        .trim()
+      return compactRagText(`[${r.type}] ${displayName}:\n${normalizedContent}`)
+    })
     .join('\n\n---\n\n')
 }
 
@@ -467,9 +486,14 @@ function formatNomiDisponibili(scene) {
 // prima della normale sostituzione delle variabili.
 // La query può contenere riferimenti a variabili runtime: {{rag:module:"{{suggerimento_scena}}"}}
 
-// Sintassi: {{rag:source:"query"}}, {{rag:source:"query":cascade}} oppure
-// {{rag:source:"query1, query2":iterate}}
-const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"(?::(cascade|iterate))?\}\}/g
+// Sintassi supportate:
+// {{rag:module:"query"}}
+// {{rag:module:"query":cascade}}
+// {{rag:module:locations}}
+// {{rag:module:locations|"Capitolo 1"}}
+// {{rag:module:location_list}}
+// {{rag:module:iterate:"A, B, C"}}
+// {{rag:module:iterate:"A, B, C":cascade}}
 const RAG_PROMPT_TOP_K = parseInt(process.env.RAG_PROMPT_TOP_K || '3')
 
 function dedupeRagResults(results) {
@@ -505,47 +529,171 @@ function splitIterateItems(query) {
     .filter(Boolean)
 }
 
+function formatRagList(items) {
+  if (!items?.length) return '(nessun elemento disponibile)'
+  return compactRagText(items.map(item => String(item || '').trim()).filter(Boolean).join(', '))
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function parseRagDirectiveBody(body) {
+  const text = String(body || '').trim()
+  if (!text.startsWith('module:') && !text.startsWith('table:')) return null
+
+  const firstColon = text.indexOf(':')
+  const source = text.slice(0, firstColon)
+  const rest = text.slice(firstColon + 1)
+
+  // legacy/current entity query: module:"query"[:cascade|:iterate]
+  if (rest.startsWith('"')) {
+    const queryMatch = rest.match(/^"([^"]+)"(?::(cascade|iterate))?$/)
+    if (!queryMatch) return null
+    return {
+      source,
+      kind: queryMatch[2] === 'iterate' ? 'iterate' : 'entity',
+      queryTemplate: queryMatch[1],
+      cascade: queryMatch[2] === 'cascade'
+    }
+  }
+
+  // iterate:"A, B, C"[:cascade]
+  if (rest.startsWith('iterate:')) {
+    const iterateMatch = rest.match(/^iterate:"([^"]+)"(?::(cascade))?$/)
+    if (!iterateMatch) return null
+    return {
+      source,
+      kind: 'iterate',
+      queryTemplate: iterateMatch[1],
+      cascade: iterateMatch[2] === 'cascade'
+    }
+  }
+
+  // category / list mode with optional filter and optional cascade
+  const modeMatch = rest.match(/^([a-z_]+)(?:\|"([^"]+)")?(?::(cascade))?$/i)
+  if (!modeMatch) return null
+
+  return {
+    source,
+    kind: 'mode',
+    mode: modeMatch[1],
+    filterTemplate: modeMatch[2] || '',
+    cascade: modeMatch[3] === 'cascade'
+  }
+}
+
+function findRagDirectives(template) {
+  const text = String(template || '')
+  const directives = []
+  let cursor = 0
+
+  while (cursor < text.length) {
+    const start = text.indexOf('{{rag:', cursor)
+    if (start === -1) break
+
+    let i = start
+    let depth = 0
+    let end = -1
+
+    while (i < text.length - 1) {
+      const pair = text.slice(i, i + 2)
+      if (pair === '{{') {
+        depth++
+        i += 2
+        continue
+      }
+      if (pair === '}}') {
+        depth--
+        i += 2
+        if (depth === 0) {
+          end = i
+          break
+        }
+        continue
+      }
+      i += 1
+    }
+
+    if (end === -1) break
+
+    directives.push({
+      start,
+      end,
+      fullMatch: text.slice(start, end),
+      body: text.slice(start + '{{rag:'.length, end - 2)
+    })
+    cursor = end
+  }
+
+  return directives
+}
+
 function buildRagResolver(moduleId, tableId) {
   return async (template, vars) => {
-    const matches = [...template.matchAll(RAG_PATTERN)]
+    const matches = findRagDirectives(template)
     if (!matches.length) return template
 
-    for (const match of matches) {
-      const [fullMatch, source, queryTemplate, mode = ''] = match
+    for (const match of matches.reverse()) {
+      const { fullMatch, body, start, end } = match
+      const directive = parseRagDirectiveBody(body)
+      if (!directive) continue
 
-      // Interpola la stringa di query con le variabili runtime
-      let query = queryTemplate
-      for (const [key, val] of Object.entries(vars)) {
-        const value = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')
-        query = query.replaceAll(`{{${key}}}`, value)
+      const interpolate = (valueTemplate) => {
+        let value = String(valueTemplate || '')
+        for (const [key, val] of Object.entries(vars)) {
+          const replacement = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')
+          value = value.replaceAll(`{{${key}}}`, replacement)
+        }
+        return value
       }
 
-      const isCascade = mode === 'cascade'
-      const isIterate = mode === 'iterate'
-      let results = []
+      let replacement = '(nessun contesto disponibile)'
       try {
-        if (isIterate) {
-          const items = splitIterateItems(query)
-          for (const item of items) {
-            const partial = source === 'module'
-              ? await rag.queryModule(moduleId, item, RAG_PROMPT_TOP_K)
-              : await rag.queryTable(tableId, item, RAG_PROMPT_TOP_K)
-            results.push(...partial)
+        if (directive.kind === 'entity') {
+          const query = interpolate(directive.queryTemplate)
+          const results = directive.source === 'module'
+            ? (directive.cascade
+                ? await rag.cascadeQueryModule(moduleId, query, RAG_PROMPT_TOP_K)
+                : await rag.queryModule(moduleId, query, RAG_PROMPT_TOP_K))
+            : await rag.queryTable(tableId, query, RAG_PROMPT_TOP_K)
+          replacement = formatRagResults(results)
+        } else if (directive.kind === 'iterate') {
+          const query = interpolate(directive.queryTemplate)
+          if (directive.source === 'module') {
+            const results = await rag.queryModuleIterate(moduleId, query, RAG_PROMPT_TOP_K, { cascade: directive.cascade })
+            replacement = formatRagResults(results)
+          } else {
+            let results = []
+            const items = splitIterateItems(query)
+            for (const item of items) {
+              const partial = await rag.queryTable(tableId, item, RAG_PROMPT_TOP_K)
+              results.push(...partial)
+            }
+            replacement = formatRagResults(dedupeRagResults(results))
           }
-          results = dedupeRagResults(results)
-        } else if (source === 'module') {
-          results = isCascade
-            ? await rag.cascadeQueryModule(moduleId, query, RAG_PROMPT_TOP_K)
-            : await rag.queryModule(moduleId, query, RAG_PROMPT_TOP_K)
         } else {
-          results = await rag.queryTable(tableId, query, RAG_PROMPT_TOP_K)
+          const filterText = interpolate(directive.filterTemplate)
+          const mode = String(directive.mode || '')
+          const isListMode = mode.endsWith('_list')
+
+          if (directive.cascade && isListMode) {
+            replacement = '(cascade non supportato per le modalità *_list)'
+          } else if (directive.source !== 'module') {
+            replacement = '(modalità non supportata per questa sorgente)'
+          } else if (isListMode) {
+            const items = await rag.listModuleCategory(moduleId, mode, filterText)
+            replacement = formatRagList(items)
+          } else {
+            const results = await rag.queryModuleCategory(moduleId, mode, filterText, RAG_PROMPT_TOP_K)
+            replacement = formatRagResults(results)
+          }
         }
       } catch (err) {
-        const suffix = isCascade ? ':cascade' : (isIterate ? ':iterate' : '')
-        console.warn(`[Custode] RAG resolver [${source}${suffix}] "${query}" fallita:`, err.message)
+        console.warn(`[Custode] RAG resolver [${body}] fallita:`, err.message)
       }
 
-      template = template.replaceAll(fullMatch, formatRagResults(results))
+      template = `${template.slice(0, start)}${replacement}${template.slice(end)}`
     }
 
     return template
@@ -840,6 +988,12 @@ class CustodeEngine {
       await this.emitNarrative(result.narrativa)
       if (result.diary) await appendDiary(this.tableId, result.diary, sessionNumber, mod.title)
 
+      // Salva la data di inizio avventura (ISO) se fornita dal LLM
+      if (result.data_inizio_avventura) {
+        const parsed = parseItalianDate(result.data_inizio_avventura)
+        worldState.data_inizio_avventura = parsed?.toISOString() || ''
+      }
+
       // Inizializza world_state: tutti i PG in un unico gruppo
       worldState.groups = [{
         groupId: 'group01',
@@ -893,12 +1047,14 @@ class CustodeEngine {
       : null
     const prevMomento = prevScene?.momento_corrente || null
 
+    // momento_corrente iniziale: scena precedente > data inizio avventura > LLM lo inventa
+    const inizioISO = prevMomento || worldState.data_inizio_avventura || null
     const result = await this.llm('fase2_opening_new_scene.md', {
       suggerimento_scena,
       schede_PG,
       stato_pgs: formatStatoPgs(worldState.stato_pgs),
       conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)',
-      momento_corrente: prevMomento ? formatItalianDate(new Date(prevMomento)) : ''
+      momento_corrente: inizioISO ? formatItalianDate(new Date(inizioISO)) : ''
     })
     if (this.abortIfPaused()) return null
 
@@ -908,8 +1064,8 @@ class CustodeEngine {
     result.indizi = normalizeSceneListOutput(result.indizi)
 
     // Inizializza momento_corrente della scena
-    const parsedMomento = prevMomento
-      ? new Date(prevMomento)
+    const parsedMomento = inizioISO
+      ? new Date(inizioISO)
       : parseItalianDate(result.contesto_quando)
     result.momento_corrente = parsedMomento?.toISOString() || ''
     delete result.contesto_quando  // sostituito da momento_corrente
@@ -1809,4 +1965,4 @@ function destroy(tableId) {
   engines.delete(tableId)
 }
 
-module.exports = { getOrCreate, pause, destroy, prepareSessionBootstrap, prepareSessionBootstrapInBackground, isSessionBootstrapReady, promoteTableToReadyIfPossible }
+module.exports = { getOrCreate, pause, destroy, prepareSessionBootstrap, prepareSessionBootstrapInBackground, isSessionBootstrapReady, promoteTableToReadyIfPossible, buildRagResolver }
