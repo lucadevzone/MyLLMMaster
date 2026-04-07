@@ -15,9 +15,10 @@ Tutti i PG hanno dichiarato. Risolvi le azioni, fai evolvere la scena e narra l'
   "aggiornamenti": {
     "diary": "entry da aggiungere al diario solo se c'è una svolta rilevante nella trama. Stringa vuota altrimenti.",
     "stato_pgs": {
-      "Nome PG": { "stato": "descrizione breve di dove si trova e cosa sta facendo ora" }
+      "Alice": { "stato": "In fondo al corridoio, sta forzando il cassetto della scrivania" },
+      "Henry": { "stato": "All'ingresso, tiene d'occhio la strada" }
     },
-    "nuove_conoscenze": "Solo le nuove informazioni acquisite DAL PARTY in questo round (PNG conosciuti, misteri scoperti, oggetti visti). Stringa vuota se nulla di nuovo.",
+    "nuove_conoscenze": "Il party ha scoperto che il dott. Harlow era in contatto con la setta. Ha visto il simbolo sul retro della fotografia. Stringa vuota se nulla di nuovo in questo round.",
     "npcs": []
   }
 }

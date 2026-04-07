@@ -12,11 +12,27 @@ Ogni PG del gruppo in focus deve avere una entry nel piano.
 {
   "piano": [
     {
-      "pg": "Nome PG",
-      "stato": "dichiarazione | domanda | incompleta | prova | assente",
-      "azione": "descrizione dell'azione o dell'obiettivo espresso dal PG (opzionale per assente)",
-      "abilita_o_caratteristica": "nome abilità o caratteristica (solo per le prove)",
-      "difficolta": "normale | difficile | estrema (solo per le prove)",
+      "pg": "Alice",
+      "stato": "dichiarazione",
+      "azione": "Esamina i documenti sul tavolo cercando qualcosa di utile",
+      "abilita_o_caratteristica": "",
+      "difficolta": "",
+      "risultato_prova": null
+    },
+    {
+      "pg": "Henry",
+      "stato": "prova",
+      "azione": "Tenta di aprire la cassaforte con gli attrezzi da scasso",
+      "abilita_o_caratteristica": "Meccanica",
+      "difficolta": "normale",
+      "risultato_prova": null
+    },
+    {
+      "pg": "Robert",
+      "stato": "assente",
+      "azione": "",
+      "abilita_o_caratteristica": "",
+      "difficolta": "",
       "risultato_prova": null
     }
   ]

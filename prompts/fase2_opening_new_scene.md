@@ -20,10 +20,10 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 - Struttura il materiale estratto nei campi JSON richiesti
 - I campi `PNG`, `opportunita`, `minacce` e `indizi` devono essere array JSON di stringhe
 - Esempio di formato corretto:
-  - `"PNG": ["Sophia Hapgood", "Marcel Dumont"]`
-  - `"opportunita": ["Osservare la tavoletta", "Parlare con Dumont"]`
-  - `"minacce": ["Un uomo tedesco osserva la sala"]`
-  - `"indizi": ["Tavoletta di pietra scura", "Simboli sconosciuti"]`
+  - `"PNG": ["Dott. Harlow", "L'ispettore Morrison"]`
+  - `"opportunita": ["Esaminare i documenti sul tavolo", "Interrogare il testimone"]`
+  - `"minacce": ["Un uomo sconosciuto osserva dall'ingresso"]`
+  - `"indizi": ["Una lettera con simboli incomprensibili", "Una fotografia sbiadita"]`
 - Descrizione della location che tiene conto di dove vengono i PG
 - Elenco delle opportunità, minacce e indizi (con eventuali prove e difficoltà)
 - Attieniti solo al materiale fornito, non inventare elementi aggiuntivi
