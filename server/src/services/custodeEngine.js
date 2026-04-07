@@ -367,9 +367,10 @@ function advanceDateByMinutes(date, minutiFloat) {
 // Formatta stato_pgs come testo leggibile per i prompt
 function formatStatoPgs(statoPgs) {
   if (!statoPgs || !Object.keys(statoPgs).length) return '(nessuno stato PG disponibile)'
-  return Object.entries(statoPgs)
-    .map(([nome, s]) => `${nome}: ${s.stato || '(stato non definito)'}`)
-    .join('\n')
+  const entries = Object.entries(statoPgs)
+    .filter(([, s]) => s?.stato)
+    .map(([nome, s]) => `${nome}: ${s.stato}`)
+  return entries.length ? entries.join('\n') : '(nessuno stato PG disponibile)'
 }
 
 // Formatta gli NPC rilevanti per la scena corrente come testo leggibile per i prompt
@@ -767,9 +768,9 @@ class CustodeEngine {
         subLocation: null,
         activity: null
       }]
-      // Inizializza stato_pgs per tutti i PG
+      // Inizializza stato_pgs come struttura vuota: sarà popolato da fase2
       worldState.stato_pgs = Object.fromEntries(
-        chars.map(c => [c.name, { stato: 'posizione iniziale, in attesa di entrare in scena' }])
+        chars.map(c => [c.name, { stato: '' }])
       )
       await saveWorldState(this.tableId, worldState)
     } else {
@@ -797,7 +798,7 @@ class CustodeEngine {
 
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
-    const { worldState, mod } = await this.buildContext()
+    const { worldState, mod, schede_PG } = await this.buildContext()
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const suggerimento_scena = suggerimento || 'scena introduttiva'
 
@@ -812,6 +813,7 @@ class CustodeEngine {
 
     const result = await this.llm('fase2_opening_new_scene.md', {
       suggerimento_scena,
+      schede_PG,
       stato_pgs: formatStatoPgs(worldState.stato_pgs),
       conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)',
       momento_corrente: prevMomento ? formatItalianDate(new Date(prevMomento)) : ''
@@ -838,10 +840,35 @@ class CustodeEngine {
     // Salva scena in active_scenes
     await saveScene(this.tableId, result)
 
-    // Aggiunge i PNG della scena al world state come "presenti ma non ancora incontrati".
+    // Stato PG iniziale per questa scena (generato dalla LLM)
+    if (result.stato_pgs && typeof result.stato_pgs === 'object') {
+      for (const [nome, s] of Object.entries(result.stato_pgs)) {
+        if (s && typeof s.stato === 'string') {
+          worldState.stato_pgs[nome] = { stato: s.stato }
+        }
+      }
+    }
+
+    // PNG della scena: posizione e stato generati dalla LLM.
     // Nota: essere "in scena" NON significa essere noti al party — la conoscenza si acquisisce
     // solo durante il gioco (presentazione in ruolo, dialogo, ecc.).
-    if (result.PNG?.length) {
+    if (result.stato_pngs && typeof result.stato_pngs === 'object') {
+      for (const [nome, s] of Object.entries(result.stato_pngs)) {
+        const existing = worldState.npcs.find(n => n.name === nome)
+        if (existing) {
+          existing.scena_id = result.id_scena
+          if (s?.stato) existing.stato = s.stato
+        } else {
+          worldState.npcs.push({
+            name: nome,
+            scena_id: result.id_scena,
+            posizione: result.contesto_dove || '',
+            stato: s?.stato || 'presente in scena, non ancora incontrato dal party'
+          })
+        }
+      }
+    } else if (result.PNG?.length) {
+      // Fallback: se la LLM non ha restituito stato_pngs, aggiungi i PNG con stato generico
       result.PNG.forEach(nome => {
         if (!worldState.npcs.find(n => n.name === nome)) {
           worldState.npcs.push({
