@@ -12,15 +12,27 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 }
 
 ## Istruzioni
-- Inizia con un breve "Nella sessione {{prevSession}}…" che riepiloga i fatti salienti del diario
+- Inizia con un breve "Nelle giocate precedenti…" che riepiloga i fatti salienti del diario
 - Non tutti ricordano dove siamo arrivati: ricorda dove si trovano i PG, cosa è successo o cosa sta succedendo intorno a loro
 - Il tono deve essere evocativo e atmosferico, ma non svelare mai trama né misteri che non siano stati già svelati
 - Parla sempre in italiano, in seconda persona plurale rivolgendoti ai giocatori
 
-**Diario del tavolo:**
+
+## Input
+**Diario delle sessioni precedenti:**
 {{diary}}
 
-**Scena corrente:**
-Dove si svolge: {{scena_dove}}
-Cosa è successo finora: {{scena_progressione}}
-Stato dei PG: {{stato_pgs}}
+**Schede PG:**
+{{schede_PG}}
+
+**Momento attuale:**
+{{momento_corrente}}
+
+**Cosa è successo finora in questa scena:**
+{{progressione}}
+
+**Stato attuale dei PG:**
+{{stato_pgs}}
+
+**Stato attuale dei PNG in scena:**
+{{stato_pngs}}

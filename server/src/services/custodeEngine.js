@@ -776,13 +776,13 @@ class CustodeEngine {
     } else {
       await this.emitPhaseChange('fase-1b')
       await this.emitThinking('fase-1b')
-      const prevSession = Math.max(1, sessionNumber - 1)
       const vars = {
-        prevSession,
         diary: diary || '(nessun diario disponibile)',
-        scena_dove: focusScene?.contesto_dove || '',
-        scena_progressione: focusScene?.progressione || '(nessuna progressione)',
-        stato_pgs: formatStatoPgs(worldState.stato_pgs)
+        schede_PG,
+        momento_corrente: sceneMomentoTesto(focusScene),
+        progressione: focusScene?.progressione || '(nessuna progressione)',
+        stato_pgs: formatStatoPgs(worldState.stato_pgs),
+        stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena)
       }
       const result = await this.llm('fase1b_sessioni_successive.md', vars)
       if (this.abortIfPaused()) return null
