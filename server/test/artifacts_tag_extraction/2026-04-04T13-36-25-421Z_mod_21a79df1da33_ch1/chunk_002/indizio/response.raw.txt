@@ -1,8 +1,0 @@
-{
-  "tags": [
-    {
-      "canonical": "tavoletta di pietra scura",
-      "aliases": ["lotto anomalo", "script sconosciuto"]
-    }
-  ]
-}

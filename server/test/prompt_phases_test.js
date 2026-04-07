@@ -163,8 +163,12 @@ async function main() {
     { schede_PG: SCHEDE_PG },
     r => [
       // sintattico
+      checkString(r.data_inizio_avventura, 'data_inizio_avventura', 4),
       checkString(r.narrativa, 'narrativa', 60),
       checkString(r.diary, 'diary', 20),
+      // semantico: data parsabile (deve contenere un anno a 4 cifre)
+      /\d{4}/.test(r.data_inizio_avventura || '')
+        ? null : 'data_inizio_avventura: non contiene un anno riconoscibile',
       // semantico: presenta i PG
       checkContains(r.narrativa, 'narrativa/nomi-pg', ['Emil', 'Luk']),
       // semantico: seconda persona plurale

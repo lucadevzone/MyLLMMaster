@@ -23,7 +23,10 @@
       "Bash(python3 -m json.tool)",
       "Bash(python3:*)",
       "Bash(grep -rh '\\\\{\\\\{[^}]*\\\\}\\\\}' /Users/luca/Documents/gamedev/MyLLMMaster/prompts/*.md)",
-      "Bash(grep -rh '{{' /Users/luca/Documents/gamedev/MyLLMMaster/prompts/*.md)"
+      "Bash(grep -rh '{{' /Users/luca/Documents/gamedev/MyLLMMaster/prompts/*.md)",
+      "Bash(grep -r \"ollama.run\\\\|this.llm\" /Users/luca/Documents/gamedev/MyLLMMaster/server/src/services/*.js)",
+      "Bash(ls -1 /Users/luca/Documents/gamedev/MyLLMMaster/prompts/*.md)",
+      "Bash(xargs -I {} basename {})"
     ]
   }
 }

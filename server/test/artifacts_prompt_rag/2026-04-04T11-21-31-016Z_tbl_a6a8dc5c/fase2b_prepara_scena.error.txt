@@ -1,1 +1,0 @@
-Timeout Ollama dopo 120000 ms

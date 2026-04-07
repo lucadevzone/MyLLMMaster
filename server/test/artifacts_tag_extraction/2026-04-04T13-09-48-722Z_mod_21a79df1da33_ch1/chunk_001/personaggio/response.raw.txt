@@ -1,9 +1,0 @@
-{
-  "tags": [
-    {
-      "canonical": "Henri Belloq",
-      "aliases": [],
-      "evidence": "Il professore della Sorbona che era ossessionato da Atlantide e aveva trovato prove che puntano a una struttura sotterranea sotto Knossos, a Creta."
-    }
-  ]
-}
