@@ -967,6 +967,7 @@ class CustodeEngine {
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno',
       diary: diary || '(nessun diario disponibile)',
       momento_corrente: sceneMomentoTesto(focusScene),
+      progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       stato_pgs: formatStatoPgs(worldState.stato_pgs),
       stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),
       conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)'

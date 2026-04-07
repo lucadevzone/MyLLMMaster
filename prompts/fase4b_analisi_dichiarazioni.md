@@ -36,6 +36,9 @@ Ogni PG del gruppo in focus deve avere una entry nel piano:
 **Momento attuale:**
 {{momento_corrente}}
 
+**Cosa è successo finora in questa scena:**
+{{progressione}}
+
 **Stato attuale dei PG:**
 {{stato_pgs}}
 
