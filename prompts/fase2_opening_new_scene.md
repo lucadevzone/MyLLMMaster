@@ -22,7 +22,7 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 - Esempio di formato corretto:
   - `"PNG": ["Dott. Harlow", "L'ispettore Morrison"]`
   - `"opportunita": ["Esaminare i documenti sul tavolo", "Interrogare il testimone"]`
-  - `"minacce": ["Un uomo sconosciuto osserva dall'ingresso"]`
+  - `"minacce": ["Un uomo sospetto vi osserva dall'ingresso"]`
   - `"indizi": ["Una lettera con simboli incomprensibili", "Una fotografia sbiadita"]`
 - Descrizione della location che tiene conto di dove vengono i PG
 - Elenco delle opportunità, minacce e indizi (con eventuali prove e difficoltà)

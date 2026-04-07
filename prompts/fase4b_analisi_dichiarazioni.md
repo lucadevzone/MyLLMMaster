@@ -36,8 +36,11 @@ Ogni PG del gruppo in focus deve avere una entry nel piano:
 **Momento attuale:**
 {{momento_corrente}}
 
-**Stato attuale dei PG e PNG:**
+**Stato attuale dei PG:**
 {{stato_pgs}}
+
+**Stato attuale dei PNG in scena:**
+{{stato_pngs}}
 
 **Conoscenze del party:**
 {{conoscenze_party}}

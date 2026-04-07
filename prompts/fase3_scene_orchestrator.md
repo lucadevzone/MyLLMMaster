@@ -12,15 +12,15 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 }
 
 ## Istruzioni
-- Alterna tra le scene per non fare annoiare nessuno, ma mantieni alta la tensione
+- Alterna tra le scene attive per non fare annoiare nessuno, ma mantieni alta la tensione
 - Dai priorità a scene in cui: i PG stanno affrontano un pericolo, o stanno per accedere ad indizi cruciali 
 - Se non c'è nessuna scena ad alta priorità, dai spazio a chi ha giocato di meno (consula la tabella di engagement)
 
 **Gruppi e scene attive:**
 {{narrative_groups}}
 
-**Coinvolgimento/Engagement:**
-{{engagement}}
-
 **Scene attive:**
 {{scene_attive}}
+
+**Coinvolgimento/Engagement:**
+{{engagement}}

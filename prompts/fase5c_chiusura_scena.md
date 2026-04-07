@@ -30,5 +30,8 @@ La scena corrente si è conclusa. Descrivi la chiusura con un senso di completam
 **Stato finale dei PG:**
 {{stato_pgs}}
 
+**Stato finale dei PNG:**
+{{stato_pngs}}
+
 **Conoscenze acquisite dal party:**
 {{conoscenze_party}}

@@ -372,6 +372,18 @@ function formatStatoPgs(statoPgs) {
     .join('\n')
 }
 
+// Formatta gli NPC rilevanti per la scena corrente come testo leggibile per i prompt
+function formatStatoNpcs(npcs, scenaId = null) {
+  if (!Array.isArray(npcs) || !npcs.length) return '(nessun PNG in scena)'
+  const rilevanti = scenaId
+    ? npcs.filter(n => !n.scena_id || n.scena_id === scenaId)
+    : npcs
+  if (!rilevanti.length) return '(nessun PNG in scena)'
+  return rilevanti
+    .map(n => `${n.name}: ${n.stato || '(stato non definito)'}`)
+    .join('\n')
+}
+
 function sceneMomentoTesto(scene) {
   if (!scene?.momento_corrente) return ''
   const d = new Date(scene.momento_corrente)
@@ -885,6 +897,7 @@ class CustodeEngine {
       schede_PG,
       diary: diary || '(nessun diario disponibile)',
       stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),
       conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)',
       momento_corrente: sceneMomentoTesto(focusScene),
       PNG: focusScene?.PNG || '',
@@ -955,6 +968,7 @@ class CustodeEngine {
       diary: diary || '(nessun diario disponibile)',
       momento_corrente: sceneMomentoTesto(focusScene),
       stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),
       conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)'
     })
     if (this.abortIfPaused()) return null
@@ -1115,6 +1129,7 @@ class CustodeEngine {
       indizi: focusScene?.indizi || '',
       progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),
       conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)',
       schede_PG
     })
@@ -1245,6 +1260,7 @@ class CustodeEngine {
       contesto_dove: focusScene?.contesto_dove || '',
       progressione: focusScene?.progressione || '',
       stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),
       conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)'
     })
     if (this.abortIfPaused()) return null

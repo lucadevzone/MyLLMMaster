@@ -31,8 +31,11 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 **Momento attuale:** 
 {{momento_corrente}}
 
-**Stato attuale dei PG e PNG:**
+**Stato attuale dei PG:**
 {{stato_pgs}}
+
+**Stato attuale dei PNG in scena:**
+{{stato_pngs}}
 
 **Schede PG:**
 {{schede_PG}}

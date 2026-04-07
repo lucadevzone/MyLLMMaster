@@ -69,6 +69,9 @@ Tutti i PG hanno dichiarato. Risolvi le azioni, fai evolvere la scena e narra l'
 **Stato attuale dei PG:**
 {{stato_pgs}}
 
+**Stato attuale dei PNG in scena:**
+{{stato_pngs}}
+
 **Conoscenze del party:**
 {{conoscenze_party}}
 
