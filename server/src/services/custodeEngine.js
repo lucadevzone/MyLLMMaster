@@ -7,7 +7,6 @@
 
 const path = require('path')
 const fs = require('fs').promises
-const { v4: uuidv4 } = require('uuid')
 const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileStore')
 const { DATA_DIR } = require('../utils/dataInit')
 const svc = require('./sessionService')
@@ -407,6 +406,61 @@ function formatRagResults(results) {
     .join('\n\n---\n\n')
 }
 
+// ── Tool calling: consulto_il_manuale ─────────────────────────────────────────
+
+const CONSULTO_TOOL_DEFINITION = {
+  type: 'function',
+  function: {
+    name: 'consulto_il_manuale',
+    description: "Recupera informazioni dal manuale dell'avventura su un PNG, luogo, oggetto, pericolo o indizio specifico.",
+    parameters: {
+      type: 'object',
+      properties: {
+        argomento: {
+          description: "Nome o tipo dell'elemento da cercare (es. 'Madame Fouchet', 'sala d\\'aste', 'simbolo sulla fotografia', 'cultista infiltrato')"
+        }
+      },
+      required: ['argomento']
+    }
+  }
+}
+
+function buildConsultoToolHandler(moduleId, tableId) {
+  return {
+    consulto_il_manuale: async ({ argomento }) => {
+      try {
+        const results = await rag.cascadeQueryModule(moduleId, argomento, RAG_PROMPT_TOP_K)
+        return formatRagResults(results)
+      } catch (err) {
+        console.warn(`[Custode] consulto_il_manuale("${argomento}") fallito:`, err.message)
+        return '(nessun risultato disponibile per questa query)'
+      }
+    }
+  }
+}
+
+// Formatta i nomi degli elementi disponibili nella scena per il prompt tool-calling
+function formatNomiDisponibili(scene) {
+  const lines = []
+  if (scene?.PNG) {
+    const items = splitIterateItems(String(scene.PNG))
+    if (items.length) lines.push(`PNG: ${items.join(', ')}`)
+  }
+  if (scene?.opportunita) {
+    const items = splitIterateItems(String(scene.opportunita))
+    if (items.length) lines.push(`Opportunità: ${items.join(', ')}`)
+  }
+  if (scene?.minacce) {
+    const items = splitIterateItems(String(scene.minacce))
+    if (items.length) lines.push(`Minacce: ${items.join(', ')}`)
+  }
+  if (scene?.indizi) {
+    const items = splitIterateItems(String(scene.indizi))
+    if (items.length) lines.push(`Indizi: ${items.join(', ')}`)
+  }
+  return lines.length ? lines.join('\n') : '(nessun elemento nel manuale per questa scena)'
+}
+
 // ── RAG resolver ──────────────────────────────────────────────────────────────
 //
 // Risolve i tag {{rag:module:"query"}} e {{rag:table:"query"}} nel template
@@ -703,6 +757,32 @@ class CustodeEngine {
     }
   }
 
+  // Come llm(), ma usa tool calling con consulto_il_manuale invece del ragResolver
+  async llmWithTools(promptFile, vars) {
+    const table = await getTableOrNull(this.tableId)
+    if (!table) throw Object.assign(new Error(`Tavolo ${this.tableId} non trovato`), { isTableMissing: true })
+
+    const model = table['heavy-llmModel']
+    if (!model) {
+      await this.pauseForTechnicalIssue('Modello LLM non configurato – vai in Gestione Tavoli e seleziona un modello')
+      throw Object.assign(new Error('Modello LLM non configurato sul tavolo'), { isLlmError: true })
+    }
+
+    try {
+      const toolHandlers = buildConsultoToolHandler(table.moduleId, this.tableId)
+      return await ollama.runPhaseWithTools(
+        model, promptFile, vars,
+        [CONSULTO_TOOL_DEFINITION], toolHandlers,
+        { num_ctx: ollama.HEAVY_LLM_NUM_CTX }, this.tableId
+      )
+    } catch (err) {
+      if (err.isLlmError) {
+        await this.pauseForTechnicalIssue(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
+      }
+      throw err
+    }
+  }
+
   async pauseForTechnicalIssue(message) {
     svc.pauseAllTimers(this.tableId)
     await svc.updateSessionState(this.tableId, 'technical-pause')
@@ -864,7 +944,6 @@ class CustodeEngine {
           worldState.npcs.push({
             name: nome,
             scena_id: result.id_scena,
-            posizione: result.contesto_dove || '',
             stato: s?.stato || 'presente in scena, non ancora incontrato dal party'
           })
         }
@@ -1015,7 +1094,12 @@ class CustodeEngine {
       messaggi_buffer: msgs,
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno',
       diary: diary || '(nessun diario disponibile)',
+      contesto_dove: focusScene?.contesto_dove || '',
       momento_corrente: sceneMomentoTesto(focusScene),
+      PNG: focusScene?.PNG || '',
+      opportunita: focusScene?.opportunita || '',
+      minacce: focusScene?.minacce || '',
+      indizi: focusScene?.indizi || '',
       progressione: focusScene?.progressione || '(nessuna progressione ancora)',
       stato_pgs: formatStatoPgs(worldState.stato_pgs),
       stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),

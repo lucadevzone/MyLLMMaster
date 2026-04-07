@@ -274,7 +274,7 @@ function buildSceneProgressioneChunk(scene, moduleTitle = '') {
     relatedTags: buildSceneRelatedTags(scene),
     content: [
       `Dove: ${scene.contesto_dove || 'sconosciuto'}`,
-      `Quando: ${scene.contesto_quando || 'non specificato'}`,
+      `Quando: ${scene.momento_corrente || 'non specificato'}`,
       `Scena: ${scene.id_scena}`,
       '',
       'Progressione:',
@@ -284,12 +284,12 @@ function buildSceneProgressioneChunk(scene, moduleTitle = '') {
 }
 
 function buildSceneConclusioneChunk(scene, moduleTitle = '') {
-  const summary = String(scene?.summary || '').trim()
+  const summary = String(scene?.progressione || '').trim()
   if (!summary) return null
   const suggestion = String(scene?.suggerimento_prossima_scena || '').trim()
   const lines = [
     `Dove: ${scene.contesto_dove || 'sconosciuto'}`,
-    `Quando: ${scene.contesto_quando || 'non specificato'}`,
+    `Quando: ${scene.momento_corrente || 'non specificato'}`,
     `Scena: ${scene.id_scena}`,
     '',
     'Conclusione:',

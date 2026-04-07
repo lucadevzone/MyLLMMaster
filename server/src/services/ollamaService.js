@@ -256,6 +256,103 @@ async function runPhase(model, promptFile, vars, ollamaOptions = {}, tableId = n
   return callOllama(model, prompt, true, promptFile, schema, ollamaOptions, tableId)
 }
 
+// ── Tool-calling via /api/chat ─────────────────────────────────────────────────
+//
+// Esegue una fase con tool calling (agentic loop):
+//  1. Invia il prompt come primo messaggio user
+//  2. Se il modello chiama un tool, lo esegue e ricomincia
+//  3. Quando il modello non chiama più tool, estrae il JSON dalla risposta finale
+//
+// toolDefinitions: array di definizioni OpenAI-compatible ({ type:'function', function:{...} })
+// toolHandlers: { nomeTool: async (args) => string }
+
+async function callOllamaWithTools(model, prompt, toolDefinitions, toolHandlers, phase = '?', schema = null, tableId = null) {
+  const MAX_TOOL_ROUNDS = 6
+  const messages = [{ role: 'user', content: prompt }]
+  let lastError
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    let toolCallMade = false
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+
+        const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({ model, messages, stream: false, tools: toolDefinitions })
+        })
+        clearTimeout(timer)
+        if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`)
+
+        const data = await res.json()
+        const msg = data.message
+
+        // Il modello chiama uno o più tool
+        if (msg?.tool_calls?.length) {
+          messages.push({ role: 'assistant', content: msg.content || '', tool_calls: msg.tool_calls })
+          for (const tc of msg.tool_calls) {
+            const fnName = tc.function?.name
+            const fnArgs = tc.function?.arguments || {}
+            const handler = toolHandlers[fnName]
+            let toolResult = '(tool non disponibile)'
+            if (handler) {
+              try { toolResult = await handler(fnArgs) } catch (e) { toolResult = `(errore: ${e.message})` }
+            }
+            console.log(`[Ollama] 🔧 ${phase} round=${round} tool=${fnName}(${JSON.stringify(fnArgs).slice(0, 80)})`)
+            messages.push({ role: 'tool', content: toolResult })
+          }
+          toolCallMade = true
+          break  // passa al round successivo
+        }
+
+        // Risposta finale — estrai JSON
+        const raw = (msg?.content || '').trim()
+        const parsed = extractJSON(raw)
+        const logPrompt = messages
+          .map(m => `[${m.role}]\n${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
+          .join('\n\n---\n\n')
+
+        if (parsed !== null) {
+          const schemaError = validateSchemaResponse(schema, parsed, phase)
+          if (schemaError) {
+            llmLog({ tableId, model, phase, attempt, prompt: logPrompt, response: raw, error: schemaError })
+            throw new Error(`${schemaError} (round ${round})`)
+          }
+          llmLog({ tableId, model, phase, attempt, prompt: logPrompt, response: raw })
+          return parsed
+        }
+
+        llmLog({ tableId, model, phase, attempt, prompt: logPrompt, response: raw, error: 'JSON non valido' })
+        throw new Error(`JSON non valido (round ${round}, tentativo ${attempt}): ${raw.slice(0, 200)}`)
+
+      } catch (err) {
+        lastError = err
+        if (err.name === 'AbortError') lastError = new Error(`Timeout LLM (tool round ${round}, tentativo ${attempt})`)
+        const isNetwork = lastError.message === 'fetch failed' || lastError.cause?.code === 'ECONNREFUSED'
+        if (isNetwork) console.warn(`[Ollama] Connessione fallita (${phase}, round ${round}, tentativo ${attempt})`)
+        else console.warn(`[Ollama] ${phase} round=${round} tentativo=${attempt}: ${lastError.message}`)
+        if (attempt < MAX_RETRIES) await sleep(1000 * attempt)
+      }
+    }
+
+    if (!toolCallMade) break  // tutti i tentativi esauriti senza tool call, nessuna risposta finale
+  }
+
+  throw Object.assign(lastError || new Error('Max tool rounds superati'), { isLlmError: true })
+}
+
+async function runPhaseWithTools(model, promptFile, vars, toolDefinitions, toolHandlers, ollamaOptions = {}, tableId = null) {
+  const [prompt, schema] = await Promise.all([
+    loadPrompt(promptFile, vars),  // nessun ragResolver: il prompt non ha tag {{rag:...}}
+    loadPromptSchema(promptFile)
+  ])
+  return callOllamaWithTools(model, prompt, toolDefinitions, toolHandlers, promptFile, schema, tableId)
+}
+
 async function runTextPhase(model, promptFile, vars, tableId = null, ragResolver = null) {
   const prompt = await loadPrompt(promptFile, vars, ragResolver)
   return callOllama(model, prompt, false, promptFile, null, { num_ctx: HEAVY_LLM_NUM_CTX }, tableId)
@@ -269,4 +366,4 @@ async function runTagging(model, promptFile, vars, tableId = null, ragResolver =
   return callOllama(model, prompt, true, promptFile, schema, {}, tableId)
 }
 
-module.exports = { runPhase, runTextPhase, runTagging, loadPrompt, loadPromptSchema, callOllama, tableLogsDir, HEAVY_LLM_NUM_CTX }
+module.exports = { runPhase, runTextPhase, runTagging, runPhaseWithTools, loadPrompt, loadPromptSchema, callOllama, tableLogsDir, HEAVY_LLM_NUM_CTX }
