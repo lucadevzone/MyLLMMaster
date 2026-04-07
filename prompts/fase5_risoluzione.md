@@ -15,10 +15,10 @@ Tutti i PG hanno dichiarato. Risolvi le azioni, fai evolvere la scena e narra l'
   "aggiornamenti": {
     "diary": "entry da aggiungere al diario solo se c'è una svolta rilevante nella trama. Stringa vuota altrimenti.",
     "stato_pgs": {
-      "Alice": { "stato": "In fondo al corridoio, sta forzando il cassetto della scrivania" },
-      "Henry": { "stato": "All'ingresso, tiene d'occhio la strada" }
+      "Nome PG 1": { "stato": "posizione e attività aggiornata del PG 1" },
+      "Nome PG 2": { "stato": "posizione e attività aggiornata del PG 2" }
     },
-    "nuove_conoscenze": "Il party ha scoperto il nome del il dott. Harlow. Ha visto il simbolo sul retro della fotografia. Stringa vuota se nulla di nuovo in questo round.",
+    "nuove_conoscenze": "solo il delta di questo round — stringa vuota se nulla di nuovo.",
     "npcs": []
   }
 }
