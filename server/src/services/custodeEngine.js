@@ -945,17 +945,17 @@ class CustodeEngine {
     }
 
     const msgs = this.buffer.map(m => `[${m.tag || '?'}] ${m.fromName || m.from}: ${m.text}`).join('\n')
-    const { worldState, schede_PG, pgLookup } = await this.buildContext()
+    const { worldState, schede_PG, pgLookup, diary } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase4b_analisi_dichiarazioni.md', {
       schede_PG,
       messaggi_buffer: msgs,
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno',
+      diary: diary || '(nessun diario disponibile)',
+      momento_corrente: sceneMomentoTesto(focusScene),
       stato_pgs: formatStatoPgs(worldState.stato_pgs),
-      conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)',
-      progressione: focusScene?.progressione || '(nessuna progressione ancora)',
-      contesto_dove: focusScene?.contesto_dove || ''
+      conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)'
     })
     if (this.abortIfPaused()) return null
 

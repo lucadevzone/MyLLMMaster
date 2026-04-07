@@ -25,21 +25,22 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 - Stile evocativo e atmosferico, coerente con Call of Cthulhu
 
 ## Input
-**Schede PG:**
-{{schede_PG}}
-
 **Diario delle sessioni precedenti:**
 {{diary}}
 
-**Stato attuale dei PG (prima di questa scena):**
+**Momento attuale:** 
+{{momento_corrente}}
+
+**Stato attuale dei PG e PNG:**
 {{stato_pgs}}
+
+**Schede PG:**
+{{schede_PG}}
 
 **Conoscenze del party:**
 {{conoscenze_party}}
 
-**Momento attuale:** {{momento_corrente}}
-
-**Contesto della scena:**
+**Altre informzioni utili sulla scena:**
 Dove si svolge: {{contesto_dove}}
 PNG presenti: {{rag:module:"{{PNG}}":iterate}}
 Opportunità: {{rag:module:"{{opportunita}}":iterate}}
