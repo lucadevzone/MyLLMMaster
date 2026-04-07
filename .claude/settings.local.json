@@ -21,7 +21,9 @@
       "Bash(git rm:*)",
       "Bash(ls -lt /Users/luca/Documents/gamedev/MyLLMMaster/data/tables/*/logs/prompts/)",
       "Bash(python3 -m json.tool)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(grep -rh '\\\\{\\\\{[^}]*\\\\}\\\\}' /Users/luca/Documents/gamedev/MyLLMMaster/prompts/*.md)",
+      "Bash(grep -rh '{{' /Users/luca/Documents/gamedev/MyLLMMaster/prompts/*.md)"
     ]
   }
 }

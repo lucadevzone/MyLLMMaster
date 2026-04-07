@@ -8,11 +8,26 @@ Raccogli le dichiarazioni o rispondi alle domande dei seguenti PG.
 ## Output atteso
 Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun markdown, nessun backtick.
 
-Ogni PG del gruppo in focus deve avere una entry nel piano:
+{
+  "piano": [
+    {
+      "pg": "Nome PG",
+      "stato": "dichiarazione | domanda | incompleta | prova | assente",
+      "azione": "descrizione sintetica dell'azione o dell'obiettivo",
+      "abilita_o_caratteristica": "solo per le prove",
+      "difficolta": "normale | difficile | estrema (solo per le prove)",
+      "risultato_prova": null
+    }
+  ]
+}
+
+Il piano attuale da aggiornare è:
 {{piano_azione}}
 
 ## Istruzioni
-- Analizza i messaggi in chat e compila il piano azione
+- Analizza i messaggi in chat e aggiorna il piano azione
+- I messaggi hanno un tag di annotazione tra parentesi quadre: `[dichiarazione]`, `[domanda al custode]`, `[discutendo tra PG]`, `[?]` (non classificato)
+  — usa i tag come suggerimento, ma valuta sempre il contenuto del messaggio
 **Messaggi in chat (con annotazioni tag):**
 {{messaggi_buffer}}
 

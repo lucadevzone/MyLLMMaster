@@ -780,7 +780,9 @@ class CustodeEngine {
       const vars = {
         prevSession,
         diary: diary || '(nessun diario disponibile)',
-        scena_in_focus: focusScene ? JSON.stringify(focusScene) : ''
+        scena_dove: focusScene?.contesto_dove || '',
+        scena_progressione: focusScene?.progressione || '(nessuna progressione)',
+        stato_pgs: formatStatoPgs(worldState.stato_pgs)
       }
       const result = await this.llm('fase1b_sessioni_successive.md', vars)
       if (this.abortIfPaused()) return null
@@ -1264,37 +1266,83 @@ class CustodeEngine {
   async fase5a(data) {
     await this.emitPhaseChange('fase-5a')
     await this.emitThinking('fase-5a')
-    const { worldState } = await this.buildContext()
+    const { worldState, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     const recentMsgs = svc.getSession(this.tableId)?.messages.slice(-5)
       .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
 
     const result = await this.llm('fase5a_divisione_gruppi.md', {
-      scena_focus: JSON.stringify(focusScene),
-      world_state: JSON.stringify(worldState),
-      messaggi_recenti: recentMsgs,
-      dettagli_divisione: JSON.stringify(data)
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      contesto_dove: focusScene?.contesto_dove || '',
+      progressione: focusScene?.progressione || '',
+      messaggi_recenti: recentMsgs
     })
     if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
-    // TODO: aggiorna world_state con nuovi gruppi/scene
-    return { next: 'fase-3' }
+
+    // Aggiorna world_state.groups: divide il gruppo in focus in due
+    const focusGroup = worldState.groups.find(g => g.sceneId === worldState.focusScene)
+    if (focusGroup && Array.isArray(result.gruppo_principale) && Array.isArray(result.gruppo_separato)) {
+      // Converte nomi → email per entrambi i gruppi
+      const principaleEmails = result.gruppo_principale
+        .map(n => pgLookup.toEmail[n?.toLowerCase()] || n).filter(Boolean)
+      const separatoEmails = result.gruppo_separato
+        .map(n => pgLookup.toEmail[n?.toLowerCase()] || n).filter(Boolean)
+
+      // Aggiorna il gruppo principale
+      focusGroup.participants = principaleEmails.length ? principaleEmails : focusGroup.participants
+
+      // Crea nuovo gruppo per il gruppo separato
+      if (separatoEmails.length) {
+        const newGroupId = `group${String(worldState.groups.length + 1).padStart(2, '0')}`
+        worldState.groups.push({
+          groupId: newGroupId,
+          sceneId: null,  // sarà assegnata da fase-2
+          participants: separatoEmails,
+          subLocation: null,
+          activity: null
+        })
+      }
+
+      worldState.focusScene = 'tbd'
+      await saveWorldState(this.tableId, worldState)
+    }
+
+    return { next: 'fase-2', suggerimento: result.suggerimento_nuova_scena || '' }
   }
 
   async fase5b(data) {
     await this.emitPhaseChange('fase-5b')
     await this.emitThinking('fase-5b')
-    const { worldState } = await this.buildContext()
+    const { worldState, pgLookup } = await this.buildContext()
     const activeScenes = await this.getActiveScenes()
 
     const result = await this.llm('fase5b_ricongiungimento.md', {
-      estratti_scene_attive: JSON.stringify(activeScenes),
-      world_state: JSON.stringify(worldState),
-      dettagli_ricongiungimento: JSON.stringify(data)
+      estratti_scene_attive: JSON.stringify(activeScenes.map(s => ({
+        id_scena: s.id_scena,
+        contesto_dove: s.contesto_dove,
+        momento_corrente: sceneMomentoTesto(s)
+      }))),
+      stato_pgs: formatStatoPgs(worldState.stato_pgs)
     })
     if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
-    // TODO: aggiorna world_state unendo i gruppi
+
+    // Aggiorna world_state.groups: unisce tutti i gruppi nella scena di ricongiungimento
+    const targetSceneId = result.scena_ricongiungimento
+    if (targetSceneId) {
+      const allParticipants = [...new Set(worldState.groups.flatMap(g => g.participants || []))]
+      worldState.groups = [{
+        groupId: worldState.groups[0]?.groupId || 'group01',
+        sceneId: targetSceneId,
+        participants: allParticipants,
+        subLocation: null,
+        activity: null
+      }]
+      worldState.focusScene = targetSceneId
+      await saveWorldState(this.tableId, worldState)
+    }
+
     return { next: 'fase-3' }
   }
 
@@ -1316,8 +1364,8 @@ class CustodeEngine {
 
     await this.emitNarrative(result.narrativa)
 
-    // Diario: sempre richiesto a chiusura scena
-    const diaryEntry = result.aggiornamenti?.diary || result.riepilogo_scena || ''
+    // Diario: sempre richiesto a chiusura scena (campo obbligatorio nello schema)
+    const diaryEntry = result.aggiornamenti?.diary || ''
     if (diaryEntry) await appendDiary(this.tableId, diaryEntry, sessionNumber, mod.title)
 
     if (result.aggiornamenti?.scena_chiusa) {
