@@ -28,6 +28,9 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 **Diario delle sessioni precedenti:**
 {{diary}}
 
+**Schede PG:**
+{{schede_PG}}
+
 **Momento attuale:** 
 {{momento_corrente}}
 
@@ -36,9 +39,6 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 **Stato attuale dei PNG in scena:**
 {{stato_pngs}}
-
-**Schede PG:**
-{{schede_PG}}
 
 **Conoscenze del party:**
 {{conoscenze_party}}

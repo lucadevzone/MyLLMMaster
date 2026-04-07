@@ -12,7 +12,10 @@ Ogni PG del gruppo in focus deve avere una entry nel piano:
 {{piano_azione}}
 
 ## Istruzioni
-- Analizza i messaggi in buffer e compila il piano azione
+- Analizza i messaggi in chat e compila il piano azione
+**Messaggi in chat (con annotazioni tag):**
+{{messaggi_buffer}}
+
 - Se un campo è già valorizzato e non è cambiato, lascialo com'è
 - Per ogni PG assegna uno stato:
   - `dichiarazione`: azione chiara che non richiede prova
@@ -29,6 +32,7 @@ Ogni PG del gruppo in focus deve avere una entry nel piano:
 - `risultato_prova` rimane `null` finché il giocatore non ha tirato i dadi
 
 ## Input
+Per l'analisi delle dichiarazioni ti servirà:
 
 **Diario delle sessioni precedenti:**
 {{diary}}
@@ -48,5 +52,9 @@ Ogni PG del gruppo in focus deve avere una entry nel piano:
 **Conoscenze del party:**
 {{conoscenze_party}}
 
-**Messaggi in chat (con annotazioni tag):**
-{{messaggi_buffer}}
+**Altre informzioni utili sulla scena:**
+Dove si svolge: {{contesto_dove}}
+PNG presenti: {{rag:module:"{{PNG}}":iterate}}
+Opportunità: {{rag:module:"{{opportunita}}":iterate}}
+Minacce: {{rag:module:"{{minacce}}":iterate}}
+Indizi: {{rag:module:"{{indizi}}":iterate}}

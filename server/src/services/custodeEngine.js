@@ -767,6 +767,10 @@ class CustodeEngine {
         subLocation: null,
         activity: null
       }]
+      // Inizializza stato_pgs per tutti i PG
+      worldState.stato_pgs = Object.fromEntries(
+        chars.map(c => [c.name, { stato: 'posizione iniziale, in attesa di entrare in scena' }])
+      )
       await saveWorldState(this.tableId, worldState)
     } else {
       await this.emitPhaseChange('fase-1b')
@@ -833,6 +837,22 @@ class CustodeEngine {
 
     // Salva scena in active_scenes
     await saveScene(this.tableId, result)
+
+    // Aggiunge i PNG della scena al world state come "presenti ma non ancora incontrati".
+    // Nota: essere "in scena" NON significa essere noti al party — la conoscenza si acquisisce
+    // solo durante il gioco (presentazione in ruolo, dialogo, ecc.).
+    if (result.PNG?.length) {
+      result.PNG.forEach(nome => {
+        if (!worldState.npcs.find(n => n.name === nome)) {
+          worldState.npcs.push({
+            name: nome,
+            scena_id: result.id_scena,
+            posizione: result.contesto_dove || '',
+            stato: 'presente in scena, non ancora incontrato dal party'
+          })
+        }
+      })
+    }
 
     // Aggiorna world_state: sceneId del gruppo in focus
     const focusGroup = worldState.groups.find(g => g.groupId === (worldState.focusGroupId || 'group01'))
@@ -1116,12 +1136,13 @@ class CustodeEngine {
   async fase5(piano) {
     await this.emitPhaseChange('fase-5')
     await this.emitThinking('fase-5')
-    const { worldState, schede_PG, mod, pgLookup } = await this.buildContext()
+    const { worldState, schede_PG, mod, pgLookup, diary } = await this.buildContext()
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase5_risoluzione.md', {
       piano_azione: JSON.stringify(piano),
+      diary: diary || '(nessun diario disponibile)',
       contesto_dove: focusScene?.contesto_dove || '',
       momento_corrente: sceneMomentoTesto(focusScene),
       PNG: focusScene?.PNG || '',

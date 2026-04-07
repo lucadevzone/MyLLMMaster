@@ -56,12 +56,19 @@ Tutti i PG hanno dichiarato. Risolvi le azioni, fai evolvere la scena e narra l'
 - Stile evocativo e atmosferico, coerente con Call of Cthulhu
 
 ## Input
-**Dove si svolge la scena:** {{contesto_dove}}
-**Momento attuale:** {{momento_corrente}}
-**PNG presenti:** {{PNG}}
-**Opportunità:** {{opportunita}}
-**Minacce:** {{minacce}}
-**Indizi:** {{indizi}}
+**Piano azione (con risultati prove):**
+{{piano_azione}}
+
+Per la narrazione ti servirà:
+
+**Diario delle sessioni precedenti:**
+{{diary}}
+
+**Schede PG:**
+{{schede_PG}}
+
+**Momento attuale:**
+{{momento_corrente}}
 
 **Cosa è successo finora in questa scena:**
 {{progressione}}
@@ -75,8 +82,9 @@ Tutti i PG hanno dichiarato. Risolvi le azioni, fai evolvere la scena e narra l'
 **Conoscenze del party:**
 {{conoscenze_party}}
 
-**Schede PG:**
-{{schede_PG}}
-
-**Piano azione (con risultati prove):**
-{{piano_azione}}
+**Altre informzioni utili sulla scena:**
+Dove si svolge: {{contesto_dove}}
+PNG presenti: {{rag:module:"{{PNG}}":iterate}}
+Opportunità: {{rag:module:"{{opportunita}}":iterate}}
+Minacce: {{rag:module:"{{minacce}}":iterate}}
+Indizi: {{rag:module:"{{indizi}}":iterate}}
