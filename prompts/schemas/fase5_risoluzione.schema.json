@@ -1,28 +1,24 @@
 {
   "type": "object",
-  "required": ["progressione", "durata", "divisione_gruppi", "ricongiungimento_gruppi", "chiusura_scena", "aggiornamenti"],
+  "required": ["narrativa", "durata", "divisione_gruppi", "ricongiungimento_gruppi", "chiusura_scena", "aggiornamenti"],
   "properties": {
-    "progressione": { "type": "string" },
+    "narrativa": { "type": "string" },
+    "sussurri": { "type": "array" },
     "durata": {
-      "type": "object",
-      "required": ["giorni", "ore", "minuti"],
-      "properties": {
-        "giorni": { "type": "integer", "minimum": 0 },
-        "ore": { "type": "integer", "minimum": 0 },
-        "minuti": { "type": "integer", "minimum": 0 }
-      },
-      "additionalProperties": true
+      "type": "string",
+      "enum": ["turno", "minuti", "mezz'ora", "un'ora", "qualche ora", "mezza giornata", "un giorno"]
     },
     "divisione_gruppi": { "type": "boolean" },
     "ricongiungimento_gruppi": { "type": "boolean" },
     "chiusura_scena": { "type": "boolean" },
     "aggiornamenti": {
       "type": "object",
-      "required": ["diary", "npcs", "items"],
+      "required": ["diary", "stato_pgs", "nuove_conoscenze", "npcs"],
       "properties": {
         "diary": { "type": "string" },
-        "npcs": { "type": "array" },
-        "items": { "type": "array" }
+        "stato_pgs": { "type": "object" },
+        "nuove_conoscenze": { "type": "string" },
+        "npcs": { "type": "array" }
       },
       "additionalProperties": true
     }

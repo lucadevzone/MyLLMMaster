@@ -166,8 +166,7 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
     focusScene: null,
     groups: [],
     npcs: [],
-    items: [],
-    data_corrente: { testo: '', iso: '' }
+    items: []
   }
   await writeJSON(path.join(tableDir, 'world_state.json'), worldState)
 

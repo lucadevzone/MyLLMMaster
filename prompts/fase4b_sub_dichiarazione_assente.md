@@ -12,19 +12,21 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 }
 
 ## Istruzioni
-- Rivolgiti direttamente al PG target usando il suo nome (Esempio: "Alice, ..." )
-- Descrivi brevemente quello che accade intorno al PG per dare opportunità d'azione (Esempio: "sei nel bel mezzo di uno scontro a fuoco, i cultisti vi hanno chiuso in un angolo")
+- Rivolgiti direttamente al PG target usando il suo nome (Esempio: "Alice, ...")
+- Descrivi brevemente quello che accade intorno al PG per dare opportunità d'azione
 - Chiedi esplicitamente cosa intende fare ("Esempio: come agisci?")
-- Eventualmente puoi proporre delle alternative tra cui scegliere ("Esempio: "preferisci rimanere sotto copertura, o tentare una fuga disperata?")
-- Se serve indica la necessità di una prova, ma non parlare di regole (Esempio: "certo uscire dal riparo potrebbe essere rischioso, potrebbe richiedere una prova in Schivare").
+- Eventualmente proponi delle alternative tra cui scegliere
+- Se serve indica la necessità di una prova, ma non parlare di regole
 - Parla in italiano, in seconda persona singolare
 
 ## Input
+**Stato attuale del PG {{pg_target}}:**
+{{stato_pgs}}
+
 **Situazione:**
 {{richiesta_dichiarazione}}
 
-**Estratto scena corrente:**
-{{scena_focus}}
+**Dove si svolge la scena:** {{contesto_dove}}
 
-**Stato del Mondo**
-{{world_state}}
+**Cosa è successo finora:**
+{{progressione}}

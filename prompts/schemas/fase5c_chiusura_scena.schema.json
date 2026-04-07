@@ -1,9 +1,8 @@
 {
   "type": "object",
-  "required": ["narrativa", "riepilogo_scena", "suggerimento_prossima_scena", "aggiornamenti"],
+  "required": ["narrativa", "suggerimento_prossima_scena", "aggiornamenti"],
   "properties": {
     "narrativa": { "type": "string" },
-    "riepilogo_scena": { "type": "string" },
     "suggerimento_prossima_scena": { "type": "string" },
     "aggiornamenti": {
       "type": "object",

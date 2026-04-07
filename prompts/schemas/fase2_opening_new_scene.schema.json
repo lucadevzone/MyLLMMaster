@@ -1,13 +1,15 @@
 {
   "type": "object",
-  "required": ["contesto_dove", "contesto_quando", "PNG", "opportunita", "minacce", "indizi"],
+  "required": ["contesto_dove", "PNG", "opportunita", "minacce", "indizi", "stato_pgs", "stato_pngs"],
   "properties": {
     "contesto_dove": { "type": "string" },
     "contesto_quando": { "type": "string" },
     "PNG": { "type": "array", "items": { "type": "string" } },
     "opportunita": { "type": "array", "items": { "type": "string" } },
     "minacce": { "type": "array", "items": { "type": "string" } },
-    "indizi": { "type": "array", "items": { "type": "string" } }
+    "indizi": { "type": "array", "items": { "type": "string" } },
+    "stato_pgs": { "type": "object" },
+    "stato_pngs": { "type": "object" }
   },
   "additionalProperties": true
 }

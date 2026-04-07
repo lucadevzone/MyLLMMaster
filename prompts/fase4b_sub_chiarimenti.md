@@ -13,21 +13,23 @@ Rispondi SOLO con un oggetto JSON valido. Nessun testo prima o dopo, nessun mark
 
 ## Istruzioni
 - Rivolgiti direttamente al PG target usando il suo nome (Esempio: "John, tu hai dichiarato di voler aprire la porta chiusa a chiave")
-- Indica cosa non è chiaro nella sua dichiarazione e perchè (Esempio: "tuttavia tu non hai la chiave, come fai?")
+- Indica cosa non è chiaro nella sua dichiarazione e perché (Esempio: "tuttavia tu non hai la chiave, come fai?")
 - Eventualmente puoi proporre delle alternative tra cui scegliere ("Esempio: "intendi sfondarla a spallate?")
-- Se serve indica la necessità di una prova, ma non parlare di regole (Esempio: "questo potrebbe richiedere una prova di forza").
+- Se serve indica la necessità di una prova, ma non parlare di regole (Esempio: "questo potrebbe richiedere una prova di forza")
 - Tono evocativo, coerente con Call of Cthulhu
 - Parla in italiano, in seconda persona singolare
 
 ## Input
-**Cosa è successo finora in questa scena:**
-{{rag:table:"scene {{scena_focus_ID}}"}}
+**Stato attuale del PG {{pg_target}}:**
+{{stato_pgs}}
+
+**Dove si svolge la scena:** {{contesto_dove}}
+
+**Cosa è successo finora:**
+{{progressione}}
 
 **Schede PG:**
 {{schede_PG}}
 
 **Dichiarazione del giocatore:**
 {{dichiarazione}}
-
-**Stato del Mondo**
-{{world_state}}

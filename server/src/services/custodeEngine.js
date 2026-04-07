@@ -7,7 +7,6 @@
 
 const path = require('path')
 const fs = require('fs').promises
-const { v4: uuidv4 } = require('uuid')
 const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileStore')
 const { DATA_DIR } = require('../utils/dataInit')
 const svc = require('./sessionService')
@@ -85,20 +84,20 @@ async function getWorldState(tableId) {
       currentChapter: 1,
       focusScene: null,
       groups: [],
+      stato_pgs: {},
+      conoscenze_party: '',
       npcs: [],
-      items: [],
-      data_corrente: { testo: '', iso: '' }
+      items: []
     }
     await writeJSON(p, ws)
     return ws
   }
   const ws = await readJSON(p)
-  if (!ws.data_corrente || typeof ws.data_corrente !== 'object') {
-    ws.data_corrente = { testo: '', iso: '' }
-  } else {
-    ws.data_corrente.testo = typeof ws.data_corrente.testo === 'string' ? ws.data_corrente.testo : ''
-    ws.data_corrente.iso = typeof ws.data_corrente.iso === 'string' ? ws.data_corrente.iso : ''
-  }
+  // Migrazione da vecchio schema
+  if (!ws.stato_pgs || typeof ws.stato_pgs !== 'object') ws.stato_pgs = {}
+  if (typeof ws.conoscenze_party !== 'string') ws.conoscenze_party = ''
+  if (!Array.isArray(ws.npcs)) ws.npcs = []
+  if (!Array.isArray(ws.items)) ws.items = []
   return ws
 }
 
@@ -208,12 +207,10 @@ async function saveScene(tableId, scene, closed = false) {
   await writeJSON(path.join(tDir(tableId), dir, `${scene.id_scena}.json`), scene)
 }
 
-async function closeScene(tableId, sceneId, riepilogo, suggerimentoProssimaScena = '', closingSequenceNumber = 0) {
+async function closeScene(tableId, sceneId, suggerimentoProssimaScena = '') {
   const scene = await getScene(tableId, sceneId)
   if (!scene) return
-  scene.summary = riepilogo
   scene.suggerimento_prossima_scena = suggerimentoProssimaScena || ''
-  if (closingSequenceNumber) scene.closingSequenceNumber = closingSequenceNumber
   // Sposta in closed_scenes
   const src = path.join(tDir(tableId), 'active_scenes', `${sceneId}.json`)
   const dst = path.join(tDir(tableId), 'closed_scenes', `${sceneId}.json`)
@@ -290,17 +287,21 @@ const IT_MONTHS = {
   dicembre: 11
 }
 
+// Mappa durata fuzzy (stringa LLM) → minuti da aggiungere all'ISO della scena
+const DURATA_FUZZY_MAP = {
+  'turno':         1/6,   // ~10 secondi
+  'minuti':        5,
+  'mezz\'ora':     30,
+  'un\'ora':       60,
+  'qualche ora':   180,
+  'mezza giornata':360,
+  'un giorno':     1440
+}
+
 function normalizeDurationOutput(value) {
-  const base = { giorni: 0, ore: 0, minuti: 0 }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return base
-  const giorni = Number.parseInt(value.giorni, 10)
-  const ore = Number.parseInt(value.ore, 10)
-  const minuti = Number.parseInt(value.minuti, 10)
-  return {
-    giorni: Number.isFinite(giorni) && giorni > 0 ? giorni : 0,
-    ore: Number.isFinite(ore) && ore > 0 ? ore : 0,
-    minuti: Number.isFinite(minuti) && minuti > 0 ? minuti : 0
-  }
+  if (typeof value !== 'string') return 0
+  const key = value.trim().toLowerCase()
+  return DURATA_FUZZY_MAP[key] ?? 5  // fallback: 5 minuti
 }
 
 function parseItalianDate(text) {
@@ -353,13 +354,49 @@ function formatItalianDate(date, fallbackText = '') {
   return formatter.format(date)
 }
 
-function advanceDateByDuration(date, durata) {
+// minutiFloat: valore restituito da normalizeDurationOutput
+function advanceDateByMinutes(date, minutiFloat) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null
-  const next = new Date(date.getTime())
-  next.setDate(next.getDate() + (durata.giorni || 0))
-  next.setHours(next.getHours() + (durata.ore || 0))
-  next.setMinutes(next.getMinutes() + (durata.minuti || 0))
-  return next
+  if (!minutiFloat) return date
+  return new Date(date.getTime() + minutiFloat * 60 * 1000)
+}
+
+// Restituisce il momento_corrente della scena come stringa leggibile,
+// o stringa vuota se non disponibile.
+// Formatta stato_pgs come testo leggibile per i prompt
+function formatStatoPgs(statoPgs) {
+  if (!statoPgs || !Object.keys(statoPgs).length) return '(nessuno stato PG disponibile)'
+  const entries = Object.entries(statoPgs)
+    .filter(([, s]) => s?.stato)
+    .map(([nome, s]) => `${nome}: ${s.stato}`)
+  return entries.length ? entries.join('\n') : '(nessuno stato PG disponibile)'
+}
+
+// Formatta gli NPC rilevanti per la scena corrente come testo leggibile per i prompt
+function formatStatoNpcs(npcs, scenaId = null) {
+  if (!Array.isArray(npcs) || !npcs.length) return '(nessun PNG in scena)'
+  const rilevanti = scenaId
+    ? npcs.filter(n => !n.scena_id || n.scena_id === scenaId)
+    : npcs
+  if (!rilevanti.length) return '(nessun PNG in scena)'
+  return rilevanti
+    .map(n => `${n.name}: ${n.stato || '(stato non definito)'}`)
+    .join('\n')
+}
+
+function sceneMomentoTesto(scene) {
+  if (!scene?.momento_corrente) return ''
+  const d = new Date(scene.momento_corrente)
+  if (Number.isNaN(d.getTime())) return scene.momento_corrente
+  return formatItalianDate(d)
+}
+
+// Aggiorna scene.momento_corrente avanzando di minutiFloat
+function advanceSceneTime(scene, minutiFloat) {
+  if (!minutiFloat || !scene) return
+  const current = scene.momento_corrente ? new Date(scene.momento_corrente) : null
+  const advanced = advanceDateByMinutes(current, minutiFloat)
+  if (advanced) scene.momento_corrente = advanced.toISOString()
 }
 
 function formatRagResults(results) {
@@ -367,6 +404,61 @@ function formatRagResults(results) {
   return results
     .map(r => `[${r.type}] ${r.name}:\n${r.content}`)
     .join('\n\n---\n\n')
+}
+
+// ── Tool calling: consulto_il_manuale ─────────────────────────────────────────
+
+const CONSULTO_TOOL_DEFINITION = {
+  type: 'function',
+  function: {
+    name: 'consulto_il_manuale',
+    description: "Recupera informazioni dal manuale dell'avventura su un PNG, luogo, oggetto, pericolo o indizio specifico.",
+    parameters: {
+      type: 'object',
+      properties: {
+        argomento: {
+          description: "Nome o tipo dell'elemento da cercare (es. 'Madame Fouchet', 'sala d\\'aste', 'simbolo sulla fotografia', 'cultista infiltrato')"
+        }
+      },
+      required: ['argomento']
+    }
+  }
+}
+
+function buildConsultoToolHandler(moduleId, tableId) {
+  return {
+    consulto_il_manuale: async ({ argomento }) => {
+      try {
+        const results = await rag.cascadeQueryModule(moduleId, argomento, RAG_PROMPT_TOP_K)
+        return formatRagResults(results)
+      } catch (err) {
+        console.warn(`[Custode] consulto_il_manuale("${argomento}") fallito:`, err.message)
+        return '(nessun risultato disponibile per questa query)'
+      }
+    }
+  }
+}
+
+// Formatta i nomi degli elementi disponibili nella scena per il prompt tool-calling
+function formatNomiDisponibili(scene) {
+  const lines = []
+  if (scene?.PNG) {
+    const items = splitIterateItems(String(scene.PNG))
+    if (items.length) lines.push(`PNG: ${items.join(', ')}`)
+  }
+  if (scene?.opportunita) {
+    const items = splitIterateItems(String(scene.opportunita))
+    if (items.length) lines.push(`Opportunità: ${items.join(', ')}`)
+  }
+  if (scene?.minacce) {
+    const items = splitIterateItems(String(scene.minacce))
+    if (items.length) lines.push(`Minacce: ${items.join(', ')}`)
+  }
+  if (scene?.indizi) {
+    const items = splitIterateItems(String(scene.indizi))
+    if (items.length) lines.push(`Indizi: ${items.join(', ')}`)
+  }
+  return lines.length ? lines.join('\n') : '(nessun elemento nel manuale per questa scena)'
 }
 
 // ── RAG resolver ──────────────────────────────────────────────────────────────
@@ -665,6 +757,32 @@ class CustodeEngine {
     }
   }
 
+  // Come llm(), ma usa tool calling con consulto_il_manuale invece del ragResolver
+  async llmWithTools(promptFile, vars) {
+    const table = await getTableOrNull(this.tableId)
+    if (!table) throw Object.assign(new Error(`Tavolo ${this.tableId} non trovato`), { isTableMissing: true })
+
+    const model = table['heavy-llmModel']
+    if (!model) {
+      await this.pauseForTechnicalIssue('Modello LLM non configurato – vai in Gestione Tavoli e seleziona un modello')
+      throw Object.assign(new Error('Modello LLM non configurato sul tavolo'), { isLlmError: true })
+    }
+
+    try {
+      const toolHandlers = buildConsultoToolHandler(table.moduleId, this.tableId)
+      return await ollama.runPhaseWithTools(
+        model, promptFile, vars,
+        [CONSULTO_TOOL_DEFINITION], toolHandlers,
+        { num_ctx: ollama.HEAVY_LLM_NUM_CTX }, this.tableId
+      )
+    } catch (err) {
+      if (err.isLlmError) {
+        await this.pauseForTechnicalIssue(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
+      }
+      throw err
+    }
+  }
+
   async pauseForTechnicalIssue(message) {
     svc.pauseAllTimers(this.tableId)
     await svc.updateSessionState(this.tableId, 'technical-pause')
@@ -730,15 +848,21 @@ class CustodeEngine {
         subLocation: null,
         activity: null
       }]
+      // Inizializza stato_pgs come struttura vuota: sarà popolato da fase2
+      worldState.stato_pgs = Object.fromEntries(
+        chars.map(c => [c.name, { stato: '' }])
+      )
       await saveWorldState(this.tableId, worldState)
     } else {
       await this.emitPhaseChange('fase-1b')
       await this.emitThinking('fase-1b')
-      const prevSession = Math.max(1, sessionNumber - 1)
       const vars = {
-        prevSession,
         diary: diary || '(nessun diario disponibile)',
-        scena_in_focus: focusScene ? JSON.stringify(focusScene) : ''
+        schede_PG,
+        momento_corrente: sceneMomentoTesto(focusScene),
+        progressione: focusScene?.progressione || '(nessuna progressione)',
+        stato_pgs: formatStatoPgs(worldState.stato_pgs),
+        stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena)
       }
       const result = await this.llm('fase1b_sessioni_successive.md', vars)
       if (this.abortIfPaused()) return null
@@ -756,14 +880,25 @@ class CustodeEngine {
 
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
-    const { worldState, mod } = await this.buildContext()
+    const { worldState, mod, schede_PG } = await this.buildContext()
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const suggerimento_scena = suggerimento || 'scena introduttiva'
 
     await this.emitThinking('fase-2')
+
+    // Determina il momento corrente per la nuova scena:
+    // se una scena precedente era in focus usa il suo tempo, altrimenti nessuno
+    const prevScene = worldState.focusScene
+      ? await getScene(this.tableId, worldState.focusScene)
+      : null
+    const prevMomento = prevScene?.momento_corrente || null
+
     const result = await this.llm('fase2_opening_new_scene.md', {
       suggerimento_scena,
-      data_corrente: worldState.data_corrente?.testo || ''
+      schede_PG,
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)',
+      momento_corrente: prevMomento ? formatItalianDate(new Date(prevMomento)) : ''
     })
     if (this.abortIfPaused()) return null
 
@@ -772,36 +907,60 @@ class CustodeEngine {
     result.minacce = normalizeSceneListOutput(result.minacce)
     result.indizi = normalizeSceneListOutput(result.indizi)
 
-    const existingCurrentDate = worldState.data_corrente?.iso
-      ? new Date(worldState.data_corrente.iso)
-      : parseItalianDate(worldState.data_corrente?.testo || '')
-    const inferredSceneDate = existingCurrentDate || parseItalianDate(result.contesto_quando)
-    if (existingCurrentDate) {
-      result.contesto_quando = formatItalianDate(existingCurrentDate, worldState.data_corrente?.testo || result.contesto_quando)
-    } else if (inferredSceneDate) {
-      result.contesto_quando = formatItalianDate(inferredSceneDate, result.contesto_quando)
-      worldState.data_corrente = {
-        testo: result.contesto_quando,
-        iso: inferredSceneDate.toISOString()
-      }
-    } else {
-      worldState.data_corrente = {
-        testo: normalizeNarrativeText(result.contesto_quando),
-        iso: ''
-      }
-    }
+    // Inizializza momento_corrente della scena
+    const parsedMomento = prevMomento
+      ? new Date(prevMomento)
+      : parseItalianDate(result.contesto_quando)
+    result.momento_corrente = parsedMomento?.toISOString() || ''
+    delete result.contesto_quando  // sostituito da momento_corrente
 
     // Assegna ID progressivo e inizializza progressione
     result.id_scena = await nextSceneId(this.tableId)
     result.progressione = ''
     result.sessionNumber = sessionNumber
-    result.sequenceNumber = await svc.nextRagSequenceNumber(this.tableId)
 
     // Salva scena in active_scenes
     await saveScene(this.tableId, result)
-    await rag.rebuildTableIndex(this.tableId, mod.title).catch(err =>
-      console.warn(`[Custode] Rebuild RAG tavolo fallito per ${this.tableId}:`, err.message)
-    )
+
+    // Stato PG iniziale per questa scena (generato dalla LLM)
+    if (result.stato_pgs && typeof result.stato_pgs === 'object') {
+      for (const [nome, s] of Object.entries(result.stato_pgs)) {
+        if (s && typeof s.stato === 'string') {
+          worldState.stato_pgs[nome] = { stato: s.stato }
+        }
+      }
+    }
+
+    // PNG della scena: posizione e stato generati dalla LLM.
+    // Nota: essere "in scena" NON significa essere noti al party — la conoscenza si acquisisce
+    // solo durante il gioco (presentazione in ruolo, dialogo, ecc.).
+    if (result.stato_pngs && typeof result.stato_pngs === 'object') {
+      for (const [nome, s] of Object.entries(result.stato_pngs)) {
+        const existing = worldState.npcs.find(n => n.name === nome)
+        if (existing) {
+          existing.scena_id = result.id_scena
+          if (s?.stato) existing.stato = s.stato
+        } else {
+          worldState.npcs.push({
+            name: nome,
+            scena_id: result.id_scena,
+            stato: s?.stato || 'presente in scena, non ancora incontrato dal party'
+          })
+        }
+      }
+    } else if (result.PNG?.length) {
+      // Fallback: se la LLM non ha restituito stato_pngs, aggiungi i PNG con stato generico
+      result.PNG.forEach(nome => {
+        if (!worldState.npcs.find(n => n.name === nome)) {
+          worldState.npcs.push({
+            name: nome,
+            scena_id: result.id_scena,
+            posizione: result.contesto_dove || '',
+            stato: 'presente in scena, non ancora incontrato dal party'
+          })
+        }
+      })
+    }
 
     // Aggiorna world_state: sceneId del gruppo in focus
     const focusGroup = worldState.groups.find(g => g.groupId === (worldState.focusGroupId || 'group01'))
@@ -809,8 +968,8 @@ class CustodeEngine {
 
     // focusScene: diventa la nuova scena solo se è l'unica scena attiva,
     // altrimenti "tbd" (custode deve scegliere il prossimo focus)
-    const activeScenes = await fs.readdir(path.join(tDir(this.tableId), 'active_scenes')).catch(() => [])
-    worldState.focusScene = activeScenes.filter(f => f.endsWith('.json')).length === 1
+    const activeSceneFiles = await fs.readdir(path.join(tDir(this.tableId), 'active_scenes')).catch(() => [])
+    worldState.focusScene = activeSceneFiles.filter(f => f.endsWith('.json')).length === 1
       ? result.id_scena
       : 'tbd'
 
@@ -853,51 +1012,46 @@ class CustodeEngine {
     return { next: 'fase-4a' }
   }
 
-  // ── FASE 4a: Scene Progress ───────────────────────────────────────────────
+  // ── FASE 4a: Scene Opening (solo per nuove scene) ─────────────────────────
 
-  async fase4aSceneProgress(data = null) {
+  async fase4aSceneOpening() {
     await this.emitPhaseChange('fase-4a')
     await this.emitThinking('fase-4a')
     const { worldState, schede_PG, pgLookup, diary } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     if (!focusScene) return null
 
-    const promptName = focusScene.openingNarratedAt
-      ? 'fase4a_scene_progress.md'
-      : 'fase4a_scene_opening.md'
-
-    const result = await this.llm(promptName, {
+    const result = await this.llm('fase4a_scene_opening.md', {
       schede_PG,
       diary: diary || '(nessun diario disponibile)',
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),
+      conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)',
+      momento_corrente: sceneMomentoTesto(focusScene),
       PNG: focusScene?.PNG || '',
       opportunita: focusScene?.opportunita || '',
       minacce: focusScene?.minacce || '',
       indizi: focusScene?.indizi || '',
-      scena_focus_ID: focusScene?.id_scena || '',
-      contesto_dove:  focusScene?.contesto_dove || '',
-      ultimo_avanzamento: data?.ultimo_avanzamento || ''
+      contesto_dove: focusScene?.contesto_dove || ''
     })
     if (this.abortIfPaused()) return null
 
     await this.emitNarrative(result.narrativa)
 
-    // Sussurri: target è nome PG → converti in email
     for (const s of result.sussurri || []) {
       const targetEmail = pgLookup.toEmail[s.target?.toLowerCase()] || s.target
       await this.emitNarrative(s.testo, { whisper: true, to: targetEmail, type: 'whisper' })
     }
 
-    if (!focusScene.openingNarratedAt) {
-      focusScene.openingNarratedAt = new Date().toISOString()
-      await saveScene(this.tableId, focusScene)
-    }
+    focusScene.openingNarratedAt = new Date().toISOString()
+    await saveScene(this.tableId, focusScene)
 
     // Imposta tutti i PG del gruppo in focus a gioco-libero
     await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
 
     // Avvia timer proattività
     svc.setTimer(this.tableId, 'proattivita', PROACTIVITY_TIMER_MS, async () => {
-      if (!this.paused) await this.runLoop('fase-3')
+      if (!this.paused) await this.runLoop('fase-4b')
     })
 
     // Avvia raccolta buffer
@@ -932,15 +1086,24 @@ class CustodeEngine {
     }
 
     const msgs = this.buffer.map(m => `[${m.tag || '?'}] ${m.fromName || m.from}: ${m.text}`).join('\n')
-    const { worldState, schede_PG, pgLookup } = await this.buildContext()
+    const { worldState, schede_PG, pgLookup, diary } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase4b_analisi_dichiarazioni.md', {
-      scena_focus_ID: focusScene?.id_scena || '',
       schede_PG,
       messaggi_buffer: msgs,
       piano_azione: pianoParziale ? JSON.stringify(pianoParziale) : 'nessuno',
-      world_state: JSON.stringify(worldState)
+      diary: diary || '(nessun diario disponibile)',
+      contesto_dove: focusScene?.contesto_dove || '',
+      momento_corrente: sceneMomentoTesto(focusScene),
+      PNG: focusScene?.PNG || '',
+      opportunita: focusScene?.opportunita || '',
+      minacce: focusScene?.minacce || '',
+      indizi: focusScene?.indizi || '',
+      progressione: focusScene?.progressione || '(nessuna progressione ancora)',
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),
+      conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)'
     })
     if (this.abortIfPaused()) return null
 
@@ -1013,10 +1176,11 @@ class CustodeEngine {
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4b_sub_chiarimenti.md', {
       pg_target: pgNome,
-      scena_focus_ID: data.scena_focus_ID || focusScene?.id_scena || '',
       schede_PG,
       dichiarazione: data.dichiarazione || '',
-      world_state: JSON.stringify(worldState)
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      contesto_dove: focusScene?.contesto_dove || '',
+      progressione: focusScene?.progressione || '(nessuna progressione ancora)'
     })
     if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
@@ -1040,8 +1204,9 @@ class CustodeEngine {
     const result = await this.llm('fase4b_sub_dichiarazione_assente.md', {
       pg_target: pgNome,
       richiesta_dichiarazione: JSON.stringify(data.richiesta_dichiarazione),
-      scena_focus: JSON.stringify(focusScene),
-      world_state: JSON.stringify(worldState)
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      contesto_dove: focusScene?.contesto_dove || '',
+      progressione: focusScene?.progressione || '(nessuna progressione ancora)'
     })
     if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
@@ -1064,10 +1229,11 @@ class CustodeEngine {
     const pgNome = pgLookup.toName[data.pg_target] || data.pg_target
     const result = await this.llm('fase4b_sub_necessita_prova.md', {
       pg_target: pgNome,
-      scena_focus_ID: data.scena_focus_ID || focusScene?.id_scena || '',
       schede_PG,
       dichiarazione_con_richiesta_prova: JSON.stringify(data.dichiarazione_con_richiesta_prova),
-      world_state: JSON.stringify(worldState)
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      contesto_dove: focusScene?.contesto_dove || '',
+      progressione: focusScene?.progressione || '(nessuna progressione ancora)'
     })
     if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
@@ -1083,126 +1249,184 @@ class CustodeEngine {
   async fase5(piano) {
     await this.emitPhaseChange('fase-5')
     await this.emitThinking('fase-5')
-    const { worldState, schede_PG, mod } = await this.buildContext()
+    const { worldState, schede_PG, mod, pgLookup, diary } = await this.buildContext()
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase5_risoluzione.md', {
       piano_azione: JSON.stringify(piano),
-      scena_focus: JSON.stringify(focusScene),
+      diary: diary || '(nessun diario disponibile)',
+      contesto_dove: focusScene?.contesto_dove || '',
+      momento_corrente: sceneMomentoTesto(focusScene),
+      PNG: focusScene?.PNG || '',
+      opportunita: focusScene?.opportunita || '',
+      minacce: focusScene?.minacce || '',
+      indizi: focusScene?.indizi || '',
       progressione: focusScene?.progressione || '(nessuna progressione ancora)',
-      world_state: JSON.stringify(worldState),
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),
+      conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)',
       schede_PG
     })
     if (this.abortIfPaused()) return null
 
-    result.durata = normalizeDurationOutput(result.durata)
+    // ── Narrativa per i giocatori ─────────────────────────────────────────────
+    await this.emitNarrative(result.narrativa)
+    for (const s of result.sussurri || []) {
+      const targetEmail = pgLookup.toEmail[s.target?.toLowerCase()] || s.target
+      await this.emitNarrative(s.testo, { whisper: true, to: targetEmail, type: 'whisper' })
+    }
 
-    // Aggiorna engagement: incrementa i PG presenti nel piano
+    // ── Aggiorna engagement ───────────────────────────────────────────────────
     const ctx = svc.getSession(this.tableId)
     if (ctx) {
       if (!ctx.session.engagement) ctx.session.engagement = {}
       for (const azione of piano || []) {
-        if (azione.pg) {
-          ctx.session.engagement[azione.pg] = (ctx.session.engagement[azione.pg] || 0) + 1
-        }
+        if (azione.pg) ctx.session.engagement[azione.pg] = (ctx.session.engagement[azione.pg] || 0) + 1
       }
       await svc.saveSession(this.tableId, ctx.session)
     }
 
     const agg = result.aggiornamenti || {}
 
-    // Aggiorna progressione della scena (append)
-    if (result.progressione && focusScene) {
+    // ── Aggiorna progressione scena (append) e tempo ──────────────────────────
+    if (result.narrativa && focusScene) {
       const prev = focusScene.progressione || ''
-      focusScene.progressione = prev ? `${prev}\n${result.progressione}` : result.progressione
-      focusScene.sessionNumber = sessionNumber
-      focusScene.sequenceNumber = await svc.nextRagSequenceNumber(this.tableId)
+      focusScene.progressione = prev ? `${prev}\n\n${result.narrativa}` : result.narrativa
+      const minutiFloat = normalizeDurationOutput(result.durata)
+      advanceSceneTime(focusScene, minutiFloat)
       await saveScene(this.tableId, focusScene)
-      await rag.rebuildTableIndex(this.tableId, mod.title).catch(err =>
-        console.warn(`[Custode] Rebuild RAG tavolo fallito per ${this.tableId}:`, err.message)
-      )
     }
 
-    // Aggiorna diario
+    // ── Aggiorna world state ──────────────────────────────────────────────────
+    const ws = await getWorldState(this.tableId)
+
+    // stato_pgs
+    if (agg.stato_pgs && typeof agg.stato_pgs === 'object') {
+      for (const [nome, s] of Object.entries(agg.stato_pgs)) {
+        if (s && typeof s.stato === 'string') {
+          ws.stato_pgs[nome] = { stato: s.stato }
+        }
+      }
+    }
+
+    // conoscenze_party (append-only)
+    if (agg.nuove_conoscenze && typeof agg.nuove_conoscenze === 'string' && agg.nuove_conoscenze.trim()) {
+      ws.conoscenze_party = ws.conoscenze_party
+        ? `${ws.conoscenze_party}\n${agg.nuove_conoscenze.trim()}`
+        : agg.nuove_conoscenze.trim()
+    }
+
+    // npcs
+    if (agg.npcs?.length) {
+      agg.npcs.forEach(n => {
+        const existing = ws.npcs.find(x => x.name === n.name)
+        if (existing) Object.assign(existing, n)
+        else ws.npcs.push(n)
+      })
+    }
+
+    await saveWorldState(this.tableId, ws)
+
+    // ── Diario ────────────────────────────────────────────────────────────────
     if (agg.diary) await appendDiary(this.tableId, agg.diary, sessionNumber, mod.title)
 
-    // Aggiorna npcs e items nel world state
-    if (agg.npcs?.length || agg.items?.length) {
-      const ws = await getWorldState(this.tableId)
-      if (agg.npcs?.length) {
-        agg.npcs.forEach(n => {
-          const existing = ws.npcs.find(x => x.name === n.name)
-          if (existing) Object.assign(existing, n)
-          else ws.npcs.push(n)
-        })
-      }
-      if (agg.items?.length) {
-        agg.items.forEach(i => {
-          const existing = ws.items.find(x => x.name === i.name)
-          if (existing) Object.assign(existing, i)
-          else ws.items.push(i)
-        })
-      }
-      await saveWorldState(this.tableId, ws)
-    }
-
-    if (result.durata.giorni || result.durata.ore || result.durata.minuti) {
-      const ws = await getWorldState(this.tableId)
-      const current = ws.data_corrente?.iso
-        ? new Date(ws.data_corrente.iso)
-        : parseItalianDate(ws.data_corrente?.testo || focusScene?.contesto_quando || '')
-      const advanced = advanceDateByDuration(current, result.durata)
-      if (advanced) {
-        ws.data_corrente = {
-          testo: formatItalianDate(advanced, ws.data_corrente?.testo || ''),
-          iso: advanced.toISOString()
-        }
-        await saveWorldState(this.tableId, ws)
-      }
-    }
+    // ── Aggiorna diario in UI ─────────────────────────────────────────────────
+    if (agg.diary) this.io.to(this.room).emit('session:diary', await getDiary(this.tableId))
 
     if (result.divisione_gruppi) return { next: 'fase-5a' }
     if (result.ricongiungimento_gruppi) return { next: 'fase-5b' }
     if (result.chiusura_scena) return { next: 'fase-5c' }
 
-    return { next: 'fase-4a', ultimo_avanzamento: result.progressione || '' }
+    // Torna ad attendere dichiarazioni (niente più fase-4a intermedia)
+    await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
+    svc.setTimer(this.tableId, 'proattivita', PROACTIVITY_TIMER_MS, async () => {
+      if (!this.paused) await this.runLoop('fase-4b')
+    })
+    this.startBuffer()
+    return null  // attende messaggi
   }
 
   async fase5a(data) {
     await this.emitPhaseChange('fase-5a')
     await this.emitThinking('fase-5a')
-    const { worldState } = await this.buildContext()
+    const { worldState, pgLookup } = await this.buildContext()
     const focusScene = await getScene(this.tableId, worldState.focusScene)
     const recentMsgs = svc.getSession(this.tableId)?.messages.slice(-5)
       .map(m => `${m.fromName}: ${m.text}`).join('\n') || ''
 
     const result = await this.llm('fase5a_divisione_gruppi.md', {
-      scena_focus: JSON.stringify(focusScene),
-      world_state: JSON.stringify(worldState),
-      messaggi_recenti: recentMsgs,
-      dettagli_divisione: JSON.stringify(data)
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      contesto_dove: focusScene?.contesto_dove || '',
+      progressione: focusScene?.progressione || '',
+      messaggi_recenti: recentMsgs
     })
     if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
-    // TODO: aggiorna world_state con nuovi gruppi/scene
-    return { next: 'fase-3' }
+
+    // Aggiorna world_state.groups: divide il gruppo in focus in due
+    const focusGroup = worldState.groups.find(g => g.sceneId === worldState.focusScene)
+    if (focusGroup && Array.isArray(result.gruppo_principale) && Array.isArray(result.gruppo_separato)) {
+      // Converte nomi → email per entrambi i gruppi
+      const principaleEmails = result.gruppo_principale
+        .map(n => pgLookup.toEmail[n?.toLowerCase()] || n).filter(Boolean)
+      const separatoEmails = result.gruppo_separato
+        .map(n => pgLookup.toEmail[n?.toLowerCase()] || n).filter(Boolean)
+
+      // Aggiorna il gruppo principale
+      focusGroup.participants = principaleEmails.length ? principaleEmails : focusGroup.participants
+
+      // Crea nuovo gruppo per il gruppo separato
+      if (separatoEmails.length) {
+        const newGroupId = `group${String(worldState.groups.length + 1).padStart(2, '0')}`
+        worldState.groups.push({
+          groupId: newGroupId,
+          sceneId: null,  // sarà assegnata da fase-2
+          participants: separatoEmails,
+          subLocation: null,
+          activity: null
+        })
+      }
+
+      worldState.focusScene = 'tbd'
+      await saveWorldState(this.tableId, worldState)
+    }
+
+    return { next: 'fase-2', suggerimento: result.suggerimento_nuova_scena || '' }
   }
 
   async fase5b(data) {
     await this.emitPhaseChange('fase-5b')
     await this.emitThinking('fase-5b')
-    const { worldState } = await this.buildContext()
+    const { worldState, pgLookup } = await this.buildContext()
     const activeScenes = await this.getActiveScenes()
 
     const result = await this.llm('fase5b_ricongiungimento.md', {
-      estratti_scene_attive: JSON.stringify(activeScenes),
-      world_state: JSON.stringify(worldState),
-      dettagli_ricongiungimento: JSON.stringify(data)
+      estratti_scene_attive: JSON.stringify(activeScenes.map(s => ({
+        id_scena: s.id_scena,
+        contesto_dove: s.contesto_dove,
+        momento_corrente: sceneMomentoTesto(s)
+      }))),
+      stato_pgs: formatStatoPgs(worldState.stato_pgs)
     })
     if (this.abortIfPaused()) return null
     await this.emitNarrative(result.narrativa)
-    // TODO: aggiorna world_state unendo i gruppi
+
+    // Aggiorna world_state.groups: unisce tutti i gruppi nella scena di ricongiungimento
+    const targetSceneId = result.scena_ricongiungimento
+    if (targetSceneId) {
+      const allParticipants = [...new Set(worldState.groups.flatMap(g => g.participants || []))]
+      worldState.groups = [{
+        groupId: worldState.groups[0]?.groupId || 'group01',
+        sceneId: targetSceneId,
+        participants: allParticipants,
+        subLocation: null,
+        activity: null
+      }]
+      worldState.focusScene = targetSceneId
+      await saveWorldState(this.tableId, worldState)
+    }
+
     return { next: 'fase-3' }
   }
 
@@ -1214,30 +1438,29 @@ class CustodeEngine {
     const focusScene = await getScene(this.tableId, worldState.focusScene)
 
     const result = await this.llm('fase5c_chiusura_scena.md', {
-      scena_focus: JSON.stringify(focusScene),
-      world_state: JSON.stringify(worldState),
-      dettagli_chiusura: JSON.stringify(data)
+      contesto_dove: focusScene?.contesto_dove || '',
+      progressione: focusScene?.progressione || '',
+      stato_pgs: formatStatoPgs(worldState.stato_pgs),
+      stato_pngs: formatStatoNpcs(worldState.npcs, focusScene?.id_scena),
+      conoscenze_party: worldState.conoscenze_party || '(nessuna conoscenza acquisita)'
     })
     if (this.abortIfPaused()) return null
 
     await this.emitNarrative(result.narrativa)
 
-    if (result.aggiornamenti?.diary) await appendDiary(this.tableId, result.aggiornamenti.diary, sessionNumber, mod.title)
+    // Diario: sempre richiesto a chiusura scena (campo obbligatorio nello schema)
+    const diaryEntry = result.aggiornamenti?.diary || ''
+    if (diaryEntry) await appendDiary(this.tableId, diaryEntry, sessionNumber, mod.title)
+
     if (result.aggiornamenti?.scena_chiusa) {
-      const closingSequenceNumber = await svc.nextRagSequenceNumber(this.tableId)
       await closeScene(
         this.tableId,
         result.aggiornamenti.scena_chiusa,
-        result.riepilogo_scena,
-        result.suggerimento_prossima_scena || '',
-        closingSequenceNumber
+        result.suggerimento_prossima_scena || ''
       )
       const ws = await getWorldState(this.tableId)
       ws.focusScene = null
       await saveWorldState(this.tableId, ws)
-      await rag.rebuildTableIndex(this.tableId, mod.title).catch(err =>
-        console.warn(`[Custode] Rebuild RAG tavolo fallito per ${this.tableId}:`, err.message)
-      )
     }
 
     // Invia aggiornamento diario ai client
@@ -1317,7 +1540,7 @@ class CustodeEngine {
 
         if (current === 'fase-2') result = await this.fase2(data?.suggerimento)
         else if (current === 'fase-3') result = await this.fase3()
-        else if (current === 'fase-4a') result = await this.fase4aSceneProgress(data)
+        else if (current === 'fase-4a') result = await this.fase4aSceneOpening()
         else if (current === 'fase-4b') result = await this.fase4(data)
         else if (current === 'sottofase-4b-chiarimenti') result = await this.fase4bSubChiarimenti(data)
         else if (current === 'sottofase-4b-dichiarazione-assente') result = await this.fase4bSubDichiarazioneAssente(data)
