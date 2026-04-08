@@ -6,7 +6,7 @@
  * - fase2_opening_new_scene.md
  *
  * Poi invia i prompt a Ollama usando il modello di default configurato in env
- * (`DEFAULT_HEAVY_LLM_MODEL`) e salva su file:
+ * (`DEFAULT_LLM_MODEL`) e salva su file:
  * - prompt completo
  * - risposta raw della LLM
  * - risposta parse-ata come JSON, se valida
@@ -30,13 +30,13 @@ const ollama = require('../src/services/ollamaService')
 const { DATA_DIR } = require('../src/utils/dataInit')
 
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
-const DEFAULT_MODEL = process.env.DEFAULT_HEAVY_LLM_MODEL
+const DEFAULT_MODEL = process.env.DEFAULT_LLM_MODEL
 const OUTPUT_DIR = path.join(__dirname, 'artifacts_prompt_rag')
 const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000', 10)
 
 const RAG_PATTERN = /\{\{rag:(module|table):"([^"]+)"(?::(cascade|iterate))?\}\}/g
 const RAG_PROMPT_TOP_K = parseInt(process.env.RAG_PROMPT_TOP_K || '3', 10)
-const HEAVY_LLM_NUM_CTX = parseInt(process.env.HEAVY_LLM_NUM_CTX || '8192', 10)
+const LLM_NUM_CTX = parseInt(process.env.LLM_NUM_CTX || '8192', 10)
 
 function dedupeRagResults(results) {
   const seen = new Set()
@@ -212,7 +212,7 @@ async function callOllamaRaw(model, prompt, expectJson = true) {
     model,
     prompt,
     stream: false,
-    options: { num_ctx: HEAVY_LLM_NUM_CTX }
+    options: { num_ctx: LLM_NUM_CTX }
   }
   if (expectJson) body.format = 'json'
 
@@ -307,7 +307,7 @@ async function buildPromptArtifacts({ table, moduleData, sceneSuggestion }) {
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   if (!DEFAULT_MODEL) {
-    throw new Error('DEFAULT_HEAVY_LLM_MODEL non configurato nel file .env')
+    throw new Error('DEFAULT_LLM_MODEL non configurato nel file .env')
   }
 
   const table = await getTable(args.table || null)

@@ -116,7 +116,7 @@ function checkSecondaPersona(text, field) {
 // ── Test runner ───────────────────────────────────────────────────────────────
 
 async function runTest(label, promptFile, vars, checks, useLight = false) {
-  const opts = useLight ? {} : { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
+  const opts = useLight ? {} : { num_ctx: ollama.LLM_NUM_CTX }
   const ragResolver = makeFakeRagResolver()
   const t0 = Date.now()
   process.stdout.write(`  ${label}... `)

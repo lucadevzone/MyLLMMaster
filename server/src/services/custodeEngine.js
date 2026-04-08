@@ -34,7 +34,6 @@ function phaseLabel(phaseKey) {
 
 const MSG_BUFFER_SIZE = parseInt(process.env.MSG_BUFFER_SIZE || '20')
 const SILENCE_TIMER_MS = parseInt(process.env.SILENCE_TIMER_MS || String(30 * 1000))
-const EARLY_FLUSH_IDLE_MS = parseInt(process.env.EARLY_FLUSH_IDLE_MS || '5000')
 const PLAYER_TYPING_TTL_MS = parseInt(process.env.PLAYER_TYPING_TTL_MS || '4000')
 const PROACTIVITY_TIMER_MS = parseInt(process.env.PROACTIVITY_TIMER_MS || String(5 * 60 * 1000))
 const PREP_FILES = {
@@ -168,10 +167,54 @@ async function nextSceneId(tableId) {
 }
 
 function buildPgLookup(chars) {
+  const nameEntries = chars.map(c => [c.name.toLowerCase(), c.name])
   return {
     toName:  Object.fromEntries(chars.map(c => [c.playerID, c.name])),
-    toEmail: Object.fromEntries(chars.map(c => [c.name.toLowerCase(), c.playerID]))
+    toEmail: Object.fromEntries(chars.map(c => [c.name.toLowerCase(), c.playerID])),
+    canonicalName: Object.fromEntries(nameEntries)
   }
+}
+
+function canonicalPgName(raw, lookup = {}) {
+  const value = String(raw || '').trim()
+  if (!value) return ''
+  return lookup.toName?.[value] || lookup.canonicalName?.[value.toLowerCase()] || value
+}
+
+function mergeStatoPgs(target, source, lookup = {}) {
+  if (!source || typeof source !== 'object') return false
+  let changed = false
+  for (const [rawName, statoData] of Object.entries(source)) {
+    if (!statoData || typeof statoData.stato !== 'string') continue
+    const canonicalName = canonicalPgName(rawName, lookup)
+    if (!canonicalName) continue
+    const nextValue = { stato: statoData.stato }
+    const prevValue = target[canonicalName]
+    if (!prevValue || prevValue.stato !== nextValue.stato) {
+      target[canonicalName] = nextValue
+      changed = true
+    }
+    if (canonicalName !== rawName && Object.hasOwn(target, rawName)) {
+      delete target[rawName]
+      changed = true
+    }
+  }
+  return changed
+}
+
+function normalizeStatoPgsMap(statoPgs, lookup = {}) {
+  if (!statoPgs || typeof statoPgs !== 'object') return { normalized: {}, changed: false }
+  const normalized = {}
+  mergeStatoPgs(normalized, statoPgs, lookup)
+  const currentEntries = Object.entries(statoPgs)
+    .filter(([, value]) => value && typeof value.stato === 'string')
+    .map(([key, value]) => [key, value.stato])
+    .sort(([a], [b]) => a.localeCompare(b))
+  const normalizedEntries = Object.entries(normalized)
+    .map(([key, value]) => [key, value.stato])
+    .sort(([a], [b]) => a.localeCompare(b))
+  const changed = JSON.stringify(currentEntries) !== JSON.stringify(normalizedEntries)
+  return { normalized, changed }
 }
 
 function engagementForLlm(engagement, lookup) {
@@ -219,24 +262,6 @@ async function closeScene(tableId, sceneId, suggerimentoProssimaScena = '') {
   await ensureDir(path.join(tDir(tableId), 'closed_scenes'))
   await writeJSON(dst, scene)
   try { await fs.unlink(src) } catch {}
-}
-
-const USEFUL_TAGS = new Set(['dichiarazione', 'domanda al custode', 'discutendo tra PG'])
-
-function shouldProcessByAnnotations(messages, focusParticipants = []) {
-  if (!Array.isArray(messages) || !messages.length) return false
-  if (!Array.isArray(focusParticipants) || !focusParticipants.length) return false
-
-  const usefulMessages = messages.filter(m =>
-    m?.from &&
-    focusParticipants.includes(m.from) &&
-    USEFUL_TAGS.has(m.tag)
-  )
-  if (!usefulMessages.length) return false
-
-  const activePlayers = new Set(usefulMessages.map(m => m.from))
-  const threshold = Math.ceil(focusParticipants.length / 2)
-  return activePlayers.size >= threshold && usefulMessages.length >= threshold
 }
 
 function hasActiveTypingInFocus(typingPlayers, focusParticipants = []) {
@@ -737,8 +762,8 @@ async function prepareSessionBootstrap(tableId, options = {}) {
   if (!force && await fileExists(fase1aCachePath(tableId))) return true
 
   const mod = await getModule(table.moduleId)
-  const heavyModel = table['heavy-llmModel']
-  if (!heavyModel) return false
+  const model = ollama.getDefaultLlmModel()
+  if (!model) return false
 
   const chars = await getCharacters(tableId)
   const charOwners = new Set(chars.map(c => c.playerID))
@@ -755,10 +780,10 @@ async function prepareSessionBootstrap(tableId, options = {}) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const result = await ollama.runPhase(
-        heavyModel,
+        model,
         'fase1a_prima_sessione.md',
         { schede_PG },
-        { num_ctx: ollama.HEAVY_LLM_NUM_CTX },
+        { num_ctx: ollama.LLM_NUM_CTX },
         tableId,
         ragResolver
       )
@@ -874,27 +899,25 @@ class CustodeEngine {
 
   // ── LLM call con gestione errori ──────────────────────────────────────────
 
-  async llm(promptFile, vars, useLight = false) {
+  async llm(promptFile, vars) {
     const table = await getTableOrNull(this.tableId)
     if (!table) {
       const err = Object.assign(new Error(`Tavolo ${this.tableId} non trovato`), { isTableMissing: true })
       throw err
     }
-    const model = useLight
-      ? (table['light-llmModel'] || table['heavy-llmModel'])
-      : table['heavy-llmModel']
+    const model = ollama.getDefaultLlmModel()
 
     if (!model) {
       const err = Object.assign(
         new Error('Modello LLM non configurato sul tavolo'),
         { isLlmError: true }
       )
-      await this.pauseForTechnicalIssue('Modello LLM non configurato – vai in Gestione Tavoli e seleziona un modello')
+      await this.pauseForTechnicalIssue('Modello LLM non configurato – imposta DEFAULT_LLM_MODEL nel file .env')
       throw err
     }
 
     try {
-      const ollamaOptions = useLight ? {} : { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
+      const ollamaOptions = { num_ctx: ollama.LLM_NUM_CTX }
       const ragResolver = buildRagResolver(table.moduleId, this.tableId)
       return await ollama.runPhase(model, promptFile, vars, ollamaOptions, this.tableId, ragResolver)
     } catch (err) {
@@ -910,9 +933,9 @@ class CustodeEngine {
     const table = await getTableOrNull(this.tableId)
     if (!table) throw Object.assign(new Error(`Tavolo ${this.tableId} non trovato`), { isTableMissing: true })
 
-    const model = table['heavy-llmModel']
+    const model = ollama.getDefaultLlmModel()
     if (!model) {
-      await this.pauseForTechnicalIssue('Modello LLM non configurato – vai in Gestione Tavoli e seleziona un modello')
+      await this.pauseForTechnicalIssue('Modello LLM non configurato – imposta DEFAULT_LLM_MODEL nel file .env')
       throw Object.assign(new Error('Modello LLM non configurato sul tavolo'), { isLlmError: true })
     }
 
@@ -921,7 +944,7 @@ class CustodeEngine {
       return await ollama.runPhaseWithTools(
         model, promptFile, vars,
         [CONSULTO_TOOL_DEFINITION], toolHandlers,
-        { num_ctx: ollama.HEAVY_LLM_NUM_CTX }, this.tableId
+        { num_ctx: ollama.LLM_NUM_CTX }, this.tableId
       )
     } catch (err) {
       if (err.isLlmError) {
@@ -958,6 +981,13 @@ class CustodeEngine {
     const mod = await getModule(table.moduleId)
     const schede_PG = chars.map(synthChar).join('\n')
     const pgLookup = buildPgLookup(chars)
+    const { normalized: normalizedStatoPgs, changed: statoPgsChanged } = normalizeStatoPgsMap(worldState.stato_pgs, pgLookup)
+    if (statoPgsChanged) {
+      worldState.stato_pgs = normalizedStatoPgs
+      await saveWorldState(this.tableId, worldState)
+    } else {
+      worldState.stato_pgs = normalizedStatoPgs
+    }
     const focusScene = worldState.focusScene
       ? await getScene(this.tableId, worldState.focusScene)
       : null
@@ -1034,7 +1064,7 @@ class CustodeEngine {
 
   async fase2(suggerimento = null) {
     await this.emitPhaseChange('fase-2')
-    const { worldState, mod, schede_PG } = await this.buildContext()
+    const { worldState, mod, schede_PG, pgLookup } = await this.buildContext()
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber ?? 1
     const suggerimento_scena = suggerimento || 'scena introduttiva'
 
@@ -1079,13 +1109,7 @@ class CustodeEngine {
     await saveScene(this.tableId, result)
 
     // Stato PG iniziale per questa scena (generato dalla LLM)
-    if (result.stato_pgs && typeof result.stato_pgs === 'object') {
-      for (const [nome, s] of Object.entries(result.stato_pgs)) {
-        if (s && typeof s.stato === 'string') {
-          worldState.stato_pgs[nome] = { stato: s.stato }
-        }
-      }
-    }
+    mergeStatoPgs(worldState.stato_pgs, result.stato_pgs, pgLookup)
 
     // PNG della scena: posizione e stato generati dalla LLM.
     // Nota: essere "in scena" NON significa essere noti al party — la conoscenza si acquisisce
@@ -1222,7 +1246,6 @@ class CustodeEngine {
     await this.emitPhaseChange('fase-4b')
     svc.clearTimer(this.tableId, 'proattivita')
     svc.clearTimer(this.tableId, 'silenzio')
-    svc.clearTimer(this.tableId, 'early-flush')
     await svc.setAllPlayersState(this.tableId, 'turno-custode')
     const ctx4 = svc.getSession(this.tableId)
     ctx4?.session.players.forEach(p => {
@@ -1458,13 +1481,7 @@ class CustodeEngine {
     const ws = await getWorldState(this.tableId)
 
     // stato_pgs
-    if (agg.stato_pgs && typeof agg.stato_pgs === 'object') {
-      for (const [nome, s] of Object.entries(agg.stato_pgs)) {
-        if (s && typeof s.stato === 'string') {
-          ws.stato_pgs[nome] = { stato: s.stato }
-        }
-      }
-    }
+    mergeStatoPgs(ws.stato_pgs, agg.stato_pgs, pgLookup)
 
     // conoscenze_party (append-only)
     if (agg.nuove_conoscenze && typeof agg.nuove_conoscenze === 'string' && agg.nuove_conoscenze.trim()) {
@@ -1753,7 +1770,6 @@ class CustodeEngine {
     if (!this.bufferActive) return
     this.buffer.push(message)
     console.log(`[Custode] Buffer add [${this.tableId}] phase=${phase} msg=${message.fromName || message.from}: ${message.text}`)
-    this.tagMessageAsync(message)
 
     if (this.buffer.length >= MSG_BUFFER_SIZE) {
       this.flushBuffer('buffer-pieno').catch(console.error)
@@ -1762,9 +1778,6 @@ class CustodeEngine {
 
     svc.setTimer(this.tableId, 'silenzio', SILENCE_TIMER_MS, () => {
       this.flushBuffer('timer-silenzio').catch(console.error)
-    })
-    svc.setTimer(this.tableId, 'early-flush', EARLY_FLUSH_IDLE_MS, () => {
-      this.evaluateEarlyFlush().catch(console.error)
     })
   }
 
@@ -1819,7 +1832,7 @@ class CustodeEngine {
     if (hasActiveTypingInFocus(typingPlayers, participants)) {
       console.log(`[Custode] Buffer flush postponed [${this.tableId}] reason=${reason} participants=${debugString(participants)} typing=${debugString(typingPlayers)}`)
       svc.clearTimer(this.tableId, 'silenzio')
-      svc.setTimer(this.tableId, 'silenzio', Math.max(EARLY_FLUSH_IDLE_MS, 3000), () => {
+      svc.setTimer(this.tableId, 'silenzio', Math.max(SILENCE_TIMER_MS, 3000), () => {
         this.flushBuffer(`retry-${reason}`).catch(console.error)
       })
       return
@@ -1827,7 +1840,6 @@ class CustodeEngine {
 
     this.flushInProgress = true
     svc.clearTimer(this.tableId, 'silenzio')
-    svc.clearTimer(this.tableId, 'early-flush')
     console.log(`[Custode] Buffer flush [${this.tableId}] reason=${reason} msgs=${this.buffer.length} payload=${debugString(this.buffer.map(m => ({ from: m.fromName || m.from, tag: m.tag, text: m.text })))}`)
     this.bufferActive = false
     // In turno singolo passa il piano parziale corrente, altrimenti null (round fresco)
@@ -1844,57 +1856,6 @@ class CustodeEngine {
       .finally(() => {
         this.flushInProgress = false
       })
-  }
-
-  async tagMessageAsync(message) {
-    const table = await getTable(this.tableId)
-    const lightModel = table['light-llmModel'] || table['heavy-llmModel']
-    if (!lightModel) return
-
-    try {
-      const recentContext = this.buffer
-        .filter(m => m.id !== message.id)
-        .slice(-5)
-        .map(m => `${m.fromName || m.from}: ${m.text}`)
-        .join('\n') || '(nessun contesto recente)'
-
-      const result = await ollama.runTagging(lightModel, 'tagging_buffer.md', {
-        messaggio_corrente: message.text,
-        contesto_recente: recentContext
-      }, this.tableId)
-
-      const msg = this.buffer.find(m => m.id === message.id)
-      if (msg && Object.prototype.hasOwnProperty.call(result, 'annotazione')) {
-        msg.tag = result.annotazione
-        console.log(`[Custode] Tagging buffer [${this.tableId}] message=${message.id} tag=${result.annotazione}`)
-      }
-
-      await this.evaluateEarlyFlush()
-    } catch {
-      // Il tagging è best-effort, non blocca il gioco
-    }
-  }
-
-  async evaluateEarlyFlush() {
-    if (!this.bufferActive || this.flushInProgress || !this.buffer.length) return
-
-    const ctx = svc.getSession(this.tableId)
-    if (!ctx || ctx.session.custodePhase !== 'fase-4a') return
-
-    const worldState = await getWorldState(this.tableId)
-    const focusGroup = worldState.groups?.find(g => g.sceneId === worldState.focusScene)
-    const focusParticipants = focusGroup?.participants || []
-    const typingPlayers = svc.getTypingPlayers(this.tableId)
-
-    if (hasActiveTypingInFocus(typingPlayers, focusParticipants)) {
-      console.log(`[Custode] Early flush blocked by typing [${this.tableId}] participants=${debugString(focusParticipants)} typing=${debugString(typingPlayers)}`)
-      return
-    }
-
-    if (shouldProcessByAnnotations(this.buffer, focusParticipants)) {
-      console.log(`[Custode] Early flush triggered by annotations [${this.tableId}] participants=${debugString(focusParticipants)}`)
-      this.flushBuffer('annotazioni').catch(console.error)
-    }
   }
 
   // ── Utilità ───────────────────────────────────────────────────────────────
@@ -1965,4 +1926,17 @@ function destroy(tableId) {
   engines.delete(tableId)
 }
 
-module.exports = { getOrCreate, pause, destroy, prepareSessionBootstrap, prepareSessionBootstrapInBackground, isSessionBootstrapReady, promoteTableToReadyIfPossible, buildRagResolver }
+module.exports = {
+  getOrCreate,
+  pause,
+  destroy,
+  prepareSessionBootstrap,
+  prepareSessionBootstrapInBackground,
+  isSessionBootstrapReady,
+  promoteTableToReadyIfPossible,
+  buildRagResolver,
+  buildPgLookup,
+  canonicalPgName,
+  mergeStatoPgs,
+  normalizeStatoPgsMap
+}

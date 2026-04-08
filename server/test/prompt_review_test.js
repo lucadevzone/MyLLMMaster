@@ -79,7 +79,7 @@ async function callRaw(prompt, useLight = false) {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const body = { model: MODEL, prompt, stream: false, format: 'json' }
-    if (!useLight) body.options = { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
+    if (!useLight) body.options = { num_ctx: ollama.LLM_NUM_CTX }
     const res = await fetch(`${OLLAMA_URL}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

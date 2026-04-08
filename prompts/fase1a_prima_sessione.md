@@ -21,7 +21,7 @@ Questa è la prima sessione:
 - Guarda il modulo avventura e decidi la data di inizio dell'avventura
 - Introduci l'ambientazione raccontando la località, e l'atmosfera di quegli anni
 - Non anticipare nulla della trama e degli orrori: narra la normalità di quegli anni.
-- Menziona la tecnologia, la moda e la società di quegli anni
+- Menziona aspetti frivoli che possano essere utili per fare immergere i giocatori: la tecnologia, la moda o eventi molto noti di quegli anni
 - Poi presenta brevemente i PG come i protagonisti di questa avventura
 - Menziona nome, professione e aspetto (se disponibile)
 - Prova a dare una motivazione del loro coinvolgimento (e' successo qualcosa e loro sono chiamati in causa per interesse personale, oppure interesse professionale, oppure sono ingaggiati per risolvere un caso, etc etc)

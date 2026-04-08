@@ -27,7 +27,7 @@ const ragService = require('../src/services/ragService')
 const { DATA_DIR } = require('../src/utils/dataInit')
 
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
-const DEFAULT_MODEL = process.env.DEFAULT_HEAVY_LLM_MODEL
+const DEFAULT_MODEL = process.env.DEFAULT_LLM_MODEL
 const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000', 10)
 const OUTPUT_DIR = path.join(__dirname, 'artifacts_tag_extraction')
 const TAG_PROMPTS = {
@@ -134,7 +134,7 @@ async function callOllamaRaw(model, prompt, expectJson = true) {
       model,
       prompt,
       stream: false,
-      options: { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
+      options: { num_ctx: ollama.LLM_NUM_CTX }
     }
     if (expectJson) body.format = 'json'
 
@@ -213,7 +213,7 @@ async function main() {
     return
   }
 
-  if (!DEFAULT_MODEL) throw new Error('DEFAULT_HEAVY_LLM_MODEL non configurato nel file .env')
+  if (!DEFAULT_MODEL) throw new Error('DEFAULT_LLM_MODEL non configurato nel file .env')
   if (typeof splitTextIntoTagChunks !== 'function') throw new Error('Helper splitTextIntoTagChunks non disponibile')
   if (typeof mergeKnownTags !== 'function') throw new Error('Helper mergeKnownTags non disponibile')
   if (typeof serializeKnownTagsForPrompt !== 'function') throw new Error('Helper serializeKnownTagsForPrompt non disponibile')

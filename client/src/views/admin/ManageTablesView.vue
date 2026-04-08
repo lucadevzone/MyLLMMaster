@@ -7,7 +7,6 @@ const tables = ref([])
 const modules = ref([])
 const players = ref([])
 const playerNames = ref({})  // email → name
-const ollamaModels = ref([])
 const loading = ref(true)
 const error = ref('')
 const actionMsg = ref('')
@@ -15,8 +14,6 @@ const actionMsg = ref('')
 const showCreateForm = ref(false)
 const createModuleId = ref('')
 const createPlayers = ref([])
-const createHeavyModel = ref('')
-const createLightModel = ref('')
 const createError = ref('')
 const editPlayersTableId = ref(null)
 const editPlayersSelection = ref([])
@@ -71,18 +68,16 @@ const PLAYER_BADGE = {
 
 onMounted(async () => {
   try {
-    const [t, m, p, names, om] = await Promise.all([
+    const [t, m, p, names] = await Promise.all([
       api.get('/tables'),
       api.get('/modules'),
       api.get('/users'),
-      api.get('/users/names'),
-      api.get('/tables/ollama-models').catch(() => [])
+      api.get('/users/names')
     ])
     tables.value = t.filter(t => t.state !== 'archived')
     modules.value = m
     players.value = p
     playerNames.value = Object.fromEntries(names.map(n => [n.email, n.name]))
-    ollamaModels.value = om
   } catch (e) {
     error.value = e.message
   } finally {
@@ -128,23 +123,19 @@ function playerOptionHelp(table, player) {
 
 async function createTable() {
   createError.value = ''
-  if (!createModuleId.value || !createPlayers.value.length || !createHeavyModel.value) {
-    createError.value = 'Modulo, giocatori e modello LLM sono obbligatori'
+  if (!createModuleId.value || !createPlayers.value.length) {
+    createError.value = 'Modulo e giocatori sono obbligatori'
     return
   }
   try {
     const t = await api.post('/tables', {
       moduleId: createModuleId.value,
-      invitedPlayers: createPlayers.value,
-      heavyLlmModel: createHeavyModel.value,
-      lightLlmModel: createLightModel.value || undefined
+      invitedPlayers: createPlayers.value
     })
     tables.value.push(t)
     showCreateForm.value = false
     createModuleId.value = ''
     createPlayers.value = []
-    createHeavyModel.value = ''
-    createLightModel.value = ''
   } catch (e) {
     createError.value = e.message
   }
@@ -298,21 +289,9 @@ async function savePlayers(table) {
             </div>
           </div>
 
-          <div class="form-group">
-            <label>Modello LLM (pesante)</label>
-            <select v-model="createHeavyModel" class="form-control">
-              <option value="">Seleziona modello...</option>
-              <option v-for="m in ollamaModels" :key="m" :value="m">{{ m }}</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label>Modello LLM (leggero, opzionale)</label>
-            <select v-model="createLightModel" class="form-control">
-              <option value="">Nessuno</option>
-              <option v-for="m in ollamaModels" :key="m" :value="m">{{ m }}</option>
-            </select>
-          </div>
+          <p style="font-size:0.85rem;color:var(--color-text-light);margin-bottom:1rem">
+            Il modello LLM viene letto dalla configurazione server (`.env`).
+          </p>
 
           <div style="display:flex;gap:0.5rem;justify-content:flex-end">
             <button class="btn btn-secondary" @click="showCreateForm = false">Annulla</button>

@@ -18,6 +18,7 @@ process.env.LLM_TIMEOUT_MS = '5000'
 process.env.MSG_BUFFER_SIZE = '5'
 process.env.SILENCE_TIMER_MS = '5000'   // 5s invece di 30s per i test
 process.env.PROACTIVITY_TIMER_MS = '60000'
+process.env.DEFAULT_LLM_MODEL = 'test-model:latest'
 process.env.DATA_DIR_OVERRIDE = require('path').join(__dirname, '../../data_test')
 
 const http = require('http')
@@ -365,8 +366,7 @@ async function runTests() {
   try {
     const table = await apiCall('POST', '/api/tables', {
       moduleId,
-      invitedPlayers: ['player_a@test.com', 'player_b@test.com'],
-      heavyLlmModel: 'test-model:latest'
+      invitedPlayers: ['player_a@test.com', 'player_b@test.com']
     }, adminToken)
     tableId = table.id
     pass(`Tavolo creato: ${tableId}`)

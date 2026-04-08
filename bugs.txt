@@ -28,14 +28,14 @@ OTTIMIZZAZIONE: adesso ci sono molti prompt prima di poter iniziare. Proporrei d
 PATCH: Il flusso completo ora è:
 Alla creazione del modulo (POST /api/modules):
   - Il modulo viene salvato e la risposta HTTP torna subito al client
-  - In background parte runTextPhase('prepara_ambientazione.md', ...) con DEFAULT_HEAVY_LLM_MODEL
+  - In background parte runTextPhase('prepara_ambientazione.md', ...) con DEFAULT_LLM_MODEL
   - Il risultato viene scritto in data/modules/{moduleId}_ambientazione.txt
 Alla modifica del modulo (PUT /api/modules/:id con chapters):
   - Il vecchio file viene cancellato e la generazione riparte in background
 A fase1a (prima sessione):
   - Se il file esiste già → lo legge direttamente, nessuna chiamata LLM
   - Se non esiste ancora (generazione in corso o fallita) → lo genera sul momento con il modello del tavolo (fallback lazy)
-Essendo "fuori dal tavolo", la variabile DEFAULT_HEAVY_LLM_MODEL in server/.env deve essere impostata con il modello che preferisci.
+Essendo "fuori dal tavolo", la variabile DEFAULT_LLM_MODEL in server/.env deve essere impostata con il modello che preferisci.
 
 PER IL FUTURO: un modulo è fatto da tanti capitoli, prima o poi dovremmo gestire il "cambio" di capitolo. Ma per adesso lasciamo così.
 
@@ -151,4 +151,3 @@ SPEC: L’effetto dei messaggi del custode è solo parziale: c’è l’indicato
 SPEC: I sussurri esistono nel backend, ma nel frontend manca il controllo per scegliere il destinatario: whisperTarget è previsto ma non c’è alcuna UI che lo imposti. Tuttavia al momento sembra che i "sussurri" arrivino correttamente. Verificare se questo è davvero una mancanza o solo una discordanza rispetto alle specifiche.
 
 SPEC: Il logging è solo parziale rispetto alla specifica: aggiungere logging esplicito di buffer, eventi timer e decisioni del custode come richiesto. 
-

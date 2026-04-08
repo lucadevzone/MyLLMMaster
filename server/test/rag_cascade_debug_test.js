@@ -10,9 +10,9 @@ const QUERY = process.argv[3] || 'Grand Palais'
 const OUTPUT_DIR = path.join(__dirname, 'artifacts_rag_cascade_debug')
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'rag_cascade_debug_report.txt')
 
-const RAG_TOP_K = parseInt(process.env.RAG_TOP_K || '5')
-const RAG_CASCADE_TOP_K_L1 = parseInt(process.env.RAG_CASCADE_TOP_K_L1 || '1')
-const RAG_CASCADE_TOP_K_L2 = parseInt(process.env.RAG_CASCADE_TOP_K_L2 || '1')
+const RAG_TOP_K_BASE = parseInt(process.env.RAG_TOP_K_BASE || '5')
+const RAG_TOP_K_L1 = parseInt(process.env.RAG_TOP_K_L1 || '3')
+const RAG_TOP_K_L2 = parseInt(process.env.RAG_TOP_K_L2 || '1')
 const RAG_CASCADE_MAX_TAGS = parseInt(process.env.RAG_CASCADE_MAX_TAGS || '5')
 
 function normalizeText(text) {
@@ -99,8 +99,8 @@ async function main() {
     ? JSON.parse(await fsp.readFile(moduleTagCatalogPath, 'utf-8'))
     : null
 
-  const level1Base = await rag.queryModule(MODULE_ID, QUERY, RAG_TOP_K)
-  const level1Seeds = level1Base.slice(0, Math.min(RAG_CASCADE_TOP_K_L1, level1Base.length))
+  const level1Base = await rag.queryModule(MODULE_ID, QUERY, RAG_TOP_K_BASE)
+  const level1Seeds = level1Base.slice(0, Math.min(RAG_TOP_K_L1, level1Base.length))
 
   const directMatched = getMatchedCatalogTags(QUERY, tagCatalogPayload)
   const directQueryTags = new Set(directMatched.map(tag => tag.canonical))
@@ -125,14 +125,14 @@ async function main() {
           type: String(tag.type || '').trim(),
           count: 0,
           firstPos: idx,
-          inSeed: idx < Math.min(RAG_CASCADE_TOP_K_L1, level1Base.length)
+          inSeed: idx < Math.min(RAG_TOP_K_L1, level1Base.length)
         })
       }
 
       const entry = tagStats.get(canonical)
       entry.count += 1
       entry.firstPos = Math.min(entry.firstPos, idx)
-      entry.inSeed = entry.inSeed || idx < Math.min(RAG_CASCADE_TOP_K_L1, level1Base.length)
+      entry.inSeed = entry.inSeed || idx < Math.min(RAG_TOP_K_L1, level1Base.length)
       if (!entry.type && tag.type) entry.type = String(tag.type || '').trim()
     }
   }
@@ -152,7 +152,7 @@ async function main() {
   const level2ByTag = []
   const level2Collected = []
   for (const tag of limitedSeedTags) {
-    const partial = await rag.queryModule(MODULE_ID, tag, RAG_CASCADE_TOP_K_L2)
+    const partial = await rag.queryModule(MODULE_ID, tag, RAG_TOP_K_L2)
     const adjusted = partial.map(result => ({ ...result, score: (result.score || 0) - 0.03 }))
     level2ByTag.push({ tag, results: adjusted })
     level2Collected.push(...adjusted)
@@ -185,13 +185,13 @@ async function main() {
   const sections = []
   sections.push(`QUERY: ${QUERY}`)
   sections.push(`MODULE_ID: ${MODULE_ID}`)
-  sections.push(`RAG_TOP_K=${RAG_TOP_K}`)
-  sections.push(`RAG_CASCADE_TOP_K_L1=${RAG_CASCADE_TOP_K_L1}`)
-  sections.push(`RAG_CASCADE_TOP_K_L2=${RAG_CASCADE_TOP_K_L2}`)
+  sections.push(`RAG_TOP_K_BASE=${RAG_TOP_K_BASE}`)
+  sections.push(`RAG_TOP_K_L1=${RAG_TOP_K_L1}`)
+  sections.push(`RAG_TOP_K_L2=${RAG_TOP_K_L2}`)
   sections.push(`RAG_CASCADE_MAX_TAGS=${RAG_CASCADE_MAX_TAGS}`)
 
   sections.push('\n' + '='.repeat(80))
-  sections.push('L1 BASE — chunk scelti da queryModule(query, RAG_TOP_K)')
+  sections.push('L1 BASE — chunk scelti da queryModule(query, RAG_TOP_K_BASE)')
   sections.push(level1Base.map(formatChunk).join('\n\n---\n\n') || '(nessun chunk)')
 
   sections.push('\n' + '='.repeat(80))
@@ -207,7 +207,7 @@ async function main() {
   sections.push(`RELATED TAGS SELEZIONATI PER L2: ${limitedSeedTags.join(', ') || 'nessuno'}`)
 
   sections.push('\n' + '='.repeat(80))
-  sections.push('L2 — queryModule(tag, RAG_CASCADE_TOP_K_L2) per ogni relatedTag')
+  sections.push('L2 — queryModule(tag, RAG_TOP_K_L2) per ogni relatedTag')
   if (!level2ByTag.length) {
     sections.push('(nessun relatedTag espanso)')
   } else {

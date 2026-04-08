@@ -6,7 +6,7 @@ const { DATA_DIR } = require('../utils/dataInit')
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 const MAX_RETRIES = parseInt(process.env.LLM_MAX_RETRIES || '3')
 const TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || '120000')
-const HEAVY_LLM_NUM_CTX = parseInt(process.env.HEAVY_LLM_NUM_CTX || '8192')
+const LLM_NUM_CTX = parseInt(process.env.LLM_NUM_CTX || '8192')
 const PROMPTS_DIR = path.join(__dirname, '../../../prompts')
 const PROMPT_SCHEMAS_DIR = path.join(PROMPTS_DIR, 'schemas')
 const schemaCache = new Map()
@@ -246,6 +246,10 @@ function buildLogTimestamp(date) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
+function getDefaultLlmModel() {
+  return process.env.DEFAULT_LLM_MODEL || ''
+}
+
 // ── API pubblica ───────────────────────────────────────────────────────────────
 
 async function runPhase(model, promptFile, vars, ollamaOptions = {}, tableId = null, ragResolver = null) {
@@ -355,15 +359,17 @@ async function runPhaseWithTools(model, promptFile, vars, toolDefinitions, toolH
 
 async function runTextPhase(model, promptFile, vars, tableId = null, ragResolver = null) {
   const prompt = await loadPrompt(promptFile, vars, ragResolver)
-  return callOllama(model, prompt, false, promptFile, null, { num_ctx: HEAVY_LLM_NUM_CTX }, tableId)
+  return callOllama(model, prompt, false, promptFile, null, { num_ctx: LLM_NUM_CTX }, tableId)
 }
 
-async function runTagging(model, promptFile, vars, tableId = null, ragResolver = null) {
-  const [prompt, schema] = await Promise.all([
-    loadPrompt(promptFile, vars, ragResolver),
-    loadPromptSchema(promptFile)
-  ])
-  return callOllama(model, prompt, true, promptFile, schema, {}, tableId)
+module.exports = {
+  runPhase,
+  runTextPhase,
+  runPhaseWithTools,
+  loadPrompt,
+  loadPromptSchema,
+  callOllama,
+  tableLogsDir,
+  LLM_NUM_CTX,
+  getDefaultLlmModel
 }
-
-module.exports = { runPhase, runTextPhase, runTagging, runPhaseWithTools, loadPrompt, loadPromptSchema, callOllama, tableLogsDir, HEAVY_LLM_NUM_CTX }

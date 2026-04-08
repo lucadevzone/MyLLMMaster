@@ -50,8 +50,6 @@ async function seedTable() {
   const table = {
     id: TABLE_ID,
     moduleId: MODULE_ID,
-    'heavy-llmModel': process.env.DEFAULT_HEAVY_LLM_MODEL || 'mistral-nemo:latest',
-    'light-llmModel': process.env.DEFAULT_LIGHT_LLM_MODEL || 'phi3:mini',
     state: 'open',
     invitedPlayers: ['pg1@example.test', 'pg2@example.test'],
     createdAt: new Date().toISOString(),

@@ -19,14 +19,14 @@ const ollama = require('./ollamaService')
 
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 const EMBED_MODEL = process.env.RAG_EMBED_MODEL || 'nomic-embed-text'
-const RAG_TOP_K = parseInt(process.env.RAG_TOP_K || '5')
-const RAG_CASCADE_TOP_K_L1 = parseInt(process.env.RAG_CASCADE_TOP_K_L1 || '1')
-const RAG_CASCADE_TOP_K_L2 = parseInt(process.env.RAG_CASCADE_TOP_K_L2 || '1')
+const RAG_TOP_K_BASE = parseInt(process.env.RAG_TOP_K_BASE || '5')
+const RAG_TOP_K_L1 = parseInt(process.env.RAG_TOP_K_L1 || '3')
+const RAG_TOP_K_L2 = parseInt(process.env.RAG_TOP_K_L2 || '1')
 const RAG_CASCADE_MAX_TAGS = parseInt(process.env.RAG_CASCADE_MAX_TAGS || '5')
 const RAG_CATEGORY_TOP_K_PER_TAG = parseInt(process.env.RAG_CATEGORY_TOP_K_PER_TAG || '1')
 const RAG_CATEGORY_MAX_TAGS = parseInt(process.env.RAG_CATEGORY_MAX_TAGS || '8')
 const RAG_ITERATE_MAX_ITEMS = parseInt(process.env.RAG_ITERATE_MAX_ITEMS || '8')
-const DEFAULT_HEAVY_MODEL = process.env.DEFAULT_HEAVY_LLM_MODEL
+const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL
 const PRELIM_CHUNK_SIZE = parseInt(process.env.RAG_CHUNK_SIZE || '3000')
 const PRELIM_CHUNK_OVERLAP = parseInt(process.env.RAG_CHUNK_OVERLAP || '200')
 const TAG_CHUNK_SIZE = parseInt(
@@ -470,7 +470,7 @@ function isSpecificEntityLikeQuery(queryText, explicitCategory) {
   return tokenizeForRetrieval(normalized).length >= 1
 }
 
-function rerankModuleResults(results, queryText, tagCatalogPayload, topK = RAG_TOP_K) {
+function rerankModuleResults(results, queryText, tagCatalogPayload, topK = RAG_TOP_K_BASE) {
   if (!Array.isArray(results) || !results.length) return []
 
   const queryTerms = tokenizeForRetrieval(queryText)
@@ -586,7 +586,7 @@ async function listModuleCategory(moduleId, mode, filterText = '') {
     .sort((a, b) => a.localeCompare(b, 'it'))
 }
 
-async function queryModuleCategory(moduleId, mode, filterText = '', topK = RAG_TOP_K) {
+async function queryModuleCategory(moduleId, mode, filterText = '', topK = RAG_TOP_K_BASE) {
   const categoryType = getCategoryType(mode)
   if (!categoryType) return []
 
@@ -867,13 +867,13 @@ async function extractTagCandidates(textChunks) {
     for (const [type, promptFile] of Object.entries(TAG_EXTRACTION_PROMPTS)) {
       try {
         const result = await ollama.runPhase(
-          DEFAULT_HEAVY_MODEL,
+          DEFAULT_LLM_MODEL,
           promptFile,
           {
             testo_chunk: textChunks[i],
             known_tags: serializeKnownTagsForPrompt(knownByType[type])
           },
-          { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
+          { num_ctx: ollama.LLM_NUM_CTX }
         )
 
         const tags = Array.isArray(result?.tags) ? result.tags : []
@@ -1135,7 +1135,7 @@ async function indexModuleChunks(moduleId, chunks) {
  * 2. Estrazione TAG dal modulo e consolidamento globale
  * 3. Chunk raw del testo originale, annotati con relatedTags dal catalogo consolidato
  *
- * Se DEFAULT_HEAVY_LLM_MODEL non è configurato, produce solo chunk speciali + raw.
+ * Se DEFAULT_LLM_MODEL non è configurato, produce solo chunk speciali + raw.
  */
 async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
   const allChunks = []
@@ -1182,8 +1182,8 @@ async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
     console.log(`[RAG] Modulo ${moduleId}: riuso catalogo TAG esistente (${tagCatalog.length} TAG)`)
   }
 
-  if (!DEFAULT_HEAVY_MODEL) {
-    console.warn('[RAG] DEFAULT_HEAVY_LLM_MODEL non configurato, solo chunk raw senza catalogo TAG')
+  if (!DEFAULT_LLM_MODEL) {
+    console.warn('[RAG] DEFAULT_LLM_MODEL non configurato, solo chunk raw senza catalogo TAG')
   }
 
   for (const currentChapter of chapters) {
@@ -1195,7 +1195,7 @@ async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
       chunks: splitIntoRawChunks(text)
     })
 
-    if (DEFAULT_HEAVY_MODEL && !tagCatalog.length) {
+    if (DEFAULT_LLM_MODEL && !tagCatalog.length) {
       try {
         const tagChunks = splitTextIntoTagChunks(text)
         const chapterTags = await extractTagCandidates(tagChunks)
@@ -1207,7 +1207,7 @@ async function indexModule(moduleId, chapterSource, chapterNumber = 1) {
     }
   }
 
-  if (!tagCatalog.length && DEFAULT_HEAVY_MODEL) {
+  if (!tagCatalog.length && DEFAULT_LLM_MODEL) {
     tagCatalog = consolidateExtractedTags(allTagCandidates)
     shouldPersistTagCatalog = true
   }
@@ -1362,7 +1362,7 @@ async function deleteModuleIndex(moduleId) {
  * Recupera i topK chunk più rilevanti per una query testuale.
  * Restituisce array di { type, name, chapter, content, relatedTags, score }.
  */
-async function queryModule(moduleId, queryText, topK = RAG_TOP_K) {
+async function queryModule(moduleId, queryText, topK = RAG_TOP_K_BASE) {
   const indexPath = moduleIndexPath(moduleId)
   if (!await fileExists(indexPath)) return []
 
@@ -1385,7 +1385,7 @@ async function queryModule(moduleId, queryText, topK = RAG_TOP_K) {
  * hanno relatedTags esplicitamente coerenti con la query.
  * Usato con la sintassi {{rag:module:cascade:"query"}} nei prompt.
  */
-async function cascadeQueryModule(moduleId, queryText, topK = RAG_TOP_K) {
+async function cascadeQueryModule(moduleId, queryText, topK = RAG_TOP_K_BASE) {
   const tagCatalogPayload = await loadModuleTagCatalogPayload(moduleId)
   const level1Base = await queryModule(moduleId, queryText, topK)
   if (!level1Base.length) return []
@@ -1412,14 +1412,14 @@ async function cascadeQueryModule(moduleId, queryText, topK = RAG_TOP_K) {
           type: String(tag.type || '').trim(),
           count: 0,
           firstPos: idx,
-          inSeed: idx < Math.min(RAG_CASCADE_TOP_K_L1, level1Base.length)
+          inSeed: idx < Math.min(RAG_TOP_K_L1, level1Base.length)
         })
       }
 
       const entry = tagStats.get(canonical)
       entry.count += 1
       entry.firstPos = Math.min(entry.firstPos, idx)
-      entry.inSeed = entry.inSeed || idx < Math.min(RAG_CASCADE_TOP_K_L1, level1Base.length)
+      entry.inSeed = entry.inSeed || idx < Math.min(RAG_TOP_K_L1, level1Base.length)
       if (!entry.type && tag.type) entry.type = String(tag.type || '').trim()
     }
   }
@@ -1439,7 +1439,7 @@ async function cascadeQueryModule(moduleId, queryText, topK = RAG_TOP_K) {
   const level2Collected = []
 
   for (const tag of limitedSeedTags) {
-    const partial = await queryModule(moduleId, tag, RAG_CASCADE_TOP_K_L2)
+    const partial = await queryModule(moduleId, tag, RAG_TOP_K_L2)
     for (const result of partial) {
       level2Collected.push({ ...result, score: (result.score || 0) - 0.03 })
     }
@@ -1473,7 +1473,7 @@ async function cascadeQueryModule(moduleId, queryText, topK = RAG_TOP_K) {
   return [...dedupedL1, ...dedupedL2]
 }
 
-async function queryModuleIterate(moduleId, itemsText, topK = RAG_TOP_K, options = {}) {
+async function queryModuleIterate(moduleId, itemsText, topK = RAG_TOP_K_BASE, options = {}) {
   const items = splitSceneListField(itemsText).slice(0, RAG_ITERATE_MAX_ITEMS)
   const collected = []
 
@@ -1581,7 +1581,7 @@ async function rebuildTableIndex(tableId, moduleTitle = '') {
  * Recupera i topK chunk più rilevanti dall'indice del tavolo (diary + scene).
  * Restituisce array di { type, name, content, score }.
  */
-async function queryTable(tableId, queryText, topK = RAG_TOP_K) {
+async function queryTable(tableId, queryText, topK = RAG_TOP_K_BASE) {
   const indexPath = tableIndexPath(tableId)
   if (!await fileExists(indexPath)) return []
 

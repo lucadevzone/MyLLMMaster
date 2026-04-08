@@ -16,6 +16,10 @@ function tdir(...parts) {
   return path.join(__dirname, '..', '..', 'data', 'tables', TABLE_ID, ...parts)
 }
 
+function getDefaultModel() {
+  return process.env.DEFAULT_LLM_MODEL || 'mistral-nemo:latest'
+}
+
 function formatCharacter(char) {
   const comuni = Object.entries(char.abilita?.comuni || {})
     .map(([k, v]) => `${capitalize(k)} ${v}%`)
@@ -67,12 +71,12 @@ function extractJSON(text) {
   try { return JSON.parse(text.slice(start, end + 1)) } catch { return null }
 }
 
-async function callRaw(model, prompt, useLight = false) {
+async function callRaw(model, prompt) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const body = { model, prompt, stream: false, format: 'json' }
-    if (!useLight) body.options = { num_ctx: ollama.HEAVY_LLM_NUM_CTX }
+    body.options = { num_ctx: ollama.LLM_NUM_CTX }
 
     const res = await fetch(`${OLLAMA_URL}/api/generate`, {
       method: 'POST',
@@ -91,7 +95,7 @@ async function callRaw(model, prompt, useLight = false) {
   }
 }
 
-async function runPhase({ label, promptFile, vars, model, useLight = false }) {
+async function runPhase({ label, promptFile, vars, model }) {
   const slug = promptFile.replace('.md', '')
   process.stdout.write(`  ${label}... `)
   const t0 = Date.now()
@@ -100,7 +104,7 @@ async function runPhase({ label, promptFile, vars, model, useLight = false }) {
   const prompt = await ollama.loadPrompt(promptFile, vars, ragResolver)
   await save(`${slug}_prompt.txt`, prompt)
 
-  const [raw, parsed] = await callRaw(model, prompt, useLight)
+  const [raw, parsed] = await callRaw(model, prompt)
   await save(`${slug}_response.txt`, raw)
   if (parsed) await save(`${slug}_result.json`, JSON.stringify(parsed, null, 2))
 
@@ -201,8 +205,7 @@ async function buildContext() {
   return {
     table,
     moduleId: table.moduleId,
-    heavyModel: MODEL_OVERRIDE || table['heavy-llmModel'] || 'mistral-nemo:latest',
-    lightModel: table['light-llmModel'] || 'phi3:mini',
+    heavyModel: MODEL_OVERRIDE || getDefaultModel(),
     diary: diary.trim() || '(nessun diario disponibile)',
     schede_PG,
     worldState,
@@ -231,7 +234,6 @@ async function main() {
     tableId: TABLE_ID,
     moduleId: context.moduleId,
     model: context.heavyModel,
-    lightModel: context.lightModel,
     generatedAt: new Date().toISOString(),
     skipped: [
       'fase4b_sub_chiarimenti',
@@ -291,8 +293,7 @@ async function main() {
       scene_attive: JSON.stringify(context.orchestratorScenes),
       engagement: JSON.stringify({ Emil: 2, Luk: 2 })
     },
-    model: context.lightModel,
-    useLight: true
+    model: context.heavyModel
   })
 
   await runPhase({

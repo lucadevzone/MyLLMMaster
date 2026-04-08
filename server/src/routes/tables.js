@@ -85,22 +85,6 @@ async function checkAndOpenTable(table) {
   return table
 }
 
-async function getOllamaModels() {
-  try {
-    const res = await fetch(`${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}/api/tags`)
-    const data = await res.json()
-    return (data.models || []).map(m => m.name)
-  } catch {
-    return []
-  }
-}
-
-// GET /api/tables/ollama-models
-router.get('/ollama-models', authMiddleware, adminOnly, async (req, res) => {
-  const models = await getOllamaModels()
-  res.json(models)
-})
-
 // GET /api/tables  (admin: tutti, player: solo i suoi)
 router.get('/', authMiddleware, async (req, res) => {
   const raw = await getAllTables()
@@ -125,8 +109,8 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
 // POST /api/tables  (solo admin)
 router.post('/', authMiddleware, adminOnly, async (req, res) => {
-  const { moduleId, invitedPlayers, heavyLlmModel, lightLlmModel } = req.body
-  if (!moduleId || !invitedPlayers?.length || !heavyLlmModel) {
+  const { moduleId, invitedPlayers } = req.body
+  if (!moduleId || !invitedPlayers?.length) {
     return res.status(400).json({ error: 'Dati tavolo incompleti' })
   }
 
@@ -149,8 +133,6 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
   const table = {
     id: tableId,
     moduleId,
-    'heavy-llmModel': heavyLlmModel,
-    'light-llmModel': lightLlmModel || null,
     state: 'active',
     invitedPlayers,
     plannedSession: null,
@@ -192,11 +174,11 @@ router.patch('/:id', authMiddleware, adminOnly, async (req, res) => {
     }
   }
 
-  const allowed = ['invitedPlayers', 'plannedSession', 'state', 'heavy-llmModel', 'light-llmModel']
+  const allowed = ['invitedPlayers', 'plannedSession', 'state']
   for (const key of allowed) {
     if (req.body[key] !== undefined) table[key] = req.body[key]
   }
-  const shouldRefreshBootstrap = req.body.moduleId !== undefined || req.body['heavy-llmModel'] !== undefined
+  const shouldRefreshBootstrap = req.body.moduleId !== undefined
   if (shouldRefreshBootstrap) {
     table.custodeStarted = false
   }

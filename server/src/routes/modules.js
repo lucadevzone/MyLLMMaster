@@ -10,7 +10,7 @@ const ollama = require('../services/ollamaService')
 const rag = require('../services/ragService')
 
 const MODULES_DIR = path.join(DATA_DIR, 'modules')
-const DEFAULT_HEAVY_LLM_MODEL = process.env.DEFAULT_HEAVY_LLM_MODEL
+const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL
 
 function ambientazioneFilePath(moduleId) {
   return path.join(MODULES_DIR, `${moduleId}_ambientazione.txt`)
@@ -31,10 +31,10 @@ function prepareModuleInBackground(moduleId, chapters = []) {
   const hasAnyContent = chapters.some(ch => ch?.content?.trim())
   if (!hasAnyContent) return
   ;(async () => {
-    if (DEFAULT_HEAVY_LLM_MODEL && firstChapter?.trim()) {
+    if (DEFAULT_LLM_MODEL && firstChapter?.trim()) {
       try {
         const text = await ollama.runTextPhase(
-          DEFAULT_HEAVY_LLM_MODEL, 'prepara_ambientazione.md', { primo_capitolo: firstChapter }
+          DEFAULT_LLM_MODEL, 'prepara_ambientazione.md', { primo_capitolo: firstChapter }
         )
         await fs.writeFile(ambientazioneFilePath(moduleId), text.trim(), 'utf-8')
         console.log(`[Modules] Ambientazione generata per ${moduleId}`)

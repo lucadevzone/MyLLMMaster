@@ -36,7 +36,7 @@ FASE 2 — Prompt di preprocessing
 ---------------------------------
 
 2.1  prompts/rag_pass1_entita.md
-     Chiede al DEFAULT_HEAVY_LLM_MODEL  (vedi variabile .env) di produrre una lista "tipo | nome" per ogni entità rilevante
+     Chiede al DEFAULT_LLM_MODEL  (vedi variabile .env) di produrre una lista "tipo | nome" per ogni entità rilevante
      presente nel testo del capitolo (location, NPC, oggetto, rivelazione, filone narrativo).
      Output testuale semplice, parsato in codice con split().
 

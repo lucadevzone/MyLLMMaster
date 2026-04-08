@@ -49,8 +49,6 @@ async function seedBaseTable() {
   const table = {
     id: TABLE_ID,
     moduleId: MODULE_ID,
-    'heavy-llmModel': 'mistral-nemo:latest',
-    'light-llmModel': 'phi3:mini',
     state: 'open',
     invitedPlayers: ['pg1@example.test', 'pg2@example.test'],
     createdAt: new Date().toISOString(),
