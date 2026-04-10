@@ -11,6 +11,7 @@ const {
   renderLocationSummary,
   renderPgSummary,
   renderRulesExcerpt,
+  renderSkillsCatalogSummary,
   renderTimelineEventSummary
 } = require('../src/services/contextObjectRenderers')
 
@@ -135,6 +136,10 @@ function main() {
   const characteristicRulesText = renderRulesExcerpt('FOR')
   assert.ok(characteristicRulesText.includes('Forza'))
   assert.ok(characteristicRulesText.includes("L'acronimo usato in gioco e FOR"))
+
+  const skillsCatalogText = renderSkillsCatalogSummary()
+  assert.ok(skillsCatalogText.includes('Persuadere'))
+  assert.ok(skillsCatalogText.includes('Base 10'))
 
   const timelineText = renderTimelineEventSummary({
     timestamp: '1936-07-14T00:00',

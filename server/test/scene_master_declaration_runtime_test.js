@@ -135,12 +135,13 @@ async function main() {
     assert.ok(vars.declarationText.includes('Corro fino al podio'))
     assert.ok(vars.contextText.includes('SCENA FOCUS'))
     assert.ok(vars.contextText.includes('PG ATTIVO'))
+    assert.ok(vars.contextText.includes('ABILITA DISPONIBILI'))
+    assert.ok(vars.contextText.includes('Persuadere'))
     return {
       decision: 'respond_now',
       response: 'Ti lanci verso il podio, facendoti largo tra gli invitati.',
-      targetCharacter: 'Emil',
-      suggestedSkill: '',
-      suggestedDifficulty: ''
+      Skill: '',
+      Difficulty: ''
     }
   }
 

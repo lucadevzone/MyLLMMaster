@@ -128,9 +128,8 @@ async function main() {
       return {
         decision: 'ask_clarification',
         response: 'In che modo cerchi di convincerla, con fascino o con argomenti?',
-        targetCharacter: 'Emil',
-        suggestedSkill: '',
-        suggestedDifficulty: ''
+        Skill: '',
+        Difficulty: ''
       }
     }
     if (promptFile === 'scene_master_v0_chiarimento.md') {
@@ -139,9 +138,8 @@ async function main() {
       return {
         decision: 'respond_now',
         response: 'Sophia ti ascolta con attenzione, ma resta prudente prima di risponderti.',
-        targetCharacter: 'Emil',
-        suggestedSkill: '',
-        suggestedDifficulty: ''
+        Skill: '',
+        Difficulty: ''
       }
     }
     throw new Error(`Prompt inatteso: ${promptFile}`)

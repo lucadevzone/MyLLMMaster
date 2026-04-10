@@ -24,6 +24,7 @@ const {
   renderLocationSummary,
   renderPgSummary,
   renderRulesExcerpt,
+  renderSkillsCatalogSummary,
   loadRulesVocabulary
 } = require('./contextObjectRenderers')
 
@@ -2163,6 +2164,8 @@ class CustodeEngine {
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
     if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
     if (recentChat) sections.push(`STORICO CHAT\n${recentChat}`)
+    const skillsCatalog = renderSkillsCatalogSummary()
+    if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
 
     for (const name of mentionedNpcNames) {
       const npc = await loadEntityByName('npc', name)
@@ -2231,9 +2234,8 @@ class CustodeEngine {
       const handoff = await this.buildSceneMasterDeclarationContext(routing, message)
       const result = await this.llm('scene_master_v0_dichiarazione.md', handoff)
       if (result?.response) {
-        result.targetCharacter = normalizeNarrativeText(result.targetCharacter)
-        result.suggestedSkill = normalizeNarrativeText(result.suggestedSkill)
-        result.suggestedDifficulty = normalizeNarrativeText(result.suggestedDifficulty)
+        result.Skill = normalizeNarrativeText(result.Skill)
+        result.Difficulty = normalizeNarrativeText(result.Difficulty)
         await this.waitForFocusSilence('scene-master-response')
         await svc.setAllPlayersState(this.tableId, 'turno-custode')
         for (const player of (ctx.session.players || [])) {
@@ -2247,18 +2249,15 @@ class CustodeEngine {
           ? 'question'
           : null
         await this.emitNarrative(result.response, { messageKind })
-        const normalizedTarget = normalizeChatText(result.targetCharacter || '')
-        const targetPlayer = (ctx.session.players || []).find(player =>
-          normalizeChatText(player.characterName || '') === normalizedTarget
-        ) || (ctx.session.players || []).find(player => player.email === message.from) || null
+        const targetPlayer = (ctx.session.players || []).find(player => player.email === message.from) || null
 
         if (result.decision === 'ask_for_roll' && targetPlayer) {
           ctx.session.pendingClarification = null
           ctx.session.pendingRoll = {
-            targetCharacter: targetPlayer.characterName || result.targetCharacter || '',
+            targetCharacter: targetPlayer.characterName || '',
             targetPlayerEmail: targetPlayer.email,
-            skill: normalizeNarrativeText(result.suggestedSkill),
-            difficulty: normalizeNarrativeText(result.suggestedDifficulty),
+            skill: normalizeNarrativeText(result.Skill),
+            difficulty: normalizeNarrativeText(result.Difficulty),
             declarationText: normalizeNarrativeText(message.text),
             focusSceneId: routing.focusSceneId || null,
             source: 'scene-master',
@@ -2273,7 +2272,7 @@ class CustodeEngine {
         if (result.decision === 'ask_clarification' && targetPlayer) {
           ctx.session.pendingRoll = null
           ctx.session.pendingClarification = {
-            targetCharacter: targetPlayer.characterName || result.targetCharacter || '',
+            targetCharacter: targetPlayer.characterName || '',
             targetPlayerEmail: targetPlayer.email,
             originalDeclarationText: normalizeNarrativeText(message.text),
             clarificationPrompt: normalizeNarrativeText(result.response),
@@ -2326,6 +2325,8 @@ class CustodeEngine {
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
     if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
     if (recentChat) sections.push(`STORICO CHAT\n${recentChat}`)
+    const skillsCatalog = renderSkillsCatalogSummary()
+    if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
 
     return {
       playerName: pendingClarification?.targetCharacter || message.fromName || message.from,
@@ -2343,9 +2344,8 @@ class CustodeEngine {
       const handoff = await this.buildSceneMasterClarificationContext(message, pendingClarification)
       const result = await this.llm('scene_master_v0_chiarimento.md', handoff)
       if (!result?.response) return
-      result.targetCharacter = normalizeNarrativeText(result.targetCharacter) || pendingClarification?.targetCharacter || ''
-      result.suggestedSkill = normalizeNarrativeText(result.suggestedSkill)
-      result.suggestedDifficulty = normalizeNarrativeText(result.suggestedDifficulty)
+      result.Skill = normalizeNarrativeText(result.Skill)
+      result.Difficulty = normalizeNarrativeText(result.Difficulty)
       await this.waitForFocusSilence('scene-master-clarification-response')
       await svc.setAllPlayersState(this.tableId, 'turno-custode')
       for (const player of (ctx.session.players || [])) {
@@ -2360,18 +2360,15 @@ class CustodeEngine {
         : null
       await this.emitNarrative(result.response, { messageKind })
 
-      const normalizedTarget = normalizeChatText(result.targetCharacter || '')
-      const targetPlayer = (ctx.session.players || []).find(player =>
-        normalizeChatText(player.characterName || '') === normalizedTarget
-      ) || (ctx.session.players || []).find(player => player.email === pendingClarification?.targetPlayerEmail) || null
+      const targetPlayer = (ctx.session.players || []).find(player => player.email === pendingClarification?.targetPlayerEmail) || null
 
       if (result.decision === 'ask_for_roll' && targetPlayer) {
         ctx.session.pendingClarification = null
         ctx.session.pendingRoll = {
-          targetCharacter: targetPlayer.characterName || result.targetCharacter || '',
+          targetCharacter: targetPlayer.characterName || pendingClarification?.targetCharacter || '',
           targetPlayerEmail: targetPlayer.email,
-          skill: normalizeNarrativeText(result.suggestedSkill),
-          difficulty: normalizeNarrativeText(result.suggestedDifficulty),
+          skill: normalizeNarrativeText(result.Skill),
+          difficulty: normalizeNarrativeText(result.Difficulty),
           declarationText: normalizeNarrativeText(pendingClarification?.originalDeclarationText || ''),
           focusSceneId: pendingClarification?.focusSceneId || null,
           source: 'scene-master',
@@ -2387,7 +2384,7 @@ class CustodeEngine {
         ctx.session.pendingRoll = null
         ctx.session.pendingClarification = {
           ...(pendingClarification || {}),
-          targetCharacter: targetPlayer.characterName || result.targetCharacter || pendingClarification?.targetCharacter || '',
+          targetCharacter: targetPlayer.characterName || pendingClarification?.targetCharacter || '',
           targetPlayerEmail: targetPlayer.email,
           clarificationPrompt: normalizeNarrativeText(result.response),
           createdAt: new Date().toISOString()

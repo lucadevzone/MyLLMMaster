@@ -129,9 +129,8 @@ async function main() {
     return {
       decision: 'ask_for_roll',
       response: 'Per capirlo davvero, Emil deve fare una prova di Psicologia.',
-      targetCharacter: 'Emil',
-      suggestedSkill: 'Psicologia',
-      suggestedDifficulty: 'normale'
+      Skill: 'Psicologia',
+      Difficulty: 'normale'
     }
   }
   engine.llmText = async (promptFile, vars) => {

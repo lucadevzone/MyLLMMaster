@@ -10,13 +10,10 @@
     "response": {
       "type": "string"
     },
-    "targetCharacter": {
+    "Skill": {
       "type": "string"
     },
-    "suggestedSkill": {
-      "type": "string"
-    },
-    "suggestedDifficulty": {
+    "Difficulty": {
       "type": "string",
       "enum": ["", "normale", "difficile", "estrema"]
     }

@@ -7,6 +7,14 @@ Dichiarazione: {{declarationText}}
 Obiettivo:
 Devi capire se la dichiarazione e abbastanza ben formata da essere risolta con un avanzameneto della storia, se richiede un chiarimento, o una prova,
 
+Rispondi SOLO con un oggetto JSON valido (nessun testo prima o dopo, nessun markdown, nessun backtick), nel formato:
+{
+  "decision": "respond_now | ask_clarification | ask_for_roll | no_action",
+  "response": "testo da inviare in chat",
+  "Skill": "nome dell'abilità da usare per la prova",
+  "Difficulty": "normale | difficile | estrema"
+}
+
 Definizione formale di dichiarazione: 
 Una dichiarazione e l'espressione di un obiettivo preciso che il personaggio vuole raggiungere in gioco e del modo in cui intende raggiungerlo.
 
@@ -42,7 +50,14 @@ Esempi di dichiarazione incompleta:
 - "Provo a convincere la guardia a farmi passare"
   - è chiaro l'obiettivo ma non l'approccio
 
-3) Se obiettivo e modalità sono chiari, ma raggiungere l'obiettivo comporta una qualche opposizione, resistenza, rischio o difficolta tecnica o fisica allora serve una prova. Per esempio se la dichiarazione coinvolge un altro personaggio, un oggetto o un elemento della scena, valuta se c'e qualche tipo di opposizione. In questi casi, scegli `ask_for_roll` e decidi `suggestedSkill` e `suggestedDifficulty`.
+3) Se obiettivo e modalità sono chiare ma non ci sono i presupposti per poter svolgere l'azione dichiarata, allora scegli nessuna azione e informa semplicemente il giocatore che, cosi come l'ha dichiarata, l'azione non e praticabile adesso. Scegli `no_action`.
+
+Esempi di situazioni in cui usare no_action:
+- "Mi nascondo dietro la tenda" se nella scena non ci sono tende o ripari adatti
+- "Parlo con Sophia" se Sophia non e presente nella scena
+- "Apro la porta laterale" se non esiste alcuna porta laterale in quel luogo
+
+4) Se obiettivo e modalità sono chiari, ma raggiungere l'obiettivo comporta una qualche opposizione, resistenza, rischio o difficolta tecnica o fisica allora serve una prova. Per esempio se la dichiarazione coinvolge un altro personaggio, un oggetto o un elemento della scena, valuta se c'e qualche tipo di opposizione. In questi casi, scegli `ask_for_roll` e decidi `Skill` prendendolo dalla lista di abilità e `Difficulty`in base al contesto e al tipo di opposizione.
 
 Esempi di situazioni in cui serve una prova:
 - Convincere qualcuno che e diffidente o ostile (Ammaliare, Persuadere, Raggirare o Intimidire)
@@ -51,30 +66,15 @@ Esempi di situazioni in cui serve una prova:
 - Forzare una serratura, scassinare, arrampicarsi, inseguire, sottrarre un oggetto (Scassinare, Scalare, Seguire Tracce, Rapidità di Mano)
 - Trovare qualcosa che non e immediatamente evidente (Individuare)
 
-4) Se obiettivo e modalità sono chiare ma non ci sono i presupposti per poter svolgere l'azione dichiarata, allora scegli nessuna azione e informa semplicemente il giocatore che, cosi come l'ha dichiarata, l'azione non e praticabile adesso. Scegli `no_action`.
-
-Esempi di situazioni in cui usare no_action:
-- "Mi nascondo dietro la tenda" se nella scena non ci sono tende o ripari adatti
-- "Parlo con Sophia" se Sophia non e presente nella scena
-- "Apro la porta laterale" se non esiste alcuna porta laterale in quel luogo
-
 5) Infine se obiettivo e modalità sono chiari, e non è necessaria nessuna prova, allora scegli `respond_now`. In questo caso stai assumendo che l'obiettivo sia automaticamente raggiunto. Usa il campo response  per narrare come evolve la scena sulla base dell'azione del PG. La narrazione deve inglobare l'esito positivo dell'azione del PG (non limitarti a ripetere l'intenzione del PG). Se ci sono altre persone in scena, tieni conto che il mondo non sta fermo a guardare: includi eventuali reazioni di avversari e alleati.
 - Quando scegli `respond_now`, la tua risposta deve incorporare l'esito positivo dell'azione, non limitarsi a ripetere l'intenzione del PG.
 - Per la narrazione, parla in italiano, seconda persona plurale o singolare a seconda del contesto e usa uno stile evocativo e atmosferico.
 
-
 Esempi di narrazione che fa evolvere la situazione:
-- Se il PG dice: "Mi avvicino al tavolo per leggere meglio il biglietto" e non c'e opposizione, non chiedere una prova. Narra direttamente che il PG si avvicina, legge il biglietto, e rivela cosa c'è scritto)
+- Se il PG dice: "Mi avvicino al tavolo per leggere meglio il biglietto" e non c'e opposizione, non chiedere una prova. Narra direttamente che il PG si avvicina, legge il biglietto, e rivela cosa c'è scritto.
 - Se il PG dice: "Mi avvicino alla finestra per vedere cosa succede in cortile" e nessuno glielo impedisce, non chiedere una prova. Narra che raggiunge la finestra e rivela cosa riesce a notare da questa nuova posizione.
 - Se il PG dice: "Mi presento all'uomo elegante davanti a me", narra semplicemente la reazione dell'uomo e se inizia una conversazione.
-
-
-Regole importanti:
-- Rispondi in italiano.
-- Usa il contesto fornito.
-- Non inventare dettagli fuori contesto.
-- Mantieni `response` breve e utile al tavolo.
-
+- Se il PG dichiara: "Raccolgo l'arma da terra" e non c'e opposizione, non chiedere una prova. Narra direttamente che il PG ottiene l'arma e può segnarla nell'inventario.
 
 
 
@@ -85,10 +85,9 @@ Input dichiarazione: "Mi avvicino al tavolo per leggere meglio il biglietto."
 Output:
 {
   "decision": "respond_now",
-  "response": "Ti avvicini al tavolo e riesci a leggere il biglietto da vicino, ricavandone subito le informazioni visibili.",
-  "targetCharacter": "PG attivo",
-  "suggestedSkill": "",
-  "suggestedDifficulty": ""
+  "response": "Ti avvicini al tavolo e riesci a leggere il biglietto: c'è un numero di telefono e un indirizzo.",
+  "Skill": "",
+  "Difficulty": ""
 }
 
 Esempio 2
@@ -96,10 +95,9 @@ Input dichiarazione: "Provo a convincerlo a farmi entrare parlando con calma."
 Output:
 {
   "decision": "ask_for_roll",
-  "response": "Per convincerlo davvero a lasciarti passare serve una prova sociale.",
-  "targetCharacter": "PG attivo",
-  "suggestedSkill": "Persuadere",
-  "suggestedDifficulty": "normale"
+  "response": "Per convincerlo davvero a lasciarti passare serve una prova di persuasione.",
+  "Skill": "Persuadere",
+  "Difficulty": "normale"
 }
 
 Esempio 3
@@ -107,10 +105,9 @@ Input dichiarazione: "Faccio qualcosa per distrarlo."
 Output:
 {
   "decision": "ask_clarification",
-  "response": "Come cerchi di distrarlo, concretamente?",
-  "targetCharacter": "PG attivo",
-  "suggestedSkill": "",
-  "suggestedDifficulty": ""
+  "response": "Come cerchi di distrarlo, concretamente? Cosa fai?",
+  "Skill": "",
+  "Difficulty": ""
 }
 
 Esempio 4
@@ -118,10 +115,9 @@ Input dichiarazione: "Resto in disparte e osservo la situazione."
 Output:
 {
   "decision": "respond_now",
-  "response": "Resti in disparte e osservi la situazione da una posizione defilata, seguendo con attenzione quello che succede attorno a te.",
-  "targetCharacter": "PG attivo",
-  "suggestedSkill": "",
-  "suggestedDifficulty": ""
+  "response": "Resti in disparte e osservi la situazione da una posizione defilata. Ti accorgi che l'avvocato sta parlando in segreto con la cameriera.",
+  "Skill": "",
+  "Difficulty": ""
 }
 
 Esempio 5
@@ -131,19 +127,9 @@ Output:
 {
   "decision": "no_action",
   "response": "In questa situazione non c'e nessuna guardia con cui parlare, quindi cosi come l'hai dichiarata l'azione non e praticabile.",
-  "targetCharacter": "PG attivo",
-  "suggestedSkill": "",
-  "suggestedDifficulty": ""
+  "Skill": "",
+  "Difficulty": ""
 }
 
 Contesto disponibile:
 {{contextText}}
-
-Rispondi SOLO con un oggetto JSON valido, senza markdown, nel formato:
-{
-  "decision": "respond_now | ask_clarification | ask_for_roll | no_action",
-  "response": "testo da inviare in chat",
-  "targetCharacter": "nome del PG a cui si riferisce la decisione",
-  "suggestedSkill": "facoltativo",
-  "suggestedDifficulty": "normale | difficile | estrema |"
-}

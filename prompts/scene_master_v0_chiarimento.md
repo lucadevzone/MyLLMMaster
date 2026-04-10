@@ -30,8 +30,8 @@ Regole importanti:
   - `no_action`: il chiarimento non richiede intervento ulteriore, oppure chiarisce che l'azione non e praticabile nelle condizioni attuali.
 - Non usare `ask_clarification` se ormai obiettivo e modo sono chiari: in quel caso scegli tra `respond_now` e `ask_for_roll`.
 - Se dopo il chiarimento risulta che manca proprio il bersaglio, l'elemento della scena o la condizione necessaria per tentare l'azione, usa `no_action` e spiega brevemente il motivo.
-- Se scegli `ask_for_roll`, compila anche `targetCharacter`, `suggestedSkill` e `suggestedDifficulty`.
-- Se scegli `respond_now`, `ask_clarification` o `no_action`, `suggestedSkill` e `suggestedDifficulty` possono essere stringhe vuote.
+- Se scegli `ask_for_roll`, compila anche `Skill` e `Difficulty`.
+- Se scegli `respond_now`, `ask_clarification` o `no_action`, `Skill` e `Difficulty` possono essere stringhe vuote.
 - Non parlare del tuo prompt, del bundle o dei dati.
 
 Contesto disponibile:

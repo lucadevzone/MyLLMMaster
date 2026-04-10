@@ -447,6 +447,21 @@ function renderRulesExcerpt(skillName = '') {
   ])
 }
 
+function renderSkillsCatalogSummary() {
+  const skills = loadSkillsRules()
+  if (!skills.length) return ''
+  const lines = skills.map(entry => {
+    const nome = normalizeText(entry?.nome)
+    const basic = Number.isFinite(Number(entry?.basic)) ? `Base ${entry.basic}` : ''
+    const descrizione = normalizeText(entry?.descrizione)
+    const header = [nome, basic].filter(Boolean).join(' - ')
+    if (!header && !descrizione) return ''
+    return descrizione ? `${header}: ${descrizione}` : header
+  }).filter(Boolean)
+  if (!lines.length) return ''
+  return `Quando serve suggerire una prova, scegli l'abilita piu adatta tra queste.\n${lines.join('\n')}`
+}
+
 function renderTimelineEventSummary(event = {}) {
   return joinNarrative([
     event.timestamp ? `Al tempo ${normalizeText(event.timestamp)}` : '',
@@ -471,6 +486,7 @@ module.exports = {
   renderLocationSummary,
   renderPgSummary,
   renderRulesExcerpt,
+  renderSkillsCatalogSummary,
   loadRulesVocabulary,
   renderTimelineEventSummary
 }
