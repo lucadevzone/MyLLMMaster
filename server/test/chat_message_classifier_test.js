@@ -26,6 +26,32 @@ function main() {
   )
 
   assert.strictEqual(
+    classifyChatMessage('Voglio persuadere Sophia a farmi vedere il suo amuleto.', {
+      otherPgNames: names,
+      npcNames: ['Sophia Hapgood'],
+      skillNames: ['Persuadere']
+    }).tag,
+    'dichiarazione'
+  )
+
+  assert.strictEqual(
+    classifyChatMessage('Provo a convincere Sophia a parlarmi di Belloq.', {
+      otherPgNames: names,
+      npcNames: ['Sophia Hapgood'],
+      skillNames: ['Persuadere']
+    }).tag,
+    'dichiarazione'
+  )
+
+  assert.strictEqual(
+    classifyChatMessage('Mi nascondo dietro la tenda.', {
+      otherPgNames: names,
+      skillNames: ['Furtività']
+    }).tag,
+    'dichiarazione'
+  )
+
+  assert.strictEqual(
     classifyChatMessage('Custode, vedo qualcosa di strano sul podio?', { otherPgNames: names }).tag,
     'domanda al custode'
   )

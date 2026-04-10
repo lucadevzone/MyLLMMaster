@@ -571,11 +571,15 @@ function extractChatFeatures(text, options = {}) {
   const locationNames = (options.locationNames || []).map(name => String(name || '').trim()).filter(Boolean)
   const objectNames = (options.objectNames || []).map(name => String(name || '').trim()).filter(Boolean)
   const clueNames = (options.clueNames || []).map(name => String(name || '').trim()).filter(Boolean)
-    const skillNames = Array.from(new Set([
+  const skillNames = Array.from(new Set([
       ...((options.skillNames || []).map(name => String(name || '').trim()).filter(Boolean)),
       ...(rulesVocabulary.skillNames || []),
       ...(rulesVocabulary.characteristicNames || [])
     ]))
+  const skillActionTerms = Array.from(new Set([
+    ...((options.skillActionTerms || []).map(name => String(name || '').trim()).filter(Boolean)),
+    ...(rulesVocabulary.skillActionTerms || [])
+  ]))
   const addressedNames = [...otherPgNames, ...otherCharacterNames, ...npcNames]
   const honorifics = '(sig\\.?|signor|signora|signorina|mr\\.?|mrs\\.?|miss|monsieur|madame|dott\\.?|dottor|dottore)'
 
@@ -601,6 +605,7 @@ function extractChatFeatures(text, options = {}) {
   const containsObjectName = matchesName(objectNames)
   const containsClueName = matchesName(clueNames)
   const containsSkillName = matchesName(skillNames)
+  const containsSkillActionTerm = matchesName(skillActionTerms)
 
   const outsideRolePatterns = [
     /\b(afk|brb|lol|ahah|ah ah|scusate|scusa il ritardo|torno subito|devo andare|un secondo|un attimo|lag|connessione|microfono|vado in bagno|arrivo subito|torno tra poco|mi assento due minuti|mi assento un attimo|devo rispondere al telefono|mi chiamano|devo aprire alla porta|aspettate un secondo|sono pronto|siamo pronti|iniziamo|possiamo iniziare)\b/i
@@ -613,7 +618,7 @@ function extractChatFeatures(text, options = {}) {
     /\b(dico|rispondo|sussurro|mormoro|urlo|grido|bisbiglio|replico)\b/i
   ]
   const declarationPatterns = [
-    /\b(mi avvicino|mi allontano|mi sposto|entro|esco|vado|vado verso|vado al|vado alla|raggiungo|corro|mi precipito|cerco|osservo|guardo|esamino|controllo|seguo|apro|chiudo|prendo|lascio|aspetto|resto|parlo|parlare con|vorrei parlare con|voglio parlare con|mi rivolgo a|chiedo|domando|provo a|tento di|cerco di|faccio|non faccio nulla|non faccio niente|rimango fermo)\b/i
+    /\b(mi avvicino|mi allontano|mi sposto|entro|esco|vado|vado verso|vado al|vado alla|raggiungo|corro|mi precipito|cerco|osservo|guardo|esamino|controllo|seguo|apro|chiudo|prendo|lascio|aspetto|resto|parlo|parlare con|vorrei parlare con|voglio parlare con|mi rivolgo a|chiedo|domando|provo a|tento di|cerco di|faccio|voglio persuadere|persuado|persuadere|convinco|convincere|intimorisco|intimidisco|intimidire|minaccio|minacciare|seduco|sedurre|ammalio|ammaliare|non faccio nulla|non faccio niente|rimango fermo)\b/i
   ]
   const discussionPatterns = [
     /\b(ragazzi|noi|tu vai|io vado|facciamo|andiamo|dobbiamo|conviene|secondo me|pensate che|che facciamo)\b/i
@@ -637,8 +642,8 @@ function extractChatFeatures(text, options = {}) {
   const hasMechanicsReference = /\b(tiro|prova|abilita|dado|difficolta|bonus)\b/i.test(normalized)
   const hasPastEventReference = /\b(avevamo|era successo|ricordo che|prima|gia incontrato|gia visto)\b/i.test(normalized)
   const hasSystemDirectAddress = /\b(puoi ripetere|mi dici|puoi dirmi)\b/i.test(normalized)
-  const hasActionIntentPattern = /\b(provo a|tento di|mi dirigo verso|uso|prendo|lancio|cerco di)\b/i.test(normalized)
-  const hasConditionalActionIntent = /\b(vorrei|potrei provare a)\b/i.test(normalized)
+  const hasActionIntentPattern = /\b(provo a|tento di|mi dirigo verso|uso|prendo|lancio|cerco di|voglio persuadere|voglio convincere|voglio intimidire|voglio sedurre|voglio ammaliare)\b/i.test(normalized)
+  const hasConditionalActionIntent = /\b(vorrei|potrei provare a|vorrei persuadere|vorrei convincere|vorrei intimidire|vorrei sedurre|vorrei ammaliare)\b/i.test(normalized)
   const hasMyPgPattern = /\b(il mio pg|il mio personaggio)\b/i.test(normalized)
   const hasInvestigationPattern = /\b(cerco|osservo|esamino|controllo|indago|frugo)\b/i.test(normalized)
   const hasMovementPattern = /\b(vado|corro|mi avvicino|mi allontano|entro|esco|salgo|scendo|raggiungo)\b/i.test(normalized)
@@ -691,6 +696,7 @@ function extractChatFeatures(text, options = {}) {
     containsObjectName,
     containsClueName,
     containsSkillName,
+    containsSkillActionTerm,
     hasQuestionMark,
     hasOutsideRoleCue,
     hasNullCue,
@@ -783,6 +789,7 @@ function resolveChatMessageTag(features, options = {}) {
   if (features.hasDeclarationCue) add('dichiarazione', weights.strong, 'first_person_action_verb')
   if (features.hasActionIntentPattern) add('dichiarazione', weights.strong, 'action_intent_pattern')
   if (features.hasConditionalActionIntent) add('dichiarazione', weights.strong, 'conditional_action_intent')
+  if (features.containsSkillActionTerm) add('dichiarazione', weights.medium, 'skill_derived_action_term')
   if (features.hasMyPgPattern) add('dichiarazione', weights.strong, 'my_pg_plus_action')
   if (features.hasInvestigationPattern) add('dichiarazione', weights.medium, 'investigation_pattern')
   if (features.hasMovementPattern) add('dichiarazione', weights.medium, 'movement_pattern')

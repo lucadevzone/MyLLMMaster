@@ -94,9 +94,46 @@ function resolveCharacteristicRule(name = '') {
 
 function loadRulesVocabulary() {
   const skillTerms = new Set()
+  const skillActionTerms = new Set()
+  const addActionTerm = (value) => {
+    const term = normalizeText(value)
+    if (!term) return
+    skillActionTerms.add(term)
+  }
   for (const entry of loadSkillsRules()) {
     const nome = normalizeText(entry?.nome)
     if (nome) skillTerms.add(nome)
+    const baseToken = nome
+      .split(/[(/]/)[0]
+      .trim()
+      .split(/\s+/)[0]
+      .trim()
+    if (/(are|ere|ire)$/i.test(baseToken)) addActionTerm(baseToken)
+  }
+
+  const skillSynonyms = {
+    Ammaliare: ['sedurre', 'affascinare', 'adescare'],
+    Ascoltare: ['origliare'],
+    Biblioteconomia: ['consultare', 'ricercare'],
+    Camuffare: ['travestire', 'travestirsi'],
+    Combattere: ['attaccare', 'colpire', 'menare'],
+    Furtivita: ['nascondersi', 'mi nascondo', 'sgattaiolare', 'sgattaiolo', 'intrufolarsi', 'mi intrufolo'],
+    Individuare: ['notare', 'scorgere'],
+    Intimidire: ['minacciare', 'spaventare', 'impaurire'],
+    Persuadere: ['convincere', 'convinco'],
+    Psicologia: ['scrutare', 'intuire'],
+    Raggirare: ['ingannare', 'inganno', 'mentire', 'imbrogliare'],
+    Rapidita: ['borseggiare', 'occultare'],
+    Scalare: ['arrampicarsi', 'mi arrampico'],
+    Scassinare: ['forzare', 'forzo'],
+    Seguire: ['pedinare'],
+    Valutare: ['stimare']
+  }
+  for (const [skillName, synonyms] of Object.entries(skillSynonyms)) {
+    const wanted = normalizeSkillKey(skillName)
+    const exists = loadSkillsRules().some(entry => normalizeSkillKey(entry?.nome).startsWith(wanted))
+    if (!exists) continue
+    synonyms.forEach(addActionTerm)
   }
 
   const characteristicTerms = new Set()
@@ -109,7 +146,8 @@ function loadRulesVocabulary() {
 
   return {
     skillNames: Array.from(skillTerms),
-    characteristicNames: Array.from(characteristicTerms)
+    characteristicNames: Array.from(characteristicTerms),
+    skillActionTerms: Array.from(skillActionTerms)
   }
 }
 
