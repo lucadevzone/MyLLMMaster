@@ -53,7 +53,7 @@ const isPassiveBootstrap = computed(() =>
 )
 
 const playerStatusStyle = computed(() => {
-  const s = isPassiveBootstrap.value ? 'gioco-libero' : (sess.myState?.playerState || 'turno-custode')
+  const s = sess.myState?.playerState || (isPassiveBootstrap.value ? 'gioco-libero' : 'turno-custode')
   const style = PLAYER_STATE_STYLE[s] || PLAYER_STATE_STYLE['turno-custode']
   const text = style.text || dynamicStateText(s)
   return { bg: style.bg, text }
@@ -61,8 +61,10 @@ const playerStatusStyle = computed(() => {
 
 function dynamicStateText(state) {
   if (state === 'mio-turno-prova') {
-    // Il custode metterà la caratteristica nel pianoAzione; per ora generico
-    return 'Devi affrontare una prova – Tira il dado!'
+    const skill = sess.session?.pendingRoll?.skill
+    const difficulty = sess.session?.pendingRoll?.difficulty
+    const detail = [skill, difficulty].filter(Boolean).join(' · ')
+    return detail ? `Devi affrontare una prova – ${detail}` : 'Devi affrontare una prova – Tira il dado!'
   }
   if (state === 'fuori-turno') {
     const active = sess.session?.players?.find(p =>
@@ -75,7 +77,6 @@ function dynamicStateText(state) {
 
 // ── Input abilitato/disabilitato ──────────────────────────────────────────────
 const canType = computed(() => {
-  if (isPassiveBootstrap.value) return true
   const s = sess.myState?.playerState
   return s === 'gioco-libero' || s === 'mio-turno-libero'
 })
@@ -200,10 +201,8 @@ function stopTypingSignal() {
 }
 
 function rollDice() {
-  const prova = sess.session?.pianoAzione?.piano?.find(
-    p => p.pg === auth.user.email && p.richiede_prova && !p.risultato_prova
-  )
-  const caratteristica = prova?.caratteristica || 'Caratteristica'
+  const pendingRoll = sess.session?.pendingRoll || null
+  const caratteristica = pendingRoll?.skill || 'Caratteristica'
   const soglia = myChar.value?.characteristics?.[caratteristica] ||
                  myChar.value?.abilita?.comuni?.[caratteristica.toLowerCase()] || 50
   sess.rollDice(caratteristica, soglia)

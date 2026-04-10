@@ -127,6 +127,7 @@ async function getOrCreateSession(tableId, invitedPlayers) {
       state: 'custode-pronto',
       custodePhase: null,
       phase: 'inizio_sessione',
+      pendingRoll: null,
       focusGroupId: null,
       startedAt: null,
       endedAt: null,
@@ -147,6 +148,9 @@ async function getOrCreateSession(tableId, invitedPlayers) {
     await appendLog(tableId, session.sessionId, { event: 'session-created', sessionNumber })
   } else if (!session.phase) {
     session.phase = 'inizio_sessione'
+    await saveSession(tableId, session)
+  } else if (!('pendingRoll' in session)) {
+    session.pendingRoll = null
     await saveSession(tableId, session)
   }
 

@@ -7,6 +7,7 @@ export const useSessionStore = defineStore('session', () => {
   const auth = useAuthStore()
 
   let socket = null
+  const serverUrl = import.meta.env.VITE_SERVER_URL || undefined
 
   const connected = ref(false)
   const session = ref(null)        // { state, players, registroPresenti, ... }
@@ -30,7 +31,7 @@ export const useSessionStore = defineStore('session', () => {
   function connect(tableId) {
     if (socket) disconnect()
 
-    socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3000', {
+    socket = io(serverUrl, {
       auth: { token: auth.token }
     })
 
@@ -99,6 +100,15 @@ export const useSessionStore = defineStore('session', () => {
     socket.on('session:phase-update', ({ phase }) => {
       custodePhase.value = phase
       if (session.value) session.value.custodePhase = phase
+    })
+
+    socket.on('session:session-update', ({ session: partial }) => {
+      if (!partial) return
+      if (!session.value) {
+        session.value = partial
+        return
+      }
+      session.value = { ...session.value, ...partial }
     })
   }
 

@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "required": ["decision", "response", "targetCharacter", "suggestedSkill", "suggestedDifficulty"],
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["respond_now", "ask_clarification", "ask_for_roll", "no_action"]
+    },
+    "response": {
+      "type": "string"
+    },
+    "targetCharacter": {
+      "type": "string"
+    },
+    "suggestedSkill": {
+      "type": "string"
+    },
+    "suggestedDifficulty": {
+      "type": "string",
+      "enum": ["", "normale", "difficile", "estrema"]
+    }
+  }
+}

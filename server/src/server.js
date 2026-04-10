@@ -11,15 +11,32 @@ const { setIO } = require('./socket/runtime')
 const app = express()
 const httpServer = http.createServer(app)
 
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean)
+
+function isAllowedOrigin(origin) {
+  return !origin || allowedOrigins.includes(origin)
+}
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) return callback(null, true)
+      return callback(new Error(`Origin non consentita: ${origin}`))
+    },
     methods: ['GET', 'POST']
   }
 })
 setIO(io)
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }))
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) return callback(null, true)
+    return callback(new Error(`Origin non consentita: ${origin}`))
+  }
+}))
 app.use(express.json())
 
 // Routes

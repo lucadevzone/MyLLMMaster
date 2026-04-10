@@ -194,6 +194,9 @@ module.exports = function setupSocket(io) {
     socket.on('session:dice-roll', async ({ caratteristica, soglia }) => {
       const tableId = socket.tableId
       if (!tableId) return
+      const diceCtx = svc.getSession(tableId)
+      const pendingRoll = diceCtx?.session?.pendingRoll || null
+      if (pendingRoll && pendingRoll.targetPlayerEmail && pendingRoll.targetPlayerEmail !== email) return
 
       const valore = Math.floor(Math.random() * 100) + 1
       const esito = valore <= soglia ? 'successo' : 'fallimento'
@@ -202,7 +205,7 @@ module.exports = function setupSocket(io) {
 
       // Aggiorna piano azione in sessione (per custode)
       const ctx = svc.getSession(tableId)
-      if (ctx) {
+      if (ctx && !pendingRoll) {
         const player = svc.getPlayer(ctx, email)
         if (player) player.playerState = 'turno-custode'
         await svc.saveSession(tableId, ctx.session)
@@ -211,12 +214,13 @@ module.exports = function setupSocket(io) {
       // Toast per tutti
       io.to(`table:${tableId}`).emit('session:dice-result', result)
       // Aggiorna stato player
-      io.to(`table:${tableId}`).emit('session:player-update', {
-        email, connected: true, playerState: 'turno-custode'
-      })
+      if (!pendingRoll) {
+        io.to(`table:${tableId}`).emit('session:player-update', {
+          email, connected: true, playerState: 'turno-custode'
+        })
+      }
 
       // Notifica il motore del Custode
-      const diceCtx = svc.getSession(tableId)
       if (diceCtx?.session?.state === 'sessione-iniziata') {
         const engine = custodeEngine.getOrCreate(tableId, io)
         if (engine.running) engine.onDiceRoll(email, valore, soglia, caratteristica).catch(console.error)

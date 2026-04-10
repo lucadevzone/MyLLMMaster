@@ -57,6 +57,7 @@ async function main() {
   const engine = getOrCreate(tableId, io)
   await engine.startPassiveOrchestrator()
   engine.answerCustodeQuestion = async () => {}
+  engine.answerSceneMasterDeclaration = async () => {}
 
   const messages = [
     {
