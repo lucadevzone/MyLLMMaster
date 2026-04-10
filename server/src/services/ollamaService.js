@@ -2,6 +2,8 @@ const fs = require('fs').promises
 const fsSync = require('fs')
 const path = require('path')
 const { DATA_DIR } = require('../utils/dataInit')
+const sessionService = require('./sessionService')
+const { sessionPromptsDir } = require('./tableRuntimeStore')
 
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 const MAX_RETRIES = parseInt(process.env.LLM_MAX_RETRIES || '3')
@@ -12,6 +14,8 @@ const PROMPT_SCHEMAS_DIR = path.join(PROMPTS_DIR, 'schemas')
 const schemaCache = new Map()
 
 function tableLogsDir(tableId) {
+  const currentSessionId = sessionService.getSession(tableId)?.session?.sessionId
+  if (currentSessionId) return sessionPromptsDir(tableId, currentSessionId)
   return path.join(DATA_DIR, 'tables', tableId, 'logs', 'prompts')
 }
 

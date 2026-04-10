@@ -1,0 +1,79 @@
+{
+  "caratteristiche_e_derivati": [
+    {
+      "nome": "Forza",
+      "acronimo": "FOR",
+      "descrizione": "Misura la forza muscolare di un investigatore."
+    },
+    {
+      "nome": "Costituzione",
+      "acronimo": "COS",
+      "descrizione": "Misura la salute e la resistenza del tuo investigatore."
+    },
+    {
+      "nome": "Potere",
+      "acronimo": "POT",
+      "descrizione": "È una combinazione di forza di volontà, spirito e stabilità mentale."
+    },
+    {
+      "nome": "Destrezza",
+      "acronimo": "DES",
+      "descrizione": "Misura l’agilità fisica e la velocità del tuo investigatore."
+    },
+    {
+      "nome": "Fascino",
+      "acronimo": "FAS",
+      "descrizione": "Misura l’avvenenza fisica del tuo investigatore."
+    },
+    {
+      "nome": "Taglia",
+      "acronimo": "TAG",
+      "descrizione": "È una media di altezza e peso del tuo investigatore."
+    },
+    {
+      "nome": "Intelligenza",
+      "acronimo": "INT",
+      "descrizione": "Misura l’astuzia e la capacità di fare collegamenti logici e intuitivi."
+    },
+    {
+      "nome": "Istruzione",
+      "acronimo": "IST",
+      "descrizione": "Misura le conoscenze acquisite tramite studio o esperienza di vita."
+    },
+    {
+      "nome": "Bonus al Danno",
+      "acronimo": "",
+      "descrizione": "Indica i danni extra inflitti negli attacchi in mischia. Si determina in base alla somma di FOR e TAG."
+    },
+    {
+      "nome": "Struttura",
+      "acronimo": "",
+      "descrizione": "Rappresenta la corporatura e la forza nelle manovre di combattimento. Si basa sulla somma di FOR e TAG."
+    },
+    {
+      "nome": "Punti Ferita",
+      "acronimo": "PF",
+      "descrizione": "Si calcolano sommando TAG e COS, dividendo per 10 e arrotondando per difetto. Indicano la salute fisica del personaggio."
+    },
+    {
+      "nome": "Movimento",
+      "acronimo": "MOV",
+      "descrizione": "Indica la velocità di movimento del personaggio. I personaggi umani hanno valore base 8."
+    },
+    {
+      "nome": "Punti Sanità",
+      "acronimo": "SAN",
+      "descrizione": "Partono pari al valore di POT. Rappresentano la stabilità mentale e diminuiscono con l’esposizione agli orrori."
+    },
+    {
+      "nome": "Punti Magia",
+      "acronimo": "PM",
+      "descrizione": "Pari a un quinto del POT. Usati per incantesimi ed effetti magici. Si recuperano al ritmo di 1 punto all’ora."
+    },
+    {
+      "nome": "Fortuna",
+      "acronimo": "",
+      "descrizione": "Si calcola tirando 3D6 e moltiplicando per 5. Indica quanto le circostanze esterne siano favorevoli al personaggio."
+    }
+  ]
+}

@@ -7,11 +7,25 @@
 
 const path = require('path')
 const fs = require('fs').promises
+const orchestratorContextBundles = require('../../../config/orchestrator_context_bundles.json')
+const orchestratorRoutingPolicy = require('../../../config/orchestrator_routing_policy.json')
 const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileStore')
 const { DATA_DIR } = require('../utils/dataInit')
 const svc = require('./sessionService')
 const ollama = require('./ollamaService')
 const rag = require('./ragService')
+const runtimeStore = require('./tableRuntimeStore')
+const { loadNotesIndex, buildQuestionCatalogFromNotesIndex } = require('./moduleNotesAnalyzer')
+const {
+  renderSceneSummary,
+  renderNpcSummary,
+  renderObjectSummary,
+  renderClueSummary,
+  renderLocationSummary,
+  renderPgSummary,
+  renderRulesExcerpt,
+  loadRulesVocabulary
+} = require('./contextObjectRenderers')
 
 const THINKING_MESSAGES_FILE = path.join(__dirname, '../../../config/custode-messages.json')
 let thinkingMessagesCache = null
@@ -48,6 +62,138 @@ function moduleAmbientazionePath(moduleId) {
   return path.join(DATA_DIR, 'modules', `${moduleId}_ambientazione.txt`)
 }
 
+function moduleNotesDir(moduleId) {
+  return path.join(DATA_DIR, 'modules', moduleId, 'notes')
+}
+
+function candidateModuleNotesDirs(moduleId) {
+  const normalized = String(moduleId || '').trim()
+  if (!normalized) return []
+  const candidates = [moduleNotesDir(normalized)]
+  const stripped = normalized.replace(/^mod_/, '')
+  if (stripped && stripped !== normalized) {
+    candidates.push(moduleNotesDir(stripped))
+  }
+  return candidates
+}
+
+const notesQuestionCatalogCache = new Map()
+const notesIndexCache = new Map()
+const rulesVocabulary = loadRulesVocabulary()
+
+function getModuleQuestionCatalog(moduleId) {
+  if (!moduleId) return null
+  if (notesQuestionCatalogCache.has(moduleId)) return notesQuestionCatalogCache.get(moduleId)
+
+  for (const notesDir of candidateModuleNotesDirs(moduleId)) {
+    try {
+      const index = loadNotesIndex(notesDir)
+      notesIndexCache.set(moduleId, { index, notesDir })
+      const catalog = buildQuestionCatalogFromNotesIndex(index)
+      notesQuestionCatalogCache.set(moduleId, catalog)
+      return catalog
+    } catch {
+      // prova il candidato successivo
+    }
+  }
+
+  notesQuestionCatalogCache.set(moduleId, null)
+  return null
+}
+
+function getModuleNotesResources(moduleId) {
+  if (!moduleId) return null
+  if (notesIndexCache.has(moduleId)) return notesIndexCache.get(moduleId)
+  for (const notesDir of candidateModuleNotesDirs(moduleId)) {
+    try {
+      const index = loadNotesIndex(notesDir)
+      const value = { index, notesDir }
+      notesIndexCache.set(moduleId, value)
+      return value
+    } catch {
+      // prova il candidato successivo
+    }
+  }
+  notesIndexCache.set(moduleId, null)
+  return null
+}
+
+async function readNotesEntityByRef(notesDir, entityRef) {
+  if (!notesDir || !entityRef?.file) return null
+  const filePath = path.join(notesDir, entityRef.file)
+  const payload = await readJSON(filePath)
+
+  if (entityRef.type === 'scene') return payload
+  if (entityRef.type === 'npc') return payload
+  if (entityRef.type === 'object') {
+    return (payload.oggetti || []).find(item => item.id_oggetto === entityRef.id) || null
+  }
+  if (entityRef.type === 'clue') {
+    return (payload.indizi || []).find(item => item.id_indizio === entityRef.id) || null
+  }
+  return null
+}
+
+function lookupEntityRefByName(index, type, name) {
+  const normalized = normalizeChatText(name)
+  if (!normalized || !index) return null
+  const direct = index.byName?.[type]?.[normalized]
+  if (direct) return direct
+  if (type === 'scene') {
+    const byLocation = (index.entities?.scene || []).find(entity => normalizeChatText(entity.locationName) === normalized)
+    if (byLocation) return byLocation
+  }
+  return (index.entities?.[type] || []).find(entity => normalizeChatText(entity.name) === normalized) || null
+}
+
+function recentPlayerMessagesSummary(messages = [], maxItems = 6) {
+  const seen = new Set()
+  return messages
+    .filter(message => message && !['orchestrator-debug', 'custode'].includes(message.type))
+    .slice(-maxItems)
+    .map(message => `${message.fromName || message.from}: ${normalizeNarrativeText(message.text)}`)
+    .filter(line => {
+      if (!line || seen.has(line)) return false
+      seen.add(line)
+      return true
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function getRecentClassifications(messages = [], currentMessageId = null, maxItems = 5) {
+  return (messages || [])
+    .filter(message => message && message.id !== currentMessageId)
+    .filter(message => message.type === 'normal')
+    .filter(message => !!message.classificationTag)
+    .slice(-maxItems)
+    .map(message => ({
+      tag: message.classificationTag,
+      from: message.from,
+      fromName: message.fromName || message.from,
+      timestamp: message.timestamp || null
+    }))
+}
+
+function inferSystemPromptKindFromMessage(message) {
+  if (!message || ['normal', 'orchestrator-debug'].includes(message.type)) return null
+  if (message.messageKind) return normalizeChatText(message.messageKind)
+  const text = normalizeChatText(message.text || '')
+  if (!text) return null
+  if (/\bcosa fai\b|\bche fai\b|\bcosa fate\b/.test(text)) return 'what_do_you_do'
+  if (message.type === 'npc') return 'npc_dialogue'
+  if (text.endsWith('?')) return 'question'
+  return null
+}
+
+function getLastSystemPromptKind(messages = []) {
+  for (let index = (messages || []).length - 1; index >= 0; index -= 1) {
+    const kind = inferSystemPromptKindFromMessage(messages[index])
+    if (kind) return kind
+  }
+  return null
+}
+
 async function ensureModuleAmbientazione(moduleId, primoCapitolo, heavyModel, tableId) {
   const filePath = moduleAmbientazionePath(moduleId)
   try {
@@ -76,24 +222,15 @@ async function getModule(moduleId) {
   return readJSON(path.join(DATA_DIR, 'modules', `${moduleId}.json`))
 }
 
+async function getUserNameByEmail(email) {
+  const usersPath = path.join(DATA_DIR, 'users.json')
+  if (!await fileExists(usersPath)) return email
+  const users = await readJSON(usersPath)
+  return users.find(u => u.email === email)?.name || email
+}
+
 async function getWorldState(tableId) {
-  const p = path.join(tDir(tableId), 'world_state.json')
-  if (!await fileExists(p)) {
-    const ws = {
-      currentChapter: 1,
-      focusScene: null,
-      groups: [],
-      stato_pgs: {},
-      conoscenze_party: '',
-      data_inizio_avventura: '',
-      npcs: [],
-      items: []
-    }
-    await writeJSON(p, ws)
-    return ws
-  }
-  const ws = await readJSON(p)
-  // Migrazione da vecchio schema
+  const ws = await runtimeStore.getWorldState(tableId)
   if (!ws.stato_pgs || typeof ws.stato_pgs !== 'object') ws.stato_pgs = {}
   if (typeof ws.conoscenze_party !== 'string') ws.conoscenze_party = ''
   if (typeof ws.data_inizio_avventura !== 'string') ws.data_inizio_avventura = ''
@@ -103,17 +240,22 @@ async function getWorldState(tableId) {
 }
 
 async function saveWorldState(tableId, ws) {
-  await writeJSON(path.join(tDir(tableId), 'world_state.json'), ws)
+  await runtimeStore.saveWorldState(tableId, ws)
 }
 
 async function getDiary(tableId) {
-  const p = path.join(tDir(tableId), 'diary.txt')
-  try { return await fs.readFile(p, 'utf-8') } catch { return '' }
+  const storyLog = await runtimeStore.getStoryLog(tableId)
+  return runtimeStore.renderStoryLogText(storyLog)
 }
 
 async function appendDiary(tableId, entry, sessionNumber = 0, moduleTitle = '') {
-  const p = path.join(tDir(tableId), 'diary.txt')
-  await fs.appendFile(p, '\n\n' + entry)
+  const ws = await runtimeStore.getWorldState(tableId)
+  await runtimeStore.appendStoryLogEntry(tableId, {
+    sessione: sessionNumber || null,
+    scena: ws.focusScene || null,
+    type: 'narrative',
+    text: entry
+  })
 }
 
 async function readPreparedFile(tableId, filename) {
@@ -147,23 +289,11 @@ function synthChar(char) {
 }
 
 async function getScene(tableId, sceneId) {
-  const active = path.join(tDir(tableId), 'active_scenes', `${sceneId}.json`)
-  if (await fileExists(active)) return readJSON(active)
-  const closed = path.join(tDir(tableId), 'closed_scenes', `${sceneId}.json`)
-  if (await fileExists(closed)) return readJSON(closed)
-  return null
+  return runtimeStore.getScene(tableId, sceneId)
 }
 
 async function nextSceneId(tableId) {
-  let count = 0
-  for (const dir of ['active_scenes', 'closed_scenes']) {
-    const p = path.join(tDir(tableId), dir)
-    try {
-      const files = await fs.readdir(p)
-      count += files.filter(f => f.endsWith('.json')).length
-    } catch { /* cartella assente */ }
-  }
-  return `scene_${String(count).padStart(3, '0')}`
+  return runtimeStore.nextSceneId(tableId)
 }
 
 function buildPgLookup(chars) {
@@ -247,21 +377,13 @@ async function buildNarrativeGroups(tableId, worldState, lookup = {}) {
 }
 
 async function saveScene(tableId, scene, closed = false) {
-  const dir = closed ? 'closed_scenes' : 'active_scenes'
-  await ensureDir(path.join(tDir(tableId), dir))
-  await writeJSON(path.join(tDir(tableId), dir, `${scene.id_scena}.json`), scene)
+  if (closed && (!scene.runtime || typeof scene.runtime !== 'object')) scene.runtime = {}
+  if (closed) scene.runtime.stato = scene.runtime.stato || 'completata'
+  await runtimeStore.saveScene(tableId, scene)
 }
 
 async function closeScene(tableId, sceneId, suggerimentoProssimaScena = '') {
-  const scene = await getScene(tableId, sceneId)
-  if (!scene) return
-  scene.suggerimento_prossima_scena = suggerimentoProssimaScena || ''
-  // Sposta in closed_scenes
-  const src = path.join(tDir(tableId), 'active_scenes', `${sceneId}.json`)
-  const dst = path.join(tDir(tableId), 'closed_scenes', `${sceneId}.json`)
-  await ensureDir(path.join(tDir(tableId), 'closed_scenes'))
-  await writeJSON(dst, scene)
-  try { await fs.unlink(src) } catch {}
+  await runtimeStore.closeScene(tableId, sceneId, suggerimentoProssimaScena)
 }
 
 function hasActiveTypingInFocus(typingPlayers, focusParticipants = []) {
@@ -277,6 +399,774 @@ function normalizeNarrativeText(text) {
   if (typeof text === 'string') return text.trim()
   if (text == null) return ''
   return String(text).trim()
+}
+
+function stripDiacritics(text) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function normalizeChatText(text) {
+  return stripDiacritics(text)
+    .toLowerCase()
+    .replace(/[“”«»]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function escapeRegExp(text) {
+  return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function containsAny(text, patterns) {
+  return patterns.some(pattern => pattern.test(text))
+}
+
+function buildCanonicalNameVariants(names = [], { allowPersonAliases = false } = {}) {
+  const canonicalByVariant = new Map()
+  const collisions = new Set()
+
+  const register = (variant, canonical) => {
+    const normalizedVariant = normalizeChatText(variant)
+    const normalizedCanonical = normalizeChatText(canonical)
+    if (!normalizedVariant || !normalizedCanonical) return
+    const existing = canonicalByVariant.get(normalizedVariant)
+    if (existing && existing !== canonical) {
+      collisions.add(normalizedVariant)
+      canonicalByVariant.delete(normalizedVariant)
+      return
+    }
+    if (!collisions.has(normalizedVariant)) canonicalByVariant.set(normalizedVariant, canonical)
+  }
+
+  for (const originalName of names || []) {
+    const canonical = String(originalName || '').trim()
+    if (!canonical) continue
+    register(canonical, canonical)
+    if (!allowPersonAliases) continue
+
+    const stripped = canonical
+      .replace(/^(sig\.?|signor|signora|signorina|mr\.?|mrs\.?|miss|monsieur|madame|dott\.?|dottor|dottore)\s+/i, '')
+      .trim()
+    if (!stripped) continue
+    register(stripped, canonical)
+
+    const parts = stripped.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2) {
+      const first = parts[0]
+      const last = parts[parts.length - 1]
+      if (first.length >= 4) register(first, canonical)
+      if (last.length >= 4) register(last, canonical)
+    }
+  }
+
+  return canonicalByVariant
+}
+
+function findCanonicalNameMatches(text, names = [], options = {}) {
+  const normalized = normalizeChatText(text)
+  if (!normalized) return []
+  const variants = buildCanonicalNameVariants(names, options)
+  const boundaryBefore = `(^|[\\s,(['"’])`
+  const boundaryAfter = `([,:!?\\s)\\]'"]|$)`
+  const matches = []
+  const seenCanonical = new Set()
+
+  for (const [variant, canonical] of variants.entries()) {
+    const safe = escapeRegExp(variant)
+    if (new RegExp(`${boundaryBefore}${safe}${boundaryAfter}`, 'i').test(normalized)) {
+      if (!seenCanonical.has(canonical)) {
+        seenCanonical.add(canonical)
+        matches.push(canonical)
+      }
+    }
+  }
+
+  return matches
+}
+
+function getRoutingWeights() {
+  const weights = orchestratorRoutingPolicy.weights || {}
+  return {
+    strong: Number(weights.strongSignal) || 3,
+    medium: Number(weights.mediumSignal) || 2,
+    weak: Number(weights.weakSignal) || 1,
+    moduleBonus: Number(weights.moduleVocabularyBonus) || 2,
+    phaseBonus: Number(weights.phasePriorBonus) || 1,
+    historyBonus: Number(weights.historyInertiaBonus) || 1
+  }
+}
+
+function getRoutingDecisionSettings() {
+  const decision = orchestratorRoutingPolicy.decision || {}
+  return {
+    minWinningMargin: Number(decision.minWinningMargin) || 2,
+    fallbackCategory: decision.fallbackCategory || 'ambiguo',
+    allowStrongSignalOverride: decision.allowStrongSignalOverride !== false
+  }
+}
+
+function normalizeRoutingPhase(value) {
+  return normalizeChatText(value).replace(/\s+/g, '_')
+}
+
+function normalizeRoutingCategoryTag(value) {
+  const normalized = normalizeChatText(value).replace(/\s+/g, '_')
+  if (normalized === 'domanda_al_custode') return 'domanda al custode'
+  if (normalized === 'frase_in_character') return 'frase in-character'
+  if (normalized === 'fuori_ruolo') return 'fuori ruolo'
+  if (normalized === 'discutendo_tra_pg') return 'discutendo tra PG'
+  if (normalized === 'dichiarazione') return 'dichiarazione'
+  if (normalized === 'ambiguo') return null
+  return value
+}
+
+function scoreRoutingCategory(scores, category, amount, reason) {
+  if (!category || !amount) return
+  if (!scores[category]) scores[category] = { score: 0, reasons: [] }
+  scores[category].score += amount
+  if (reason) scores[category].reasons.push(reason)
+}
+
+function historyCategories(options = {}) {
+  const recent = Array.isArray(options.recentClassifications)
+    ? options.recentClassifications
+    : []
+  return recent
+    .map(entry => typeof entry === 'string' ? entry : entry?.tag)
+    .map(normalizeChatText)
+    .filter(Boolean)
+}
+
+function extractChatFeatures(text, options = {}) {
+  const raw = normalizeNarrativeText(text)
+  if (!raw) {
+    return {
+      raw: '',
+      normalized: '',
+      rawUnquoted: '',
+      normalizedUnquoted: '',
+      isEmpty: true
+    }
+  }
+
+  const normalized = normalizeChatText(raw)
+  const rawUnquoted = raw.trim().replace(/^[\"']+|[\"']+$/g, '').trim()
+  const normalizedUnquoted = normalizeChatText(rawUnquoted)
+  if (!normalized) {
+    return {
+      raw,
+      normalized,
+      rawUnquoted,
+      normalizedUnquoted,
+      isEmpty: true
+    }
+  }
+
+  const otherPgNames = (options.otherPgNames || []).map(name => String(name || '').trim()).filter(Boolean)
+  const otherCharacterNames = (options.otherCharacterNames || []).map(name => String(name || '').trim()).filter(Boolean)
+  const npcNames = (options.npcNames || []).map(name => String(name || '').trim()).filter(Boolean)
+  const otherPlayerNames = (options.otherPlayerNames || []).map(name => String(name || '').trim()).filter(Boolean)
+  const locationNames = (options.locationNames || []).map(name => String(name || '').trim()).filter(Boolean)
+  const objectNames = (options.objectNames || []).map(name => String(name || '').trim()).filter(Boolean)
+  const clueNames = (options.clueNames || []).map(name => String(name || '').trim()).filter(Boolean)
+    const skillNames = Array.from(new Set([
+      ...((options.skillNames || []).map(name => String(name || '').trim()).filter(Boolean)),
+      ...(rulesVocabulary.skillNames || []),
+      ...(rulesVocabulary.characteristicNames || [])
+    ]))
+  const addressedNames = [...otherPgNames, ...otherCharacterNames, ...npcNames]
+  const honorifics = '(sig\\.?|signor|signora|signorina|mr\\.?|mrs\\.?|miss|monsieur|madame|dott\\.?|dottor|dottore)'
+
+  const matchesName = (names, { startOnly = false, allowHonorific = false, allowPersonAliases = false } = {}) => {
+    const variants = buildCanonicalNameVariants(names, { allowPersonAliases })
+    return Array.from(variants.keys()).some(name => {
+    const safe = escapeRegExp(name)
+    const prefix = startOnly ? '^' : '(^|[\\s,])'
+    const honorific = allowHonorific ? `(?:${honorifics}\\s+)?` : ''
+    return new RegExp(`${prefix}${honorific}${safe}([,:!?\\s]|$)`, 'i').test(normalizedUnquoted)
+    })
+  }
+
+  const startsWithCustodeVocative = /^(custode|master)([,:!?]|\s)/i.test(normalizedUnquoted)
+  const startsWithHonorific = new RegExp(`^${honorifics}\\s+`, 'i').test(normalizedUnquoted)
+  const hasCharacterVocative = matchesName(addressedNames, { startOnly: true, allowHonorific: true, allowPersonAliases: true })
+  const hasPgVocative = matchesName(otherPgNames, { startOnly: true, allowHonorific: true, allowPersonAliases: true })
+  const hasPlayerVocative = matchesName(otherPlayerNames, { startOnly: true })
+  const mentionsPlayerName = matchesName(otherPlayerNames)
+  const containsNpcName = matchesName(npcNames, { allowPersonAliases: true })
+  const containsPgName = matchesName(otherPgNames, { allowPersonAliases: true })
+  const containsLocationName = matchesName(locationNames)
+  const containsObjectName = matchesName(objectNames)
+  const containsClueName = matchesName(clueNames)
+  const containsSkillName = matchesName(skillNames)
+
+  const outsideRolePatterns = [
+    /\b(afk|brb|lol|ahah|ah ah|scusate|scusa il ritardo|torno subito|devo andare|un secondo|un attimo|lag|connessione|microfono|vado in bagno|arrivo subito|torno tra poco|mi assento due minuti|mi assento un attimo|devo rispondere al telefono|mi chiamano|devo aprire alla porta|aspettate un secondo|sono pronto|siamo pronti|iniziamo|possiamo iniziare)\b/i
+  ]
+  const nullPatterns = [
+    /^(ok|va bene|perfetto|ricevuto|capito|niente|passo|boh|mah|eh)\W*$/i
+  ]
+  const inCharacterPatterns = [
+    /^[\"'].+[\"']$/i,
+    /\b(dico|rispondo|sussurro|mormoro|urlo|grido|bisbiglio|replico)\b/i
+  ]
+  const declarationPatterns = [
+    /\b(mi avvicino|mi allontano|mi sposto|entro|esco|vado|vado verso|vado al|vado alla|raggiungo|corro|mi precipito|cerco|osservo|guardo|esamino|controllo|seguo|apro|chiudo|prendo|lascio|aspetto|resto|parlo|parlare con|vorrei parlare con|voglio parlare con|mi rivolgo a|chiedo|domando|provo a|tento di|cerco di|faccio|non faccio nulla|non faccio niente|rimango fermo)\b/i
+  ]
+  const discussionPatterns = [
+    /\b(ragazzi|noi|tu vai|io vado|facciamo|andiamo|dobbiamo|conviene|secondo me|pensate che|che facciamo)\b/i
+  ]
+  const custodeQuestionPatterns = [
+    /\?$/,
+    /\b(custode|master)\b/i,
+    /\b(posso|riesco|vedo|sento|mi sembra|cosa noto|cosa vedo|che succede|capisco se|conosco)\b/i
+  ]
+
+  const hasQuestionMark = /\?/.test(raw)
+  const hasOutsideRoleCue = containsAny(normalized, outsideRolePatterns)
+  const hasNullCue = containsAny(normalized, nullPatterns)
+  const hasInCharacterCue = containsAny(normalized, inCharacterPatterns)
+  const hasDeclarationCue = containsAny(normalized, declarationPatterns)
+  const hasDiscussionCue = containsAny(normalized, discussionPatterns) || hasPgVocative
+  const hasCustodeCue = containsAny(normalized, custodeQuestionPatterns)
+  const hasLeadingVocativeQuestion = /^[^,]{2,40},\s+.+\?$/.test(rawUnquoted)
+  const hasQuotedSpeech = /^[\"'].+[\"']$/i.test(raw.trim())
+  const hasQuestionWord = /\b(cosa|come|dove|quanto|quale|quali|quando|chi|posso|riesco|e possibile)\b/i.test(normalized)
+  const hasMechanicsReference = /\b(tiro|prova|abilita|dado|difficolta|bonus)\b/i.test(normalized)
+  const hasPastEventReference = /\b(avevamo|era successo|ricordo che|prima|gia incontrato|gia visto)\b/i.test(normalized)
+  const hasSystemDirectAddress = /\b(puoi ripetere|mi dici|puoi dirmi)\b/i.test(normalized)
+  const hasActionIntentPattern = /\b(provo a|tento di|mi dirigo verso|uso|prendo|lancio|cerco di)\b/i.test(normalized)
+  const hasConditionalActionIntent = /\b(vorrei|potrei provare a)\b/i.test(normalized)
+  const hasMyPgPattern = /\b(il mio pg|il mio personaggio)\b/i.test(normalized)
+  const hasInvestigationPattern = /\b(cerco|osservo|esamino|controllo|indago|frugo)\b/i.test(normalized)
+  const hasMovementPattern = /\b(vado|corro|mi avvicino|mi allontano|entro|esco|salgo|scendo|raggiungo)\b/i.test(normalized)
+  const hasSpeechVerbPattern = /\b(dico a|dico|chiedo a|chiedo|rispondo|saluto|replico|sussurro|mormoro)\b/i.test(normalized)
+  const hasSocialObjectPattern = /\b(signore|signora|monsieur|madame|signor)\b/i.test(normalized) || containsNpcName
+  const hasGroupCoordinationPattern = /\b(tu vai|io vado|facciamo|andiamo|dobbiamo|coprimi|copritemi)\b/i.test(normalized)
+  const hasSharedStrategyPattern = /\b(secondo me|conviene|pensate che|che facciamo)\b/i.test(normalized)
+  const hasCollectiveDecisionPattern = /\b(noi|ragazzi|tutti|insieme)\b/i.test(normalized)
+  const hasRealWorldReference = /\b(lavoro|telefono|porta di casa|bagno|connessione|microfono)\b/i.test(normalized)
+  const hasPauseRequest = /\b(facciamo pausa|pausa|aspetta|aspettate)\b/i.test(normalized)
+  const hasRuleComplaint = /\b(non ho capito la regola|regola|master e cattivo)\b/i.test(normalized)
+  const hasCasualReaction = /\b(lol|ahah|ah ah)\b/i.test(normalized)
+  const hasLogisticAbsencePhrase = /\b(vado in bagno|arrivo subito|mi assento|torno tra poco|devo andare|devo rispondere al telefono|devo aprire alla porta)\b/i.test(normalized)
+  const hasAfkBrbPhrase = /\b(afk|brb)\b/i.test(normalized)
+  const hasQuotedDialogue = hasQuotedSpeech
+  const hasDirectAddressToSceneNpc = hasCharacterVocative && containsNpcName
+  const hasHonorificVocative = startsWithHonorific && hasCharacterVocative
+  const hasQuestionLikeShape = hasQuestionMark || hasQuestionWord
+  const moduleMatches = {
+    npc: containsNpcName,
+    pg: containsPgName,
+    player: mentionsPlayerName,
+    location: containsLocationName,
+    object: containsObjectName,
+    clue: containsClueName,
+    skill: containsSkillName
+  }
+
+  let vocativeType = null
+  if (startsWithCustodeVocative) vocativeType = 'custode'
+  else if (hasPlayerVocative) vocativeType = 'player'
+  else if (hasPgVocative) vocativeType = 'pg'
+  else if (hasCharacterVocative) vocativeType = 'character'
+
+  return {
+    raw,
+    normalized,
+    rawUnquoted,
+    normalizedUnquoted,
+    isEmpty: false,
+    startsWithHonorific,
+    startsWithCustodeVocative,
+    hasCharacterVocative,
+    hasPgVocative,
+    hasPlayerVocative,
+    mentionsPlayerName,
+    containsNpcName,
+    containsPgName,
+    containsLocationName,
+    containsObjectName,
+    containsClueName,
+    containsSkillName,
+    hasQuestionMark,
+    hasOutsideRoleCue,
+    hasNullCue,
+    hasInCharacterCue,
+    hasDeclarationCue,
+    hasDiscussionCue,
+    hasCustodeCue,
+    hasLeadingVocativeQuestion,
+    hasQuotedSpeech,
+    hasQuestionWord,
+    hasMechanicsReference,
+    hasPastEventReference,
+    hasSystemDirectAddress,
+    hasActionIntentPattern,
+    hasConditionalActionIntent,
+    hasMyPgPattern,
+    hasInvestigationPattern,
+    hasMovementPattern,
+    hasSpeechVerbPattern,
+    hasSocialObjectPattern,
+    hasGroupCoordinationPattern,
+    hasSharedStrategyPattern,
+    hasCollectiveDecisionPattern,
+    hasRealWorldReference,
+    hasPauseRequest,
+    hasRuleComplaint,
+    hasCasualReaction,
+    hasLogisticAbsencePhrase,
+    hasAfkBrbPhrase,
+    hasQuotedDialogue,
+    hasDirectAddressToSceneNpc,
+    hasHonorificVocative,
+    hasQuestionLikeShape,
+    moduleMatches,
+    vocativeType
+  }
+}
+
+function resolveChatMessageTag(features, options = {}) {
+  if (features.isEmpty) return { tag: null, confidence: 1 }
+
+  if (features.hasOutsideRoleCue) {
+    return { tag: 'fuori ruolo', confidence: 0.95 }
+  }
+  if (features.hasPlayerVocative || features.mentionsPlayerName) {
+    return { tag: 'fuori ruolo', confidence: 0.86 }
+  }
+  if (features.hasNullCue) {
+    return { tag: null, confidence: 0.8 }
+  }
+  if (features.hasQuestionLikeShape && features.vocativeType === 'custode') {
+    return { tag: 'domanda al custode', confidence: 0.95 }
+  }
+  if (!features.hasQuestionMark && features.startsWithHonorific && features.hasCharacterVocative) {
+    return { tag: 'frase in-character', confidence: 0.83 }
+  }
+  if (features.hasQuestionMark && (features.hasCharacterVocative || features.hasLeadingVocativeQuestion) && features.vocativeType !== 'custode') {
+    return { tag: 'frase in-character', confidence: 0.84 }
+  }
+  if (features.hasQuestionMark && features.hasCustodeCue && !features.hasCharacterVocative) {
+    return { tag: 'domanda al custode', confidence: 0.9 }
+  }
+  if (features.hasQuotedSpeech) {
+    return { tag: 'frase in-character', confidence: 0.82 }
+  }
+  const weights = getRoutingWeights()
+  const decision = getRoutingDecisionSettings()
+  const scores = {}
+
+  const add = (category, amount, reason) => scoreRoutingCategory(scores, category, amount, reason)
+
+  // fuori ruolo
+  if (features.hasLogisticAbsencePhrase) add('fuori_ruolo', weights.strong, 'logistic_absence_phrase')
+  if (features.hasAfkBrbPhrase) add('fuori_ruolo', weights.strong, 'afk_or_brb_phrase')
+  if (features.mentionsPlayerName || features.hasPlayerVocative) add('fuori_ruolo', weights.strong, 'real_player_name_mentioned')
+  if (features.hasPauseRequest) add('fuori_ruolo', weights.medium, 'pause_request')
+  if (features.hasRealWorldReference) add('fuori_ruolo', weights.medium, 'real_world_reference')
+  if (features.hasRuleComplaint) add('fuori_ruolo', weights.medium, 'rule_complaint')
+  if (features.hasCasualReaction) add('fuori_ruolo', weights.medium, 'casual_reaction')
+
+  // domanda al custode
+  if (features.hasQuestionMark) add('domanda_al_custode', weights.strong, 'question_mark')
+  if (features.hasQuestionWord) add('domanda_al_custode', weights.strong, 'world_or_rules_interrogative')
+  if (features.hasMechanicsReference) add('domanda_al_custode', weights.strong, 'mechanics_reference')
+  if (features.hasPastEventReference) add('domanda_al_custode', weights.medium, 'past_event_reference')
+  if (features.hasSystemDirectAddress) add('domanda_al_custode', weights.medium, 'system_direct_address')
+  if (features.startsWithCustodeVocative) add('domanda_al_custode', weights.strong, 'master_or_custode_vocative')
+
+  // dichiarazione
+  if (features.hasDeclarationCue) add('dichiarazione', weights.strong, 'first_person_action_verb')
+  if (features.hasActionIntentPattern) add('dichiarazione', weights.strong, 'action_intent_pattern')
+  if (features.hasConditionalActionIntent) add('dichiarazione', weights.strong, 'conditional_action_intent')
+  if (features.hasMyPgPattern) add('dichiarazione', weights.strong, 'my_pg_plus_action')
+  if (features.hasInvestigationPattern) add('dichiarazione', weights.medium, 'investigation_pattern')
+  if (features.hasMovementPattern) add('dichiarazione', weights.medium, 'movement_pattern')
+  if (features.containsLocationName || features.containsObjectName || features.containsClueName) {
+    add('dichiarazione', weights.medium, 'interaction_with_scene_element')
+  }
+
+  // frase in-character
+  if (features.hasQuotedDialogue) add('frase_in_character', weights.strong, 'quoted_dialogue')
+  if (features.hasDirectAddressToSceneNpc) add('frase_in_character', weights.strong, 'direct_address_to_scene_npc')
+  if (features.hasHonorificVocative) add('frase_in_character', weights.strong, 'honorific_vocative')
+  if (features.hasSpeechVerbPattern) add('frase_in_character', weights.medium, 'speech_verb_pattern')
+  if (features.hasSocialObjectPattern && !features.hasDiscussionCue) add('frase_in_character', weights.medium, 'social_object_pattern')
+  if (features.hasInCharacterCue && !features.hasCustodeCue && !features.hasDeclarationCue) {
+    add('frase_in_character', weights.medium, 'dialogue_without_quotes')
+  }
+
+  // discutendo tra PG
+  if (features.hasPgVocative) add('discutendo_tra_pg', weights.strong, 'pg_name_vocative')
+  if (features.hasGroupCoordinationPattern) add('discutendo_tra_pg', weights.strong, 'group_coordination_pattern')
+  if (features.hasSharedStrategyPattern) add('discutendo_tra_pg', weights.strong, 'shared_strategy_pattern')
+  if (features.hasDiscussionCue) add('discutendo_tra_pg', weights.medium, 'collective_decision_pattern')
+  if (features.hasCollectiveDecisionPattern) add('discutendo_tra_pg', weights.medium, 'collective_decision_pattern')
+
+  // module vocabulary bonus
+  const modulePolicy = orchestratorRoutingPolicy.categories || {}
+  const moduleBuckets = {
+    npcNames: features.moduleMatches.npc,
+    objectNames: features.moduleMatches.object,
+    clueNames: features.moduleMatches.clue,
+    locationNames: features.moduleMatches.location,
+    skillNames: features.moduleMatches.skill,
+    pgNames: features.moduleMatches.pg,
+    playerNames: features.moduleMatches.player
+  }
+  for (const [category, categoryConfig] of Object.entries(modulePolicy)) {
+    const allowed = categoryConfig.moduleVocabulary?.allowed || []
+    const blocked = categoryConfig.moduleVocabulary?.blocked || []
+    const hasAllowed = allowed.some(key => moduleBuckets[key])
+    const hasBlocked = blocked.some(key => moduleBuckets[key])
+    if (hasAllowed && !hasBlocked) add(category, weights.moduleBonus, 'module_vocabulary_bonus')
+  }
+
+  // phase prior
+  const phase = normalizeRoutingPhase(options.phase || options.gamePhase || '')
+  if (phase) {
+    const phaseMap = orchestratorRoutingPolicy.phasePriors?.[phase] || null
+    if (phaseMap) {
+      for (const [category, amount] of Object.entries(phaseMap)) {
+        add(category, Number(amount) || weights.phaseBonus, `phase_prior:${phase}`)
+      }
+    }
+  }
+
+  // history inertia
+  const recent = historyCategories(options)
+  if (recent.length) {
+    const mapped = recent.map(entry => {
+      if (entry === 'fuori ruolo') return 'fuori_ruolo'
+      if (entry === 'domanda al custode') return 'domanda_al_custode'
+      if (entry === 'frase in-character') return 'frase_in_character'
+      if (entry === 'discutendo tra pg') return 'discutendo_tra_pg'
+      return entry
+    })
+    const counts = mapped.reduce((acc, key) => {
+      acc[key] = (acc[key] || 0) + 1
+      return acc
+    }, {})
+    const modal = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0]
+    if (modal && counts[modal] >= 2) add(modal, weights.historyBonus, 'history_modal_category')
+  }
+  const lastSystemPromptKind = normalizeChatText(options.lastSystemPromptKind || '')
+  if (lastSystemPromptKind === 'question') add('domanda_al_custode', weights.historyBonus, 'system_last_message_is_question')
+  if (lastSystemPromptKind === 'what_do_you_do') add('dichiarazione', weights.historyBonus, 'system_last_message_asks_what_do_you_do')
+  if (lastSystemPromptKind === 'npc_dialogue') {
+    add('frase_in_character', weights.historyBonus, 'system_last_message_from_npc')
+    if (features.containsNpcName || features.hasSocialObjectPattern || features.hasSpeechVerbPattern) {
+      add('frase_in_character', weights.historyBonus, 'system_last_message_from_npc_with_dialogue_cue')
+    }
+  }
+
+  const ranked = Object.entries(scores).sort((a, b) => b[1].score - a[1].score)
+  if (!ranked.length) {
+    return { tag: null, confidence: 0.4, scores }
+  }
+
+  const [winnerKey, winnerData] = ranked[0]
+  const runnerUpScore = ranked[1]?.[1]?.score || 0
+  const margin = winnerData.score - runnerUpScore
+
+  if (margin < decision.minWinningMargin) {
+    return { tag: null, confidence: 0.45, scores, ambiguous: true }
+  }
+
+  const winnerTag = normalizeRoutingCategoryTag(winnerKey)
+  const confidence = Math.min(0.93, 0.55 + (winnerData.score * 0.04) + (margin * 0.03))
+  return { tag: winnerTag, confidence, scores }
+}
+
+function classifyChatMessage(text, options = {}) {
+  const features = extractChatFeatures(text, options)
+  return resolveChatMessageTag(features, options)
+}
+
+function findMentionedName(text, names = []) {
+  return findCanonicalNameMatches(text, names, { allowPersonAliases: true })[0] || null
+}
+
+function findMentionedNames(text, names = []) {
+  return findCanonicalNameMatches(text, names, { allowPersonAliases: true })
+}
+
+function extractQuestionMetadata(text, options = {}) {
+  const features = extractChatFeatures(text, options)
+  const tag = resolveChatMessageTag(features, options).tag
+  const raw = features.raw || ''
+  const normalized = features.normalized || ''
+  const questionNpcNames = options.questionNpcNames || options.npcNames || []
+  const rulesTerms = Array.from(new Set([
+    ...((options.skillNames || []).map(name => String(name || '').trim()).filter(Boolean)),
+    ...(rulesVocabulary.skillNames || []),
+    ...(rulesVocabulary.characteristicNames || [])
+  ]))
+
+  const entities = {
+    npcs: findMentionedNames(raw, questionNpcNames),
+    objects: findMentionedNames(raw, options.objectNames || []),
+    clues: findMentionedNames(raw, options.clueNames || []),
+    locations: findMentionedNames(raw, options.locationNames || []),
+    skills: findMentionedNames(raw, rulesTerms),
+    pgs: findMentionedNames(raw, options.pgNames || options.otherPgNames || [])
+  }
+
+  const allEntities = [
+    ...entities.npcs.map(value => ({ type: 'npc', value })),
+    ...entities.objects.map(value => ({ type: 'object', value })),
+    ...entities.clues.map(value => ({ type: 'clue', value })),
+    ...entities.locations.map(value => ({ type: 'location', value })),
+    ...entities.skills.map(value => ({ type: 'skill', value })),
+    ...entities.pgs.map(value => ({ type: 'pg', value }))
+  ]
+
+  let operator = 'ask'
+  if (/\b(vedo|guardo|osservo|noto|scorgo|riesco a vedere|cosa vedo|cosa noto)\b/i.test(normalized)) operator = 'perceive'
+  else if (/\b(sento|ascolto|odo)\b/i.test(normalized)) operator = 'hear'
+  else if (/\b(ricordo|riconosco|conosco)\b/i.test(normalized)) operator = 'remember'
+  else if (/\b(abbiamo gia incontrato|ho gia incontrato|abbiamo gia visto|ho gia visto|ci hanno gia parlato di)\b/i.test(normalized)) operator = 'history'
+  else if (/\b(capisco|deduco|collego|interpreto)\b/i.test(normalized)) operator = 'infer'
+  else if (/\b(sembra|sta facendo|come reagisce|mente)\b/i.test(normalized)) operator = 'evaluate'
+  else if (/\b(dov['’]e|dove si trova|dove sta|dovrebbe essere)\b/i.test(normalized)) operator = 'locate'
+  else if (/\b(cosa sai dirmi|cos['’]e|spiegami|descrivimi|parlami di|in cosa consiste)\b/i.test(normalized)) operator = 'reference'
+  else if (/\b(posso|riesco|che prova|che tiro|uso|fare .*?(psicologia|osservare|furtivita|biblioteca|persuasione))\b/i.test(normalized)) operator = 'mechanical_check'
+
+  let questionType = 'general_question'
+  if (tag === 'domanda al custode') {
+    const isRulesReferenceOnly = entities.skills.length > 0
+      && !entities.npcs.length
+      && !entities.objects.length
+      && !entities.clues.length
+      && !entities.locations.length
+      && !entities.pgs.length
+      && operator === 'reference'
+
+    if (isRulesReferenceOnly) questionType = 'rules_reference_question'
+    else if (entities.skills.length) questionType = 'rule_or_roll_question'
+    else if (entities.npcs.length) questionType = 'npc_clarification'
+    else if (entities.objects.length) questionType = 'object_question'
+    else if (entities.clues.length) questionType = 'clue_or_knowledge_question'
+    else if (entities.locations.length || /\b(scena|stanza|sala|podio|porta|corridoio|luogo)\b/i.test(normalized)) questionType = 'scene_clarification'
+  }
+
+  const primaryEntity = allEntities[0] || null
+  const secondaryEntities = allEntities.slice(1, 3)
+
+  const needs = {
+    scene: questionType === 'scene_clarification' || (!!primaryEntity && questionType !== 'rules_reference_question'),
+    npc: entities.npcs.length > 0,
+    object: entities.objects.length > 0,
+    clues: entities.clues.length > 0 || questionType === 'clue_or_knowledge_question',
+    rules: questionType === 'rule_or_roll_question' || questionType === 'rules_reference_question' || entities.skills.length > 0,
+    pg: entities.pgs.length > 0 || questionType === 'rule_or_roll_question'
+  }
+
+  let confidence = 0.45
+  if (tag === 'domanda al custode') confidence += 0.2
+  if (primaryEntity) confidence += 0.2
+  if (questionType !== 'general_question') confidence += 0.1
+  if (operator !== 'ask') confidence += 0.05
+  confidence = Math.min(0.95, confidence)
+
+  const defaults = orchestratorContextBundles.defaults || {}
+  const questionTypeBundle = orchestratorContextBundles.questionTypeBundles?.[questionType] || []
+  const primaryEntityBundle = primaryEntity
+    ? (orchestratorContextBundles.entityTypeBundles?.[primaryEntity.type] || [])
+    : []
+  const maxSecondaryEntities = defaults.maxSecondaryEntities || 2
+  const secondaryEntityBundles = secondaryEntities
+    .slice(0, maxSecondaryEntities)
+    .flatMap(entity => orchestratorContextBundles.secondaryEntityBundles?.[entity.type] || [])
+
+  let contextBundle = Array.from(new Set(
+    [
+      ...(defaults.alwaysInclude || []),
+      ...questionTypeBundle,
+      ...primaryEntityBundle,
+      ...secondaryEntityBundles
+    ].filter(Boolean)
+  ))
+  if (questionType === 'rules_reference_question') {
+    contextBundle = ['rulesExcerpt:primarySkill']
+  } else if (questionType === 'rule_or_roll_question') {
+    contextBundle = contextBundle.filter(entry => entry !== 'partyKnowledgeShort')
+  }
+  const fallbackBundle = Array.from(new Set((defaults.fallbackBundle || []).filter(Boolean)))
+
+  return {
+    tag,
+    questionType,
+    operator,
+    entities,
+    primaryEntity,
+    secondaryEntities,
+    needs,
+    contextBundle,
+    fallbackBundle,
+    confidence
+  }
+}
+
+function buildOrchestratorRoutingDecision(messageText, options = {}) {
+  const features = extractChatFeatures(messageText, options)
+  const classified = resolveChatMessageTag(features, options)
+  const tag = classified.tag || '?'
+  const npcTarget = findMentionedName(messageText, options.npcNames || [])
+  const questionMetadata = tag === 'domanda al custode'
+    ? extractQuestionMetadata(messageText, {
+      ...options,
+      questionNpcNames: options.questionNpcNames || options.npcNames || []
+    })
+    : null
+
+  if (tag === 'domanda al custode') {
+    const isRulesQuestion = questionMetadata?.questionType === 'rules_reference_question'
+      || questionMetadata?.questionType === 'rule_or_roll_question'
+    return {
+      tag,
+      agent: 'Custode',
+      reason: isRulesQuestion
+        ? 'domanda diretta sulle regole'
+        : 'domanda diretta sul mondo',
+      npcTarget: null,
+      focusSceneId: options.focusSceneId || null,
+      focusSceneLabel: options.focusSceneLabel || null,
+      contextBundle: questionMetadata?.contextBundle || questionMetadata?.fallbackBundle || [],
+      metadata: questionMetadata
+    }
+  }
+  if (tag === 'dichiarazione') {
+    return {
+      tag,
+      agent: 'Scene Master',
+      reason: 'azione o dichiarazione che fa avanzare la scena',
+      npcTarget: null,
+      focusSceneId: options.focusSceneId || null,
+      focusSceneLabel: options.focusSceneLabel || null,
+      contextBundle: ['focusScene', 'recentChat'],
+      metadata: null
+    }
+  }
+  if (tag === 'frase in-character' && npcTarget) {
+    return {
+      tag,
+      agent: 'NPC Master',
+      reason: 'interazione diretta con un PNG',
+      npcTarget,
+      focusSceneId: options.focusSceneId || null,
+      focusSceneLabel: options.focusSceneLabel || null,
+      contextBundle: ['focusScene', 'npcSummary:primary', 'recentChat'],
+      metadata: null
+    }
+  }
+  if (tag === 'frase in-character') {
+    return {
+      tag,
+      agent: 'Scene Master',
+      reason: 'battuta in fiction senza PNG bersaglio esplicito',
+      npcTarget: null,
+      focusSceneId: options.focusSceneId || null,
+      focusSceneLabel: options.focusSceneLabel || null,
+      contextBundle: ['focusScene', 'recentChat'],
+      metadata: null
+    }
+  }
+  if (tag === 'discutendo tra PG') {
+    return {
+      tag,
+      agent: null,
+      reason: 'coordinazione tra PG: nessun intervento necessario',
+      npcTarget: null,
+      focusSceneId: options.focusSceneId || null,
+      focusSceneLabel: options.focusSceneLabel || null,
+      contextBundle: [],
+      metadata: null
+    }
+  }
+  if (tag === 'fuori ruolo') {
+    return {
+      tag,
+      agent: null,
+      reason: 'messaggio fuori ruolo',
+      npcTarget: null,
+      focusSceneId: options.focusSceneId || null,
+      focusSceneLabel: options.focusSceneLabel || null,
+      contextBundle: [],
+      metadata: null
+    }
+  }
+  return {
+    tag,
+    agent: null,
+    reason: 'messaggio ambiguo: nessun routing automatico',
+    npcTarget: null,
+    focusSceneId: options.focusSceneId || null,
+    focusSceneLabel: options.focusSceneLabel || null,
+    contextBundle: questionMetadata?.fallbackBundle || [],
+    metadata: questionMetadata
+  }
+}
+
+function formatContextBundleEntry(entry, routing = {}) {
+  const metadata = routing.metadata || null
+  const primaryEntity = metadata?.primaryEntity || null
+  const secondaryEntities = metadata?.secondaryEntities || []
+  const npcTarget = routing.npcTarget || null
+  const focusSceneLabel = routing.focusSceneLabel || routing.focusSceneId || null
+
+  if (entry === 'focusScene') {
+    return focusSceneLabel ? `${entry}(${focusSceneLabel})` : entry
+  }
+
+  if (entry === 'npcSummary:primary') {
+    const label = primaryEntity?.type === 'npc' ? primaryEntity.value : npcTarget
+    return label ? `${entry}(${label})` : entry
+  }
+  if (entry === 'objectSummary:primary') {
+    const label = primaryEntity?.type === 'object' ? primaryEntity.value : null
+    return label ? `${entry}(${label})` : entry
+  }
+  if (entry === 'clueSummary:primary') {
+    const label = primaryEntity?.type === 'clue' ? primaryEntity.value : null
+    return label ? `${entry}(${label})` : entry
+  }
+  if (entry === 'pgSummary:primary' || entry === 'pgSummary:actor') {
+    const label = primaryEntity?.type === 'pg'
+      ? primaryEntity.value
+      : (metadata?.entities?.pgs || [])[0]
+    return label ? `${entry}(${label})` : entry
+  }
+  if (entry === 'locationCard:primary') {
+    const label = primaryEntity?.type === 'location' ? primaryEntity.value : null
+    return label ? `${entry}(${label})` : entry
+  }
+  if (entry === 'rulesExcerpt:primarySkill') {
+    const label = primaryEntity?.type === 'skill'
+      ? primaryEntity.value
+      : (metadata?.entities?.skills || [])[0]
+    return label ? `${entry}(${label})` : entry
+  }
+
+  const secondaryMatch = entry.match(/^(npcSummary|objectSummary|clueSummary|locationCard|pgSummary):secondary$/)
+  if (secondaryMatch) {
+    const wantedType = secondaryMatch[1]
+      .replace('Summary', '')
+      .replace('Card', '')
+      .toLowerCase()
+    const label = secondaryEntities.find(entity => entity.type === wantedType)?.value
+    return label ? `${entry}(${label})` : entry
+  }
+
+  return entry
+}
+
+function formatContextBundleForDebug(routing = {}) {
+  return (routing.contextBundle || []).map(entry => formatContextBundleEntry(entry, routing))
 }
 
 function debugString(value) {
@@ -834,6 +1724,7 @@ class CustodeEngine {
     this.paused = false
     this.bufferActive = false
     this.flushInProgress = false
+    this.passiveOrchestratorMode = false
   }
 
   get room() { return `table:${this.tableId}` }
@@ -858,7 +1749,8 @@ class CustodeEngine {
       from: 'custode',
       fromName: 'Custode',
       to: options.to || null,
-      text: safeText
+      text: safeText,
+      messageKind: options.messageKind || null
     })
 
     this.io.to(this.room).emit('session:custode-typing', false)
@@ -888,6 +1780,20 @@ class CustodeEngine {
     this.io.to(this.room).emit('session:toast', { type: 'error', text })
   }
 
+  async emitOrchestratorDebug(text) {
+    const safeText = normalizeNarrativeText(text)
+    if (!safeText) return
+    const msg = await svc.addMessage(this.tableId, {
+      type: 'orchestrator-debug',
+      from: 'orchestrator',
+      fromName: 'Orchestrator',
+      to: null,
+      text: safeText,
+      messageKind: 'debug'
+    })
+    if (msg) this.io.to(this.room).emit('session:message', msg)
+  }
+
   async emitThinking(phaseKey) {
     const messages = await loadThinkingMessages()
     const list = messages[phaseKey]
@@ -898,6 +1804,34 @@ class CustodeEngine {
   }
 
   // ── LLM call con gestione errori ──────────────────────────────────────────
+
+  async llmText(promptFile, vars) {
+    const table = await getTableOrNull(this.tableId)
+    if (!table) {
+      const err = Object.assign(new Error(`Tavolo ${this.tableId} non trovato`), { isTableMissing: true })
+      throw err
+    }
+
+    const model = ollama.getDefaultLlmModel()
+    if (!model) {
+      const err = Object.assign(
+        new Error('Modello LLM non configurato sul tavolo'),
+        { isLlmError: true }
+      )
+      await this.pauseForTechnicalIssue('Modello LLM non configurato – imposta DEFAULT_LLM_MODEL nel file .env')
+      throw err
+    }
+
+    try {
+      const ragResolver = buildRagResolver(table.moduleId, this.tableId)
+      return await ollama.runTextPhase(model, promptFile, vars, this.tableId, ragResolver)
+    } catch (err) {
+      if (err.isLlmError) {
+        await this.pauseForTechnicalIssue(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
+      }
+      throw err
+    }
+  }
 
   async llm(promptFile, vars) {
     const table = await getTableOrNull(this.tableId)
@@ -951,6 +1885,182 @@ class CustodeEngine {
         await this.pauseForTechnicalIssue(`Errore LLM (${model}): ${err.message} – sessione in pausa`)
       }
       throw err
+    }
+  }
+
+  async buildCustodeQuestionContext(routing, message) {
+    const table = await getTableOrNull(this.tableId)
+    const ctx = svc.getSession(this.tableId)
+    const worldState = await getWorldState(this.tableId)
+    const notesResources = getModuleNotesResources(table?.moduleId)
+    const index = notesResources?.index || null
+    const notesDir = notesResources?.notesDir || null
+    const metadata = routing.metadata || {}
+    const primaryEntity = metadata.primaryEntity || null
+    const secondaryEntities = metadata.secondaryEntities || []
+    const resolveEntityLabel = (value) => {
+      const normalized = normalizeChatText(value)
+      if (!normalized || !index) return value
+      const candidate = Object.values(index.byId || {}).find(entry => normalizeChatText(entry.id) === normalized)
+      if (candidate?.name) return candidate.name
+      for (const type of ['npc', 'scene', 'object', 'clue']) {
+        const ref = lookupEntityRefByName(index, type, value)
+        if (ref?.name) return ref.name
+      }
+      return value
+    }
+
+    const sections = []
+    const recentMessages = recentPlayerMessagesSummary(ctx?.messages || [])
+    const sharedStory = normalizeNarrativeText(worldState?.conoscenze_party || '')
+    const contextBundle = Array.isArray(routing.contextBundle) ? routing.contextBundle : []
+    const secondaryByType = secondaryEntities.reduce((acc, entity) => {
+      if (!acc[entity.type]) acc[entity.type] = []
+      acc[entity.type].push(entity.value)
+      return acc
+    }, {})
+    const actorPg = await runtimeStore.getCharacterByPlayerId(this.tableId, message.from)
+      || await runtimeStore.getCharacterByName(this.tableId, message.fromName)
+
+    const loadEntityByName = async (type, value) => {
+      const ref = lookupEntityRefByName(index, type, value)
+      if (!ref) return null
+      if (type === 'npc') return runtimeStore.getNpc(this.tableId, ref.id)
+      if (type === 'object') return runtimeStore.getObject(this.tableId, ref.id)
+      if (type === 'clue') return runtimeStore.getClue(this.tableId, ref.id)
+      if (type === 'scene') return runtimeStore.getScene(this.tableId, ref.id)
+      return null
+    }
+
+    for (const entry of contextBundle) {
+      if (entry === 'focusScene') {
+        const scene = routing.focusSceneId
+          ? await runtimeStore.getScene(this.tableId, routing.focusSceneId)
+          : null
+        if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
+        else if (routing.focusSceneLabel) sections.push(`SCENA FOCUS\nLa scena corrente e ${routing.focusSceneLabel}.`)
+        continue
+      }
+
+      if (entry === 'recentChat') {
+        if (recentMessages) sections.push(`STORICO CHAT\n${recentMessages}`)
+        continue
+      }
+
+      if (entry === 'partyKnowledgeShort') {
+        if (sharedStory) sections.push(`COSA SANNO I PG\n${sharedStory}`)
+        continue
+      }
+
+      if (entry === 'npcSummary:primary' && primaryEntity?.type === 'npc') {
+        const npc = await loadEntityByName('npc', primaryEntity.value)
+        if (npc) sections.push(`PRIMARY NPC\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
+        continue
+      }
+      if (entry === 'objectSummary:primary' && primaryEntity?.type === 'object') {
+        const object = await loadEntityByName('object', primaryEntity.value)
+        if (object) sections.push(`PRIMARY OGGETTO\n${renderObjectSummary(object, { resolveEntityLabel })}`)
+        continue
+      }
+      if (entry === 'clueSummary:primary' && primaryEntity?.type === 'clue') {
+        const clue = await loadEntityByName('clue', primaryEntity.value)
+        if (clue) sections.push(`PRIMARY INDIZIO\n${renderClueSummary(clue, { resolveEntityLabel })}`)
+        continue
+      }
+      if (entry === 'locationCard:primary' && primaryEntity?.type === 'location') {
+        const ref = lookupEntityRefByName(index, 'scene', primaryEntity.value) || null
+        const scene = ref ? await runtimeStore.getScene(this.tableId, ref.id) : null
+        if (scene) sections.push(`PRIMARY LOCATION\n${renderLocationSummary(scene, { resolveEntityLabel })}`)
+        continue
+      }
+      if (entry === 'pgSummary:primary' && primaryEntity?.type === 'pg') {
+        const pg = await runtimeStore.getCharacterByName(this.tableId, primaryEntity.value)
+        if (pg) sections.push(`PRIMARY PG\n${renderPgSummary(pg)}`)
+        continue
+      }
+      if (entry === 'pgSummary:actor') {
+        if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+        continue
+      }
+      if (entry === 'rulesExcerpt:primarySkill') {
+        const skill = primaryEntity?.type === 'skill'
+          ? primaryEntity.value
+          : (metadata?.entities?.skills || [])[0]
+        const excerpt = renderRulesExcerpt(skill)
+        if (excerpt) sections.push(`ESTRATTO REGOLE\n${excerpt}`)
+        continue
+      }
+      if (entry === 'rulesExcerpt:secondarySkill') {
+        const skill = (secondaryByType.skill || [])[0]
+        const excerpt = renderRulesExcerpt(skill)
+        if (excerpt) sections.push(`ESTRATTO REGOLE SECONDARIO\n${excerpt}`)
+        continue
+      }
+
+      const secondaryConfigs = [
+        { token: 'npcSummary:secondary', type: 'npc', title: 'SECONDARY NPC', renderer: renderNpcSummary },
+        { token: 'objectSummary:secondary', type: 'object', title: 'SECONDARY OGGETTO', renderer: renderObjectSummary },
+        { token: 'clueSummary:secondary', type: 'clue', title: 'SECONDARY INDIZIO', renderer: renderClueSummary },
+        { token: 'pgSummary:secondary', type: 'pg', title: 'SECONDARY PG', renderer: renderPgSummary },
+        { token: 'locationCard:secondary', type: 'location', title: 'SECONDARY LOCATION', renderer: renderLocationSummary }
+      ]
+      const secondaryConfig = secondaryConfigs.find(config => config.token === entry)
+      if (!secondaryConfig) continue
+      for (const value of (secondaryByType[secondaryConfig.type] || [])) {
+        let payload = null
+        if (secondaryConfig.type === 'pg') payload = await runtimeStore.getCharacterByName(this.tableId, value)
+        else if (secondaryConfig.type === 'location') {
+          const ref = lookupEntityRefByName(index, 'scene', value) || null
+          payload = ref ? await runtimeStore.getScene(this.tableId, ref.id) : null
+        } else {
+          payload = await loadEntityByName(secondaryConfig.type, value)
+        }
+        if (payload) sections.push(`${secondaryConfig.title}\n${secondaryConfig.renderer(payload, { resolveEntityLabel })}`)
+      }
+    }
+
+    if (!sections.length) sections.push('Nessun contesto strutturato disponibile.')
+
+    return {
+      questionType: metadata.questionType || 'general_question',
+      operator: metadata.operator || 'ask',
+      contextText: sections.join('\n\n') || 'Nessun contesto strutturato disponibile.',
+      playerName: message.fromName || message.from,
+      playerQuestion: normalizeNarrativeText(message.text),
+      focusSceneLabel: routing.focusSceneLabel || routing.focusSceneId || ''
+    }
+  }
+
+  async answerCustodeQuestion(message, routing) {
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx) return
+
+    await svc.setAllPlayersState(this.tableId, 'turno-custode')
+    for (const player of (ctx.session.players || [])) {
+      this.io.to(this.room).emit('session:player-update', {
+        email: player.email,
+        playerState: 'turno-custode',
+        connected: player.connected
+      })
+    }
+
+    try {
+      const handoff = await this.buildCustodeQuestionContext(routing, message)
+      const promptFile = handoff.questionType === 'rules_reference_question'
+        || handoff.questionType === 'rule_or_roll_question'
+        ? 'custode_v1_domanda_regole.md'
+        : 'custode_v1_domanda_diretta.md'
+      const response = await this.llmText(promptFile, handoff)
+      await this.emitNarrative(response)
+    } finally {
+      await svc.setAllPlayersState(this.tableId, 'gioco-libero')
+      for (const player of (ctx.session.players || [])) {
+        this.io.to(this.room).emit('session:player-update', {
+          email: player.email,
+          playerState: 'gioco-libero',
+          connected: player.connected
+        })
+      }
     }
   }
 
@@ -1054,8 +2164,7 @@ class CustodeEngine {
     }
 
     // Prossima fase
-    const hasActiveScene = worldState.focusScene &&
-      await fileExists(path.join(tDir(this.tableId), 'active_scenes', `${worldState.focusScene}.json`))
+    const hasActiveScene = worldState.focusScene && await getScene(this.tableId, worldState.focusScene)
 
     return hasActiveScene ? 'fase-3' : 'fase-2'
   }
@@ -1105,7 +2214,7 @@ class CustodeEngine {
     result.progressione = ''
     result.sessionNumber = sessionNumber
 
-    // Salva scena in active_scenes
+    // Salva scena runtime nella directory scenes/
     await saveScene(this.tableId, result)
 
     // Stato PG iniziale per questa scena (generato dalla LLM)
@@ -1148,10 +2257,9 @@ class CustodeEngine {
 
     // focusScene: diventa la nuova scena solo se è l'unica scena attiva,
     // altrimenti "tbd" (custode deve scegliere il prossimo focus)
-    const activeSceneFiles = await fs.readdir(path.join(tDir(this.tableId), 'active_scenes')).catch(() => [])
-    worldState.focusScene = activeSceneFiles.filter(f => f.endsWith('.json')).length === 1
-      ? result.id_scena
-      : 'tbd'
+    const activeScenes = (await runtimeStore.listScenes(this.tableId))
+      .filter(scene => scene?.runtime?.stato !== 'completata' && scene?.runtime?.stato !== 'abbandonata')
+    worldState.focusScene = activeScenes.length === 1 ? result.id_scena : 'tbd'
 
     await saveWorldState(this.tableId, worldState)
 
@@ -1166,17 +2274,13 @@ class CustodeEngine {
     const engagement = engagementForLlm(ctx?.session?.engagement || {}, pgLookup)
 
     // ── 3a (opzionale): scelta focus scena ──
-    const activeSceneFiles = await fs.readdir(path.join(tDir(this.tableId), 'active_scenes')).catch(() => [])
-    const needsFocusChoice = worldState.focusScene === 'tbd' ||
-      activeSceneFiles.filter(f => f.endsWith('.json')).length > 1
+    const activeScenes = (await runtimeStore.listScenes(this.tableId))
+      .filter(scene => scene?.runtime?.stato !== 'completata' && scene?.runtime?.stato !== 'abbandonata')
+    const needsFocusChoice = worldState.focusScene === 'tbd' || activeScenes.length > 1
 
     if (needsFocusChoice) {
       await this.emitPhaseChange('fase-3')
       await this.emitThinking('fase-3')
-      const activeScenes = await Promise.all(
-        activeSceneFiles.filter(f => f.endsWith('.json'))
-          .map(f => readJSON(path.join(tDir(this.tableId), 'active_scenes', f)))
-      )
       const narrativeGroups = await buildNarrativeGroups(this.tableId, worldState, pgLookup)
       const result3a = await this.llm('fase3_scene_orchestrator.md', {
         narrative_groups: narrativeGroups,
@@ -1483,11 +2587,11 @@ class CustodeEngine {
     // stato_pgs
     mergeStatoPgs(ws.stato_pgs, agg.stato_pgs, pgLookup)
 
-    // conoscenze_party (append-only)
     if (agg.nuove_conoscenze && typeof agg.nuove_conoscenze === 'string' && agg.nuove_conoscenze.trim()) {
-      ws.conoscenze_party = ws.conoscenze_party
-        ? `${ws.conoscenze_party}\n${agg.nuove_conoscenze.trim()}`
-        : agg.nuove_conoscenze.trim()
+      await runtimeStore.appendPartyKnowledgeEntry(this.tableId, {
+        scena: ws.focusScene || null,
+        text: agg.nuove_conoscenze.trim()
+      })
     }
 
     // npcs
@@ -1702,6 +2806,16 @@ class CustodeEngine {
     }
   }
 
+  async startPassiveOrchestrator() {
+    this.running = true
+    this.paused = false
+    this.passiveOrchestratorMode = true
+    this.buffer = []
+    this.startBuffer()
+    await this.emitPhaseChange('orchestrator-passive')
+    console.log(`[Custode] Passive orchestrator start — tavolo ${this.tableId}`)
+  }
+
   async runLoop(startPhase, extraData = null) {
     let current = startPhase
     let data = extraData
@@ -1752,6 +2866,84 @@ class CustodeEngine {
     const ctx = svc.getSession(this.tableId)
     if (!ctx) return
     const phase = ctx.session.custodePhase
+    const worldState = await getWorldState(this.tableId)
+    const table = await getTableOrNull(this.tableId)
+    const otherPgNames = (ctx.session.players || [])
+      .filter(p => p.email !== message.from)
+      .map(p => p.characterName || '')
+      .filter(Boolean)
+    const otherPlayerNames = await Promise.all(
+      (ctx.session.players || [])
+        .filter(p => p.email !== message.from)
+        .map(p => getUserNameByEmail(p.email))
+    )
+    const npcEntries = (worldState.npcs || [])
+      .filter(Boolean)
+    const allNpcNames = npcEntries
+      .map(npc => npc.name)
+      .filter(Boolean)
+    const focusSceneId = worldState.focusScene
+    const scopedNpcNames = npcEntries
+      .filter(npc => !focusSceneId || !npc.scena_id || npc.scena_id === focusSceneId)
+      .map(npc => npc.name)
+      .filter(Boolean)
+    const moduleCatalog = getModuleQuestionCatalog(table?.moduleId) || {}
+    const focusSceneLabel = moduleCatalog.sceneById?.[focusSceneId] || focusSceneId || null
+    const questionNpcNames = Array.from(new Set([
+      ...allNpcNames,
+      ...(moduleCatalog.npcNames || [])
+    ]))
+    const locationNames = Array.from(new Set([
+      ...(moduleCatalog.locationNames || [])
+    ]))
+    const objectNames = Array.from(new Set([
+      ...(moduleCatalog.objectNames || [])
+    ]))
+    const clueNames = Array.from(new Set([
+      ...(moduleCatalog.clueNames || [])
+    ]))
+    const recentClassifications = getRecentClassifications(ctx.messages, message.id)
+    const lastSystemPromptKind = getLastSystemPromptKind(ctx.messages)
+
+    if (this.passiveOrchestratorMode) {
+      const routing = buildOrchestratorRoutingDecision(message.text, {
+        otherPgNames,
+        otherPlayerNames,
+        npcNames: scopedNpcNames,
+        questionNpcNames,
+        locationNames,
+        objectNames,
+        clueNames,
+        phase: ctx?.session?.phase || 'inizio_sessione',
+        recentClassifications,
+        lastSystemPromptKind,
+        focusSceneId,
+        focusSceneLabel
+      })
+      await svc.updateMessage(this.tableId, message.id, {
+        classificationTag: routing.tag || '?'
+      })
+      this.buffer.push({ ...message, tag: routing.tag })
+      console.log(
+        `[Orchestrator] Routing [${this.tableId}] tag=${routing.tag} agent=${routing.agent || 'none'} reason=${routing.reason} msg=${message.fromName || message.from}: ${message.text}`
+      )
+      const targetLabel = routing.agent
+        ? (routing.npcTarget ? `${routing.agent} (${routing.npcTarget})` : routing.agent)
+        : 'Nessun agente'
+      const debugBundle = formatContextBundleForDebug(routing)
+      const bundleText = debugBundle.length
+        ? ` | bundle=${debugBundle.join(', ')}`
+        : ''
+      await this.emitOrchestratorDebug(`[DEBUG ROUTING] ${targetLabel} | tag=${routing.tag} | ${routing.reason}${bundleText}`)
+      if (routing.agent === 'Custode') {
+        try {
+          await this.answerCustodeQuestion(message, routing)
+        } catch (err) {
+          console.error(`[Custode] Risposta diretta fallita [${this.tableId}]: ${err.message}`)
+        }
+      }
+      return
+    }
 
     // Dopo tiro dado: gestito interamente da onDiceRoll
     if (phase === 'sottofase-4b-necessita-prova') return
@@ -1768,7 +2960,18 @@ class CustodeEngine {
 
     // Gioco libero: accumula nel buffer
     if (!this.bufferActive) return
-    this.buffer.push(message)
+    const classified = classifyChatMessage(message.text, {
+      otherPgNames,
+      otherPlayerNames,
+      npcNames: scopedNpcNames,
+      phase: ctx?.session?.phase || 'inizio_sessione',
+      recentClassifications,
+      lastSystemPromptKind
+    })
+    await svc.updateMessage(this.tableId, message.id, {
+      classificationTag: classified.tag || '?'
+    })
+    this.buffer.push({ ...message, tag: classified.tag || '?' })
     console.log(`[Custode] Buffer add [${this.tableId}] phase=${phase} msg=${message.fromName || message.from}: ${message.text}`)
 
     if (this.buffer.length >= MSG_BUFFER_SIZE) {
@@ -1891,13 +3094,8 @@ class CustodeEngine {
   }
 
   async getActiveScenes() {
-    const dir = path.join(tDir(this.tableId), 'active_scenes')
-    try {
-      const files = await fs.readdir(dir)
-      return Promise.all(
-        files.filter(f => f.endsWith('.json')).map(f => readJSON(path.join(dir, f)))
-      )
-    } catch { return [] }
+    const scenes = await runtimeStore.listScenes(this.tableId)
+    return scenes.filter(scene => scene?.runtime?.stato !== 'completata' && scene?.runtime?.stato !== 'abbandonata')
   }
 }
 
@@ -1937,6 +3135,11 @@ module.exports = {
   buildRagResolver,
   buildPgLookup,
   canonicalPgName,
+  extractChatFeatures,
+  resolveChatMessageTag,
+  classifyChatMessage,
+  extractQuestionMetadata,
+  buildOrchestratorRoutingDecision,
   mergeStatoPgs,
   normalizeStatoPgsMap
 }

@@ -1,0 +1,274 @@
+{
+  "version": 1,
+  "notes": {
+    "strategy": "classificazione a cascata con marker espliciti, segnali linguistici, vocabolario modulo, prior di fase e inerzia storica",
+    "explicitMarkerWins": true,
+    "categories": [
+      "fuori_ruolo",
+      "domanda_al_custode",
+      "dichiarazione",
+      "frase_in_character",
+      "discutendo_tra_pg",
+      "ambiguo"
+    ]
+  },
+  "weights": {
+    "strongSignal": 3,
+    "mediumSignal": 2,
+    "weakSignal": 1,
+    "moduleVocabularyBonus": 2,
+    "phasePriorBonus": 1,
+    "historyInertiaBonus": 1
+  },
+  "decision": {
+    "minWinningMargin": 2,
+    "fallbackCategory": "ambiguo",
+    "allowStrongSignalOverride": true
+  },
+  "explicitMarkers": {
+    "fuori_ruolo": [
+      {
+        "pattern": "^\\s*\\(.+\\)\\s*$",
+        "kind": "parentheses_ooc"
+      },
+      {
+        "pattern": "^\\s*//",
+        "kind": "slash_ooc"
+      }
+    ],
+    "frase_in_character": [
+      {
+        "pattern": "\".+\"",
+        "kind": "quoted_dialogue"
+      }
+    ]
+  },
+  "categories": {
+    "fuori_ruolo": {
+      "strongSignals": [
+        "ooc_marker_parentheses",
+        "ooc_marker_slashes",
+        "real_player_name_mentioned",
+        "logistic_absence_phrase",
+        "afk_or_brb_phrase"
+      ],
+      "mediumSignals": [
+        "meta_session_reference",
+        "real_world_reference",
+        "pause_request",
+        "rule_complaint",
+        "casual_reaction"
+      ],
+      "moduleVocabulary": {
+        "allowed": [],
+        "blocked": [
+          "npcNames",
+          "objectNames",
+          "clueNames",
+          "locationNames"
+        ]
+      },
+      "phasePrior": [
+        "inizio_sessione"
+      ],
+      "historyBias": [
+        "recent_ooc_majority"
+      ]
+    },
+    "domanda_al_custode": {
+      "strongSignals": [
+        "master_or_custode_vocative",
+        "question_mark",
+        "world_or_rules_interrogative",
+        "mechanics_reference"
+      ],
+      "mediumSignals": [
+        "past_event_reference",
+        "memory_reference",
+        "system_direct_address"
+      ],
+      "moduleVocabulary": {
+        "allowed": [
+          "npcNames",
+          "objectNames",
+          "clueNames",
+          "locationNames",
+          "skillNames"
+        ]
+      },
+      "phasePrior": [
+        "inizio_sessione",
+        "combattimento",
+        "post_rivelazione"
+      ],
+      "historyBias": [
+        "system_last_message_is_question",
+        "recent_questions_majority"
+      ]
+    },
+    "dichiarazione": {
+      "strongSignals": [
+        "first_person_action_verb",
+        "action_intent_pattern",
+        "conditional_action_intent",
+        "my_pg_plus_action"
+      ],
+      "mediumSignals": [
+        "interaction_with_scene_element",
+        "investigation_pattern",
+        "movement_pattern"
+      ],
+      "moduleVocabulary": {
+        "allowed": [
+          "locationNames",
+          "objectNames",
+          "clueNames"
+        ]
+      },
+      "phasePrior": [
+        "esplorazione",
+        "combattimento"
+      ],
+      "historyBias": [
+        "system_last_message_asks_what_do_you_do",
+        "recent_action_majority"
+      ]
+    },
+    "frase_in_character": {
+      "strongSignals": [
+        "quoted_dialogue",
+        "direct_address_to_scene_npc",
+        "honorific_vocative"
+      ],
+      "mediumSignals": [
+        "speech_verb_pattern",
+        "social_object_pattern",
+        "dialogue_without_quotes"
+      ],
+      "moduleVocabulary": {
+        "allowed": [
+          "npcNames"
+        ]
+      },
+      "phasePrior": [
+        "dialogo_png"
+      ],
+      "historyBias": [
+        "recent_dialogue_majority",
+        "system_last_message_from_npc"
+      ]
+    },
+    "discutendo_tra_pg": {
+      "strongSignals": [
+        "pg_name_vocative",
+        "group_coordination_pattern",
+        "shared_strategy_pattern"
+      ],
+      "mediumSignals": [
+        "first_person_opinion_about_plan",
+        "collective_decision_pattern",
+        "party_coordination_imperative"
+      ],
+      "moduleVocabulary": {
+        "allowed": [
+          "pgNames"
+        ],
+        "blocked": [
+          "playerNames"
+        ]
+      },
+      "phasePrior": [
+        "esplorazione",
+        "post_rivelazione",
+        "combattimento"
+      ],
+      "historyBias": [
+        "recent_party_coordination_majority"
+      ],
+      "routingHint": {
+        "defaultAgent": null,
+        "notes": "categoria mista: spesso non richiede intervento immediato ma puo evolvere in dichiarazione o chiarimento"
+      }
+    }
+  },
+  "phasePriors": {
+    "inizio_sessione": {
+      "fuori_ruolo": 1,
+      "domanda_al_custode": 1
+    },
+    "dialogo_png": {
+      "frase_in_character": 1
+    },
+    "esplorazione": {
+      "dichiarazione": 1,
+      "discutendo_tra_pg": 1
+    },
+    "combattimento": {
+      "dichiarazione": 1,
+      "domanda_al_custode": 1,
+      "discutendo_tra_pg": 1
+    },
+    "post_rivelazione": {
+      "domanda_al_custode": 1,
+      "dichiarazione": 1,
+      "discutendo_tra_pg": 1
+    }
+  },
+  "historyInertia": {
+    "windowSize": 5,
+    "rules": [
+      {
+        "id": "recent_ooc_majority",
+        "appliesTo": "fuori_ruolo",
+        "description": "gli ultimi messaggi sono prevalentemente fuori ruolo"
+      },
+      {
+        "id": "recent_questions_majority",
+        "appliesTo": "domanda_al_custode",
+        "description": "gli ultimi messaggi sono prevalentemente domande al custode"
+      },
+      {
+        "id": "recent_action_majority",
+        "appliesTo": "dichiarazione",
+        "description": "gli ultimi messaggi sono prevalentemente azioni o intenti"
+      },
+      {
+        "id": "recent_dialogue_majority",
+        "appliesTo": "frase_in_character",
+        "description": "gli ultimi messaggi sono prevalentemente battute in fiction"
+      },
+      {
+        "id": "recent_party_coordination_majority",
+        "appliesTo": "discutendo_tra_pg",
+        "description": "gli ultimi messaggi sono prevalentemente coordinazione tra PG"
+      },
+      {
+        "id": "system_last_message_is_question",
+        "appliesTo": "domanda_al_custode",
+        "description": "l'ultimo messaggio del sistema chiede chiarimenti"
+      },
+      {
+        "id": "system_last_message_asks_what_do_you_do",
+        "appliesTo": "dichiarazione",
+        "description": "l'ultimo messaggio del sistema chiede cosa fanno i PG"
+      },
+      {
+        "id": "system_last_message_from_npc",
+        "appliesTo": "frase_in_character",
+        "description": "l'ultimo messaggio del sistema era una battuta di PNG"
+      }
+    ]
+  },
+  "ambiguityHandling": {
+    "whenClose": "ambiguo",
+    "relevantAmbiguousMayRouteToCustode": true,
+    "irrelevantAmbiguousDefaultAgent": null
+  },
+  "custodeDirectQuestionMode": {
+    "enabled": true,
+    "stateName": "attesa_risposta_pg",
+    "singleTargetOnly": true,
+    "defaultTimeoutMs": 45000,
+    "notes": "quando il Custode chiede chiarimenti a un singolo giocatore, il gioco libero viene sospeso temporaneamente"
+  }
+}

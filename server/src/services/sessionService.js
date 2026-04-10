@@ -2,7 +2,15 @@ const { v4: uuidv4 } = require('uuid')
 const path = require('path')
 const fs = require('fs').promises
 const { readJSON, writeJSON, fileExists, ensureDir } = require('../utils/fileStore')
-const { DATA_DIR } = require('../utils/dataInit')
+const {
+  tableDir,
+  sessionsDir,
+  sessionDir,
+  sessionMetaPath,
+  chatHistoryPath,
+  sessionLogPath,
+  ensureTableRuntimeStructure
+} = require('./tableRuntimeStore')
 
 // In-memory active sessions: tableId → { session, messages, timers, typingPlayers }
 const activeSessions = new Map()
@@ -10,34 +18,51 @@ const activeSessions = new Map()
 // Lock per getOrCreateSession: evita che join concorrenti creino ctx duplicati
 const sessionLocks = new Map()
 
-function tableDir(tableId) {
-  return path.join(DATA_DIR, 'tables', tableId)
-}
-
 function sessionPath(tableId, sessionId) {
-  return path.join(tableDir(tableId), 'sessions', `session_${sessionId}.json`)
+  return sessionMetaPath(tableId, sessionId)
 }
 
 function chatPath(tableId, sessionId) {
-  return path.join(tableDir(tableId), 'sessions', `chat_${sessionId}.json`)
+  return chatHistoryPath(tableId, sessionId)
 }
 
 function logPath(tableId, sessionId) {
-  return path.join(tableDir(tableId), 'logs', `log_${sessionId}.json`)
+  return sessionLogPath(tableId, sessionId)
+}
+
+async function migrateLegacySessionFiles(tableId, sessionId) {
+  const legacySession = path.join(tableDir(tableId), 'sessions', `session_${sessionId}.json`)
+  const legacyChat = path.join(tableDir(tableId), 'sessions', `chat_${sessionId}.json`)
+  const legacyLog = path.join(tableDir(tableId), 'logs', `log_${sessionId}.json`)
+  const targetDir = sessionDir(tableId, sessionId)
+  await ensureDir(targetDir)
+
+  if (await fileExists(legacySession) && !await fileExists(sessionPath(tableId, sessionId))) {
+    await fs.copyFile(legacySession, sessionPath(tableId, sessionId))
+  }
+  if (await fileExists(legacyChat) && !await fileExists(chatPath(tableId, sessionId))) {
+    await fs.copyFile(legacyChat, chatPath(tableId, sessionId))
+  }
+  if (await fileExists(legacyLog) && !await fileExists(logPath(tableId, sessionId))) {
+    await fs.copyFile(legacyLog, logPath(tableId, sessionId))
+  }
 }
 
 // ── Persistenza ──────────────────────────────────────────────────────────────
 
 async function saveSession(tableId, session) {
+  await ensureDir(sessionDir(tableId, session.sessionId))
   await writeJSON(sessionPath(tableId, session.sessionId), session)
 }
 
 async function saveChat(tableId, sessionId, messages) {
+  await ensureDir(sessionDir(tableId, sessionId))
   await writeJSON(chatPath(tableId, sessionId), messages)
 }
 
 async function appendLog(tableId, sessionId, entry) {
   try {
+    await ensureDir(sessionDir(tableId, sessionId))
     const p = logPath(tableId, sessionId)
     const line = JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n'
     await fs.appendFile(p, line)
@@ -58,19 +83,27 @@ async function getOrCreateSession(tableId, invitedPlayers) {
   const lock = new Promise(r => { resolveLock = r })
   sessionLocks.set(tableId, lock)
 
-  const tDir = tableDir(tableId)
-  const sessDir = path.join(tDir, 'sessions')
-  await ensureDir(sessDir)
-  await ensureDir(path.join(tDir, 'logs'))
+  const sessDir = sessionsDir(tableId)
+  await ensureTableRuntimeStructure(tableId)
 
   // Cerca sessione esistente non terminata
   let session = null
   let messages = []
   try {
-    const files = await fs.readdir(sessDir)
-    const sessionFiles = files.filter(f => f.startsWith('session_') && f.endsWith('.json'))
-    for (const f of sessionFiles) {
-      const s = await readJSON(path.join(sessDir, f))
+    const entries = await fs.readdir(sessDir, { withFileTypes: true })
+    const legacySessionFiles = entries
+      .filter(entry => entry.isFile() && entry.name.startsWith('session_') && entry.name.endsWith('.json'))
+      .map(entry => entry.name)
+    for (const f of legacySessionFiles) {
+      const sessionId = f.replace(/^session_/, '').replace(/\.json$/, '')
+      await migrateLegacySessionFiles(tableId, sessionId)
+    }
+
+    const sessionEntries = await fs.readdir(sessDir, { withFileTypes: true })
+    for (const entry of sessionEntries.filter(item => item.isDirectory())) {
+      const sessionMeta = sessionPath(tableId, entry.name)
+      if (!await fileExists(sessionMeta)) continue
+      const s = await readJSON(sessionMeta)
       if (s.state !== 'terminata') { session = s; break }
     }
     if (session) {
@@ -83,8 +116,8 @@ async function getOrCreateSession(tableId, invitedPlayers) {
     // Conta sessioni passate per numero progressivo
     let sessionNumber = 1
     try {
-      const files = await fs.readdir(sessDir)
-      sessionNumber = files.filter(f => f.startsWith('session_')).length + 1
+      const entries = await fs.readdir(sessDir, { withFileTypes: true })
+      sessionNumber = entries.filter(entry => entry.isDirectory()).length + 1
     } catch {}
 
     session = {
@@ -93,6 +126,7 @@ async function getOrCreateSession(tableId, invitedPlayers) {
       ragSequenceNumber: 0,
       state: 'custode-pronto',
       custodePhase: null,
+      phase: 'inizio_sessione',
       focusGroupId: null,
       startedAt: null,
       endedAt: null,
@@ -111,6 +145,9 @@ async function getOrCreateSession(tableId, invitedPlayers) {
     }
     await saveSession(tableId, session)
     await appendLog(tableId, session.sessionId, { event: 'session-created', sessionNumber })
+  } else if (!session.phase) {
+    session.phase = 'inizio_sessione'
+    await saveSession(tableId, session)
   }
 
   const ctx = { session, messages, timers: {}, typingPlayers: {} }
@@ -163,7 +200,7 @@ async function playerConnected(tableId, email) {
 
   // Messaggi persi
   const missed = missedSince
-    ? ctx.messages.filter(m => m.timestamp > missed)
+    ? ctx.messages.filter(m => m.timestamp > missedSince)
     : []
 
   await saveSession(tableId, session)
@@ -223,6 +260,35 @@ async function addMessage(tableId, msg) {
   return message
 }
 
+async function replaceMessages(tableId, messages = []) {
+  const ctx = getSession(tableId)
+  if (!ctx) return
+  ctx.messages = Array.isArray(messages) ? messages.map(message => ({
+    id: message.id || uuidv4(),
+    timestamp: message.timestamp || new Date().toISOString(),
+    ...message
+  })) : []
+  ctx.session.lastMessageId = ctx.messages.length ? ctx.messages[ctx.messages.length - 1].id : null
+  await saveChat(tableId, ctx.session.sessionId, ctx.messages)
+  await saveSession(tableId, ctx.session)
+  await appendLog(tableId, ctx.session.sessionId, { event: 'chat-replaced', count: ctx.messages.length })
+}
+
+async function updateMessage(tableId, messageId, patch = {}) {
+  const ctx = getSession(tableId)
+  if (!ctx || !messageId || !patch || typeof patch !== 'object') return null
+  const index = ctx.messages.findIndex(message => message?.id === messageId)
+  if (index < 0) return null
+  ctx.messages[index] = { ...ctx.messages[index], ...patch }
+  await saveChat(tableId, ctx.session.sessionId, ctx.messages)
+  await appendLog(tableId, ctx.session.sessionId, {
+    event: 'message-updated',
+    messageId,
+    fields: Object.keys(patch)
+  })
+  return ctx.messages[index]
+}
+
 function getMessagesSince(tableId, since) {
   const ctx = getSession(tableId)
   if (!ctx) return []
@@ -245,6 +311,14 @@ async function updateSessionState(tableId, newState, extra = {}) {
   }
   await saveSession(tableId, ctx.session)
   await appendLog(tableId, ctx.session.sessionId, { event: 'state-change', state: newState, ...extra })
+}
+
+async function updateSessionPhase(tableId, phase) {
+  const ctx = getSession(tableId)
+  if (!ctx) return
+  ctx.session.phase = phase || 'inizio_sessione'
+  await saveSession(tableId, ctx.session)
+  await appendLog(tableId, ctx.session.sessionId, { event: 'phase-change', phase: ctx.session.phase })
 }
 
 async function updatePlayerState(tableId, email, playerState) {
@@ -367,8 +441,11 @@ module.exports = {
   clearPlayerTyping,
   getTypingPlayers,
   addMessage,
+  replaceMessages,
+  updateMessage,
   getMessagesSince,
   updateSessionState,
+  updateSessionPhase,
   updatePlayerState,
   setAllPlayersState,
   voteTardi,
@@ -379,5 +456,8 @@ module.exports = {
   resumeAllTimers,
   destroySession,
   saveSession,
-  nextRagSequenceNumber
+  nextRagSequenceNumber,
+  sessionPath,
+  chatPath,
+  logPath
 }

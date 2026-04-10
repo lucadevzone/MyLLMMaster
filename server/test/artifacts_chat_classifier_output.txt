@@ -1,0 +1,48 @@
+01. [dichiarazione] (0.82) Mi avvicino a Durmont e gli chiedo da dove viene il lotto.
+02. [domanda al custode] (0.95) Custode, vedo qualcosa di strano sul podio?
+03. [discutendo tra PG] (0.76) Luk, tu vai verso l'uscita laterale e io controllo il catalogo.
+04. [domanda al custode] (0.95) "Master, ma Durmont che sta facendo in questo momento?"
+05. [frase in-character] (0.83) "Signor Durmont, temo che lei non mi stia dicendo tutto."
+06. [fuori ruolo] (0.95) Luca, aspettami un secondo.
+07. [fuori ruolo] (0.95) Scusate, un attimo che torno subito.
+08. [?] (0.80) Ok
+09. [dichiarazione] (0.82) Resto in disparte e osservo la donna in prima fila.
+10. [discutendo tra PG] (0.76) Ragazzi, secondo me è una trappola.
+11. [domanda al custode] (0.90) Posso capire se sta mentendo?
+12. [dichiarazione] (0.82) Mi nascondo dietro la tenda e cerco di non farmi notare.
+13. [?] (0.40) No, non adesso.
+14. [discutendo tra PG] (0.76) Emil, coprimi mentre provo ad aprire la porta.
+15. [frase in-character] (0.82) "Se fate un altro passo, chiamo la sicurezza."
+16. [fuori ruolo] (0.95) Ahah questa scena è fantastica.
+17. [dichiarazione] (0.82) Cerco indizi vicino al leggio.
+18. [frase in-character] (0.84) Durmont, perché è così nervoso?
+19. [dichiarazione] (0.82) Aspetto senza dire nulla.
+20. [domanda al custode] (0.95) Master, sento qualcuno dietro la porta?
+21. [?] (0.40) Io terrei d'occhio il banditore.
+22. [fuori ruolo] (0.95) Un secondo, mi sta squillando il telefono.
+23. [dichiarazione] (0.82) Per ora non faccio nulla
+24. [domanda al custode] (0.95) Custode, vedo qualcosa di strano sul podio?
+25. [domanda al custode] (0.90) Vedo qualcosa di strano sul podio?
+26. [domanda al custode] (0.90) Conosco i simboli sulla tavoletta?
+27. [domanda al custode] (0.90) Ma Durmont che sta facendo in questo momento?
+28. [domanda al custode] (0.90) Riesco a vedere cosa sta facendo Durmont?
+29. [discutendo tra PG] (0.76) Luk, tu vai verso l’uscita laterale e io controllo il catalogo.
+30. [discutendo tra PG] (0.76) Ragazzi, secondo me è una trappola.
+31. [discutendo tra PG] (0.76) Giovanotti, secondo me è una trappola.
+32. [discutendo tra PG] (0.76) secondo me è una trappola.
+33. [discutendo tra PG] (0.76) Emil, coprimi mentre provo ad aprire la porta.
+34. [?] (0.40) copritemi mentre provo ad aprire la porta!
+35. [frase in-character] (0.83) Signor Durmont, temo che lei non mi stia dicendo tutto.
+36. [?] (0.40) Se fate un altro passo, chiamo la sicurezza.
+37. [frase in-character] (0.84) Durmont, perché è così nervoso?
+38. [fuori ruolo] (0.95) Luca, aspettami un secondo
+39. [fuori ruolo] (0.86) Secondo me Luca ha ragione
+40. [fuori ruolo] (0.86) Emilio il tuo piano è fantastico
+41. [dichiarazione] (0.82) Per ora non faccio nulla.
+42. [dichiarazione] (0.82) Corro fino al podio.
+43. [dichiarazione] (0.82) Io vorrei parlare con Mr. Johns.
+44. [fuori ruolo] (0.95) Ok vado in bagno
+45. [fuori ruolo] (0.95) Arrivo subito
+46. [fuori ruolo] (0.95) Mi assento due minuti
+47. [fuori ruolo] (0.95) Sono pronto
+48. [fuori ruolo] (0.95) Iniziamo

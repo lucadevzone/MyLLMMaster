@@ -10,6 +10,9 @@ const playerNames = ref({})  // email → name
 const loading = ref(true)
 const error = ref('')
 const actionMsg = ref('')
+const bootstrapOptions = ref({})
+const bootstrapLoading = ref({})
+const bootstrapStarting = ref({})
 
 const showCreateForm = ref(false)
 const createModuleId = ref('')
@@ -78,6 +81,7 @@ onMounted(async () => {
     modules.value = m
     players.value = p
     playerNames.value = Object.fromEntries(names.map(n => [n.email, n.name]))
+    await Promise.all(tables.value.map(table => loadBootstraps(table.id)))
   } catch (e) {
     error.value = e.message
   } finally {
@@ -182,6 +186,35 @@ async function clearAllTables() {
     actionMsg.value = 'Tutti i tavoli eliminati'
   } catch (e) {
     error.value = e.message
+  }
+}
+
+async function loadBootstraps(tableId) {
+  bootstrapLoading.value = { ...bootstrapLoading.value, [tableId]: true }
+  try {
+    bootstrapOptions.value = {
+      ...bootstrapOptions.value,
+      [tableId]: await api.get(`/tables/${tableId}/session-bootstraps`)
+    }
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    bootstrapLoading.value = { ...bootstrapLoading.value, [tableId]: false }
+  }
+}
+
+async function startBootstrap(tableId, bootstrapId) {
+  bootstrapStarting.value = { ...bootstrapStarting.value, [`${tableId}:${bootstrapId}`]: true }
+  try {
+    const result = await api.post(`/tables/${tableId}/session-bootstraps/${bootstrapId}/start`, {})
+    const idx = tables.value.findIndex(t => t.id === tableId)
+    if (idx !== -1) tables.value[idx] = result.table
+    actionMsg.value = `Bootstrap avviato: ${result.bootstrap?.label || bootstrapId}`
+    await loadBootstraps(tableId)
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    bootstrapStarting.value = { ...bootstrapStarting.value, [`${tableId}:${bootstrapId}`]: false }
   }
 }
 
@@ -328,6 +361,44 @@ async function savePlayers(table) {
                 </div>
                 <div v-if="table.custodePhase" style="font-size:0.8rem;color:var(--color-text-light);margin-top:0.25rem">
                   Fase Custode: {{ table.custodePhase }}
+                </div>
+                <div style="margin-top:0.85rem;padding-top:0.85rem;border-top:1px solid var(--color-border)">
+                  <div style="font-size:0.82rem;font-weight:600;margin-bottom:0.45rem">Bootstrap di sessione</div>
+                  <div v-if="bootstrapLoading[table.id]" style="font-size:0.78rem;color:var(--color-text-light)">
+                    Caricamento bootstrap...
+                  </div>
+                  <div v-else-if="!(bootstrapOptions[table.id] || []).length" style="font-size:0.78rem;color:var(--color-text-light)">
+                    Nessun bootstrap disponibile
+                  </div>
+                  <div v-else style="display:flex;flex-direction:column;gap:0.5rem">
+                    <div
+                      v-for="bootstrap in bootstrapOptions[table.id]"
+                      :key="bootstrap.id"
+                      style="display:flex;justify-content:space-between;gap:0.75rem;align-items:flex-start;padding:0.55rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-bg)"
+                    >
+                      <div style="flex:1">
+                        <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;margin-bottom:0.2rem">
+                          <span style="font-size:0.82rem;font-weight:600">{{ bootstrap.label }}</span>
+                          <span :class="['badge', bootstrap.supported ? 'badge-green' : 'badge-gray']" style="font-size:0.68rem">
+                            {{ bootstrap.supported ? 'Avviabile' : 'Non pronto' }}
+                          </span>
+                        </div>
+                        <div style="font-size:0.76rem;color:var(--color-text-light)">
+                          {{ bootstrap.description }}
+                        </div>
+                        <div v-if="bootstrap.focusSceneLabel" style="font-size:0.74rem;color:var(--color-text-light);margin-top:0.2rem">
+                          Scena focus: {{ bootstrap.focusSceneLabel }}
+                        </div>
+                      </div>
+                      <button
+                        class="btn btn-secondary btn-sm"
+                        :disabled="!bootstrap.supported || bootstrapStarting[`${table.id}:${bootstrap.id}`]"
+                        @click="startBootstrap(table.id, bootstrap.id)"
+                      >
+                        {{ bootstrapStarting[`${table.id}:${bootstrap.id}`] ? 'Avvio...' : 'Avvia' }}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div style="display:flex;flex-direction:column;gap:0.4rem;align-items:flex-end">

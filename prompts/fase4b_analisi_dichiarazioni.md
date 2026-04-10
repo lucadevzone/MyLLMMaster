@@ -26,7 +26,7 @@ Il piano attuale da aggiornare è:
 
 ## Istruzioni
 - Analizza i messaggi in chat e aggiorna il piano azione
-- I messaggi hanno un tag di annotazione tra parentesi quadre: `[dichiarazione]`, `[domanda al custode]`, `[discutendo tra PG]`, `[?]` (non classificato)
+- I messaggi hanno un tag di annotazione tra parentesi quadre: `[dichiarazione]`, `[domanda al custode]`, `[discutendo tra PG]`, `[frase in-character]`, `[?]` (non classificato)
   — usa i tag come suggerimento, ma valuta sempre il contenuto del messaggio
 **Messaggi in chat (con annotazioni tag):**
 {{messaggi_buffer}}

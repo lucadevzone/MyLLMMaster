@@ -48,8 +48,12 @@ const PLAYER_STATE_STYLE = {
   'fuori-scena':      { bg: '#f3f4f6', text: 'Sei fuori scena – Attendi…' }
 }
 
+const isPassiveBootstrap = computed(() =>
+  sess.sessionState === 'sessione-iniziata' && sess.custodePhase === 'orchestrator-passive'
+)
+
 const playerStatusStyle = computed(() => {
-  const s = sess.myState?.playerState || 'turno-custode'
+  const s = isPassiveBootstrap.value ? 'gioco-libero' : (sess.myState?.playerState || 'turno-custode')
   const style = PLAYER_STATE_STYLE[s] || PLAYER_STATE_STYLE['turno-custode']
   const text = style.text || dynamicStateText(s)
   return { bg: style.bg, text }
@@ -71,13 +75,14 @@ function dynamicStateText(state) {
 
 // ── Input abilitato/disabilitato ──────────────────────────────────────────────
 const canType = computed(() => {
+  if (isPassiveBootstrap.value) return true
   const s = sess.myState?.playerState
   return s === 'gioco-libero' || s === 'mio-turno-libero'
 })
 
 const canDeclare = computed(() => canType.value)
 
-const canRoll = computed(() => sess.myState?.playerState === 'mio-turno-prova')
+const canRoll = computed(() => !isPassiveBootstrap.value && sess.myState?.playerState === 'mio-turno-prova')
 
 // ── onMounted ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
@@ -320,6 +325,9 @@ function weaponSummary(weapon) {
 
         <!-- Input area -->
         <div class="input-area">
+          <div class="chat-hint">
+            `// testo` per fuori ruolo, `"testo"` per parlare in-character.
+          </div>
           <div v-if="whisperTarget" class="whisper-indicator">
             Sussurro a: <strong>{{ playerNames[whisperTarget] || whisperTarget }}</strong>
             <button @click="whisperTarget = null" style="margin-left:0.5rem;cursor:pointer;border:none;background:none;font-size:0.8rem">✕</button>
@@ -576,6 +584,12 @@ function weaponSummary(weapon) {
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
+}
+
+.chat-hint {
+  font-size: 0.76rem;
+  color: var(--color-text-light);
+  margin-bottom: 0.45rem;
 }
 
 .whisper-indicator {

@@ -1,0 +1,92 @@
+{
+  "defaults": {
+    "alwaysInclude": [
+      "focusScene",
+      "recentChat",
+      "partyKnowledgeShort"
+    ],
+    "fallbackBundle": [
+      "focusScene",
+      "recentChat",
+      "partyKnowledgeShort"
+    ],
+    "maxSecondaryEntities": 2
+  },
+  "questionTypeBundles": {
+    "scene_clarification": [
+      "focusScene",
+      "recentChat",
+      "partyKnowledgeShort"
+    ],
+    "npc_clarification": [
+      "focusScene",
+      "npcSummary:primary",
+      "recentChat"
+    ],
+    "rules_reference_question": [
+      "rulesExcerpt:primarySkill"
+    ],
+    "rule_or_roll_question": [
+      "focusScene",
+      "pgSummary:actor",
+      "rulesExcerpt:primarySkill",
+      "recentChat"
+    ],
+    "clue_or_knowledge_question": [
+      "focusScene",
+      "clueSummary:primary",
+      "recentChat",
+      "partyKnowledgeShort"
+    ],
+    "object_question": [
+      "focusScene",
+      "objectSummary:primary",
+      "recentChat"
+    ],
+    "general_question": [
+      "focusScene",
+      "recentChat",
+      "partyKnowledgeShort"
+    ]
+  },
+  "entityTypeBundles": {
+    "npc": [
+      "npcSummary:primary"
+    ],
+    "object": [
+      "objectSummary:primary"
+    ],
+    "clue": [
+      "clueSummary:primary"
+    ],
+    "location": [
+      "locationCard:primary"
+    ],
+    "skill": [
+      "rulesExcerpt:primarySkill"
+    ],
+    "pg": [
+      "pgSummary:primary"
+    ]
+  },
+  "secondaryEntityBundles": {
+    "npc": [
+      "npcSummary:secondary"
+    ],
+    "object": [
+      "objectSummary:secondary"
+    ],
+    "clue": [
+      "clueSummary:secondary"
+    ],
+    "location": [
+      "locationCard:secondary"
+    ],
+    "skill": [
+      "rulesExcerpt:secondarySkill"
+    ],
+    "pg": [
+      "pgSummary:secondary"
+    ]
+  }
+}

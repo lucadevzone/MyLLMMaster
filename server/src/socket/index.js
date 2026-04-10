@@ -4,6 +4,7 @@ const { readJSON, writeJSON, fileExists } = require('../utils/fileStore')
 const { DATA_DIR } = require('../utils/dataInit')
 const svc = require('../services/sessionService')
 const custodeEngine = require('../services/custodeEngine')
+const { getStoryLog, renderStoryLogText } = require('../services/tableRuntimeStore')
 
 const TIMER_AVVIO_MS = 5 * 60 * 1000  // 5 minuti
 
@@ -35,8 +36,8 @@ module.exports = function setupSocket(io) {
   }
 
   async function getDiary(tableId) {
-    const p = path.join(DATA_DIR, 'tables', tableId, 'diary.txt')
-    try { return await require('fs').promises.readFile(p, 'utf-8') } catch { return '' }
+    const storyLog = await getStoryLog(tableId)
+    return renderStoryLogText(storyLog)
   }
 
   // ── Connessione ───────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ module.exports = function setupSocket(io) {
       let timerMsForClient = null
       let doAvvia = false
       let doResume = false
+      let doResumePassiveOrchestrator = false
 
       if (session.state === 'custode-pronto' || session.state === 'primo-giocatore') {
         if (tutti) {
@@ -100,6 +102,8 @@ module.exports = function setupSocket(io) {
         svc.resumeAllTimers(tableId)
         await svc.updateSessionState(tableId, 'sessione-iniziata')
         doResume = true
+      } else if (session.state === 'sessione-iniziata' && session.custodePhase === 'orchestrator-passive') {
+        doResumePassiveOrchestrator = true
       }
 
       // Invia stato al giocatore (dopo aggiornamenti di stato)
@@ -135,6 +139,11 @@ module.exports = function setupSocket(io) {
       } else if (doResume) {
         io.to(`table:${tableId}`).emit('session:status-update', { state: 'sessione-iniziata' })
         custodeEngine.getOrCreate(tableId, io).resume().catch(console.error)
+      } else if (doResumePassiveOrchestrator) {
+        const engine = custodeEngine.getOrCreate(tableId, io)
+        if (!engine.running || engine.paused || !engine.passiveOrchestratorMode) {
+          engine.startPassiveOrchestrator().catch(console.error)
+        }
       }
     })
 
@@ -161,6 +170,9 @@ module.exports = function setupSocket(io) {
       const ctx = svc.getSession(tableId)
       if (ctx?.session?.state === 'sessione-iniziata') {
         const engine = custodeEngine.getOrCreate(tableId, io)
+        if (ctx.session.custodePhase === 'orchestrator-passive' && (!engine.running || engine.paused || !engine.passiveOrchestratorMode)) {
+          await engine.startPassiveOrchestrator()
+        }
         if (engine.running) engine.onPlayerMessage(msg).catch(console.error)
       }
     })

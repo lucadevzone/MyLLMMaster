@@ -5,13 +5,13 @@ const fs = require('fs').promises
 const { authMiddleware } = require('../middleware/auth')
 const { DATA_DIR } = require('../utils/dataInit')
 const { fileExists } = require('../utils/fileStore')
+const { getStoryLog, renderStoryLogText } = require('../services/tableRuntimeStore')
 
 // GET /api/session/:tableId/diary
 router.get('/:tableId/diary', authMiddleware, async (req, res) => {
-  const p = path.join(DATA_DIR, 'tables', req.params.tableId, 'diary.txt')
   try {
-    const content = await fs.readFile(p, 'utf-8')
-    res.json({ content })
+    const storyLog = await getStoryLog(req.params.tableId)
+    res.json({ content: renderStoryLogText(storyLog) })
   } catch {
     res.json({ content: '' })
   }
