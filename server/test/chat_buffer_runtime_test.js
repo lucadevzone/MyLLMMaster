@@ -107,9 +107,23 @@ async function main() {
     '[DEBUG ROUTING] NPC Master (Durmont) | tag=frase in-character | interazione diretta con un PNG | bundle=focusScene, npcSummary:primary(Durmont), recentChat',
     '[DEBUG ROUTING] Nessun agente | tag=fuori ruolo | messaggio fuori ruolo',
     '[DEBUG ROUTING] NPC Master (Durmont) | tag=frase in-character | interazione diretta con un PNG | bundle=focusScene, npcSummary:primary(Durmont), recentChat',
-    '[DEBUG ROUTING] Scene Master | tag=dichiarazione | azione o dichiarazione che fa avanzare la scena | bundle=focusScene, recentChat',
+    '[DEBUG ROUTING] Scene Master | tag=dichiarazione | azione o dichiarazione che fa avanzare la scena | bundle=focusScene, recentChat, pgSummary:actor',
     '[DEBUG ROUTING] Custode | tag=domanda al custode | domanda diretta sul mondo | bundle=focusScene, recentChat, partyKnowledgeShort'
   ])
+
+  const { buildOrchestratorRoutingDecision } = require('../src/services/custodeEngine')
+  const declarationRouting = buildOrchestratorRoutingDecision('Voglio persuadere Sophia a farmi vedere il suo amuleto', {
+    otherPgNames: ['Emil', 'Luk'],
+    npcNames: ['Sophia Hapgood'],
+    questionNpcNames: ['Sophia Hapgood'],
+    objectNames: ['Amuleto di Nur-Ab-Sal'],
+    focusSceneId: 'scena_asta_grand_palais',
+    focusSceneLabel: "L'asta al Grand Palais"
+  })
+  assert.deepStrictEqual(
+    declarationRouting.contextBundle,
+    ['focusScene', 'recentChat', 'pgSummary:actor', 'npcSummary:primary', 'objectSummary:secondary']
+  )
 
   clearAllTimers(tableId)
   destroy(tableId)

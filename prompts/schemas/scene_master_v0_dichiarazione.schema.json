@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "required": ["decision", "response", "targetCharacter", "suggestedSkill", "suggestedDifficulty"],
+  "required": ["decision", "response"],
   "additionalProperties": false,
   "properties": {
     "decision": {

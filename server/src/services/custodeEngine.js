@@ -1019,6 +1019,51 @@ function extractQuestionMetadata(text, options = {}) {
   }
 }
 
+function extractDeclarationMetadata(text, options = {}) {
+  const raw = normalizeNarrativeText(text)
+  const questionNpcNames = options.questionNpcNames || options.npcNames || []
+  const entities = {
+    npcs: findMentionedNames(raw, questionNpcNames),
+    objects: findMentionedNames(raw, options.objectNames || []),
+    clues: findMentionedNames(raw, options.clueNames || []),
+    locations: findMentionedNames(raw, options.locationNames || []),
+    skills: [],
+    pgs: findMentionedNames(raw, options.pgNames || options.otherPgNames || [])
+  }
+
+  const allEntities = [
+    ...entities.npcs.map(value => ({ type: 'npc', value })),
+    ...entities.objects.map(value => ({ type: 'object', value })),
+    ...entities.clues.map(value => ({ type: 'clue', value })),
+    ...entities.locations.map(value => ({ type: 'location', value })),
+    ...entities.pgs.map(value => ({ type: 'pg', value }))
+  ]
+
+  const primaryEntity = allEntities[0] || null
+  const maxSecondaryEntities = orchestratorContextBundles.defaults?.maxSecondaryEntities || 2
+  const secondaryEntities = allEntities.slice(1, 1 + maxSecondaryEntities)
+  const primaryEntityBundle = primaryEntity
+    ? (orchestratorContextBundles.entityTypeBundles?.[primaryEntity.type] || [])
+    : []
+  const secondaryEntityBundles = secondaryEntities
+    .flatMap(entity => orchestratorContextBundles.secondaryEntityBundles?.[entity.type] || [])
+
+  const contextBundle = Array.from(new Set([
+    'focusScene',
+    'recentChat',
+    'pgSummary:actor',
+    ...primaryEntityBundle,
+    ...secondaryEntityBundles
+  ].filter(Boolean)))
+
+  return {
+    entities,
+    primaryEntity,
+    secondaryEntities,
+    contextBundle
+  }
+}
+
 function buildOrchestratorRoutingDecision(messageText, options = {}) {
   const features = extractChatFeatures(messageText, options)
   const classified = resolveChatMessageTag(features, options)
@@ -1026,6 +1071,12 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
   const npcTarget = findMentionedName(messageText, options.npcNames || [])
   const questionMetadata = tag === 'domanda al custode'
     ? extractQuestionMetadata(messageText, {
+      ...options,
+      questionNpcNames: options.questionNpcNames || options.npcNames || []
+    })
+    : null
+  const declarationMetadata = tag === 'dichiarazione'
+    ? extractDeclarationMetadata(messageText, {
       ...options,
       questionNpcNames: options.questionNpcNames || options.npcNames || []
     })
@@ -1055,8 +1106,8 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
       npcTarget: null,
       focusSceneId: options.focusSceneId || null,
       focusSceneLabel: options.focusSceneLabel || null,
-      contextBundle: ['focusScene', 'recentChat'],
-      metadata: null
+      contextBundle: declarationMetadata?.contextBundle || ['focusScene', 'recentChat', 'pgSummary:actor'],
+      metadata: declarationMetadata
     }
   }
   if (tag === 'frase in-character' && npcTarget) {
@@ -2180,6 +2231,9 @@ class CustodeEngine {
       const handoff = await this.buildSceneMasterDeclarationContext(routing, message)
       const result = await this.llm('scene_master_v0_dichiarazione.md', handoff)
       if (result?.response) {
+        result.targetCharacter = normalizeNarrativeText(result.targetCharacter)
+        result.suggestedSkill = normalizeNarrativeText(result.suggestedSkill)
+        result.suggestedDifficulty = normalizeNarrativeText(result.suggestedDifficulty)
         await this.waitForFocusSilence('scene-master-response')
         await svc.setAllPlayersState(this.tableId, 'turno-custode')
         for (const player of (ctx.session.players || [])) {
