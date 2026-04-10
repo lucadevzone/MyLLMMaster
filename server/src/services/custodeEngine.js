@@ -2253,6 +2253,7 @@ class CustodeEngine {
         ) || (ctx.session.players || []).find(player => player.email === message.from) || null
 
         if (result.decision === 'ask_for_roll' && targetPlayer) {
+          ctx.session.pendingClarification = null
           ctx.session.pendingRoll = {
             targetCharacter: targetPlayer.characterName || result.targetCharacter || '',
             targetPlayerEmail: targetPlayer.email,
@@ -2271,12 +2272,136 @@ class CustodeEngine {
 
         if (result.decision === 'ask_clarification' && targetPlayer) {
           ctx.session.pendingRoll = null
+          ctx.session.pendingClarification = {
+            targetCharacter: targetPlayer.characterName || result.targetCharacter || '',
+            targetPlayerEmail: targetPlayer.email,
+            originalDeclarationText: normalizeNarrativeText(message.text),
+            clarificationPrompt: normalizeNarrativeText(result.response),
+            focusSceneId: routing.focusSceneId || null,
+            source: 'scene-master',
+            createdAt: new Date().toISOString()
+          }
           await svc.saveSession(this.tableId, ctx.session)
           this.emitSessionUpdate()
           await this.setPlayerTurn(targetPlayer.email, 'mio-turno-libero')
           return
         }
       }
+    } finally {
+      const hasPendingTurn = (ctx.session.players || []).some(player =>
+        player.playerState === 'mio-turno-prova' || player.playerState === 'mio-turno-libero'
+      )
+      if (!hasPendingTurn) {
+        await svc.setAllPlayersState(this.tableId, 'gioco-libero')
+        for (const player of (ctx.session.players || [])) {
+          this.io.to(this.room).emit('session:player-update', {
+            email: player.email,
+            playerState: 'gioco-libero',
+            connected: player.connected
+          })
+        }
+      }
+    }
+  }
+
+  async buildSceneMasterClarificationContext(message, pendingClarification) {
+    const table = await getTableOrNull(this.tableId)
+    const notesResources = getModuleNotesResources(table?.moduleId)
+    const index = notesResources?.index || null
+    const resolveEntityLabel = (value) => {
+      const normalized = normalizeChatText(value)
+      if (!normalized || !index) return value
+      const candidate = Object.values(index.byId || {}).find(entry => normalizeChatText(entry.id) === normalized)
+      if (candidate?.name) return candidate.name
+      return value
+    }
+    const scene = pendingClarification?.focusSceneId
+      ? await runtimeStore.getScene(this.tableId, pendingClarification.focusSceneId)
+      : null
+    const actorPg = pendingClarification?.targetCharacter
+      ? await runtimeStore.getCharacterByName(this.tableId, pendingClarification.targetCharacter)
+      : null
+    const recentChat = recentPlayerMessagesSummary(svc.getSession(this.tableId)?.messages || [])
+    const sections = []
+    if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
+    if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    if (recentChat) sections.push(`STORICO CHAT\n${recentChat}`)
+
+    return {
+      playerName: pendingClarification?.targetCharacter || message.fromName || message.from,
+      originalDeclarationText: pendingClarification?.originalDeclarationText || '',
+      clarificationText: normalizeNarrativeText(message.text),
+      contextText: sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
+    }
+  }
+
+  async answerSceneMasterClarification(message, pendingClarification) {
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx) return
+
+    try {
+      const handoff = await this.buildSceneMasterClarificationContext(message, pendingClarification)
+      const result = await this.llm('scene_master_v0_chiarimento.md', handoff)
+      if (!result?.response) return
+      result.targetCharacter = normalizeNarrativeText(result.targetCharacter) || pendingClarification?.targetCharacter || ''
+      result.suggestedSkill = normalizeNarrativeText(result.suggestedSkill)
+      result.suggestedDifficulty = normalizeNarrativeText(result.suggestedDifficulty)
+      await this.waitForFocusSilence('scene-master-clarification-response')
+      await svc.setAllPlayersState(this.tableId, 'turno-custode')
+      for (const player of (ctx.session.players || [])) {
+        this.io.to(this.room).emit('session:player-update', {
+          email: player.email,
+          playerState: 'turno-custode',
+          connected: player.connected
+        })
+      }
+      const messageKind = result.decision === 'ask_clarification' || result.decision === 'ask_for_roll'
+        ? 'question'
+        : null
+      await this.emitNarrative(result.response, { messageKind })
+
+      const normalizedTarget = normalizeChatText(result.targetCharacter || '')
+      const targetPlayer = (ctx.session.players || []).find(player =>
+        normalizeChatText(player.characterName || '') === normalizedTarget
+      ) || (ctx.session.players || []).find(player => player.email === pendingClarification?.targetPlayerEmail) || null
+
+      if (result.decision === 'ask_for_roll' && targetPlayer) {
+        ctx.session.pendingClarification = null
+        ctx.session.pendingRoll = {
+          targetCharacter: targetPlayer.characterName || result.targetCharacter || '',
+          targetPlayerEmail: targetPlayer.email,
+          skill: normalizeNarrativeText(result.suggestedSkill),
+          difficulty: normalizeNarrativeText(result.suggestedDifficulty),
+          declarationText: normalizeNarrativeText(pendingClarification?.originalDeclarationText || ''),
+          focusSceneId: pendingClarification?.focusSceneId || null,
+          source: 'scene-master',
+          createdAt: new Date().toISOString()
+        }
+        await svc.saveSession(this.tableId, ctx.session)
+        this.emitSessionUpdate()
+        await this.setPlayerTurn(targetPlayer.email, 'mio-turno-prova')
+        return
+      }
+
+      if (result.decision === 'ask_clarification' && targetPlayer) {
+        ctx.session.pendingRoll = null
+        ctx.session.pendingClarification = {
+          ...(pendingClarification || {}),
+          targetCharacter: targetPlayer.characterName || result.targetCharacter || pendingClarification?.targetCharacter || '',
+          targetPlayerEmail: targetPlayer.email,
+          clarificationPrompt: normalizeNarrativeText(result.response),
+          createdAt: new Date().toISOString()
+        }
+        await svc.saveSession(this.tableId, ctx.session)
+        this.emitSessionUpdate()
+        await this.setPlayerTurn(targetPlayer.email, 'mio-turno-libero')
+        return
+      }
+
+      ctx.session.pendingClarification = null
+      ctx.session.pendingRoll = null
+      await svc.saveSession(this.tableId, ctx.session)
+      this.emitSessionUpdate()
     } finally {
       const hasPendingTurn = (ctx.session.players || []).some(player =>
         player.playerState === 'mio-turno-prova' || player.playerState === 'mio-turno-libero'
@@ -3188,6 +3313,18 @@ class CustodeEngine {
     const lastSystemPromptKind = getLastSystemPromptKind(ctx.messages)
 
     if (this.passiveOrchestratorMode) {
+      if (ctx.session.pendingClarification?.targetPlayerEmail === message.from) {
+        await svc.updateMessage(this.tableId, message.id, {
+          classificationTag: 'dichiarazione'
+        })
+        try {
+          await this.answerSceneMasterClarification(message, ctx.session.pendingClarification)
+        } catch (err) {
+          console.error(`[SceneMaster] Chiarimento fallito [${this.tableId}]: ${err.message}`)
+        }
+        return
+      }
+
       const routing = buildOrchestratorRoutingDecision(message.text, {
         otherPgNames,
         otherPlayerNames,
