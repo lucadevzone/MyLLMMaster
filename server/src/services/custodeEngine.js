@@ -2439,13 +2439,15 @@ class CustodeEngine {
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
     if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
     const contextText = sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
-    const response = await this.llmText('scene_master_v0_esito_prova.md', {
+    const outcomePromptFile = rollResult.esito === 'successo'
+      ? 'scene_master_v0_esito_prova_successo.md'
+      : 'scene_master_v0_esito_prova_fallimento.md'
+    const response = await this.llmText(outcomePromptFile, {
       playerName: pendingRoll?.targetCharacter || '',
       declarationText: pendingRoll?.declarationText || '',
       skill: pendingRoll?.skill || '',
       difficulty: pendingRoll?.difficulty || '',
       rollValue: String(rollResult.valore),
-      rollOutcome: rollResult.esito,
       contextText
     })
     await this.waitForFocusSilence('scene-master-roll-outcome')

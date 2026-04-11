@@ -134,10 +134,9 @@ async function main() {
     }
   }
   engine.llmText = async (promptFile, vars) => {
-    assert.equal(promptFile, 'scene_master_v0_esito_prova.md')
+    assert.equal(promptFile, 'scene_master_v0_esito_prova_successo.md')
     assert.equal(vars.playerName, 'Emil')
     assert.equal(vars.skill, 'Psicologia')
-    assert.equal(vars.rollOutcome, 'successo')
     return 'Osservandolo con attenzione, Emil coglie un nervosismo autentico e trattenuto.'
   }
 
