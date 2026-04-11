@@ -129,6 +129,7 @@ async function getOrCreateSession(tableId, invitedPlayers) {
       phase: 'inizio_sessione',
       pendingRoll: null,
       pendingClarification: null,
+      conversationTargets: {},
       focusGroupId: null,
       startedAt: null,
       endedAt: null,
@@ -153,9 +154,14 @@ async function getOrCreateSession(tableId, invitedPlayers) {
   } else if (!('pendingRoll' in session)) {
     session.pendingRoll = null
     if (!('pendingClarification' in session)) session.pendingClarification = null
+    if (!('conversationTargets' in session)) session.conversationTargets = {}
     await saveSession(tableId, session)
   } else if (!('pendingClarification' in session)) {
     session.pendingClarification = null
+    if (!('conversationTargets' in session)) session.conversationTargets = {}
+    await saveSession(tableId, session)
+  } else if (!('conversationTargets' in session)) {
+    session.conversationTargets = {}
     await saveSession(tableId, session)
   }
 

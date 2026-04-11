@@ -59,6 +59,7 @@ async function main() {
   await engine.startPassiveOrchestrator()
   engine.answerCustodeQuestion = async () => {}
   engine.answerSceneMasterDeclaration = async () => {}
+  engine.answerNpcMasterInteraction = async () => {}
 
   const messages = [
     {
@@ -143,6 +144,28 @@ async function main() {
   assert.equal(ambiguousSceneRouting.tag, '?')
   assert.equal(ambiguousSceneRouting.agent, 'Scene Master')
   assert.equal(ambiguousSceneRouting.reason, 'messaggio ambiguo: fallback alla fase scene')
+
+  const continuingNpcRouting = buildOrchestratorRoutingDecision('"Cosa è successo? Cosa la sconvolge tanto?"', {
+    otherPgNames: ['Emil', 'Luk'],
+    npcNames: ['Sophia Hapgood'],
+    activeNpcTarget: 'Sophia Hapgood',
+    focusSceneId: 'scena_asta_grand_palais',
+    focusSceneLabel: "L'asta al Grand Palais",
+    phase: 'first_person'
+  })
+  assert.equal(continuingNpcRouting.tag, 'frase in-character')
+  assert.equal(continuingNpcRouting.agent, 'NPC Master')
+  assert.equal(continuingNpcRouting.npcTarget, 'Sophia Hapgood')
+
+  const genericInCharacterRouting = buildOrchestratorRoutingDecision('"Buongiorno."', {
+    otherPgNames: ['Emil', 'Luk'],
+    npcNames: ['Sophia Hapgood'],
+    focusSceneId: 'scena_asta_grand_palais',
+    focusSceneLabel: "L'asta al Grand Palais",
+    phase: 'first_person'
+  })
+  assert.equal(genericInCharacterRouting.tag, 'frase in-character')
+  assert.equal(genericInCharacterRouting.agent, 'NPC Master')
 
   clearAllTimers(tableId)
   destroy(tableId)

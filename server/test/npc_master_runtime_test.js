@@ -185,6 +185,7 @@ async function main() {
     assert.equal(vars.npcName, 'Sophia Hapgood')
     assert.equal(vars.playerName, 'Emil')
     assert.ok(vars.contextText.includes('PNG ATTIVO'))
+    assert.ok(vars.contextText.includes('POSIZIONI IN SCENA'))
     assert.ok(vars.contextText.includes('FINESTRA COMPLETA DELLA CONVERSAZIONE'))
     return {
       decision: 'respond_now',

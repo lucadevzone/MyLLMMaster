@@ -16,7 +16,7 @@ Rispondi SOLO con un oggetto JSON valido (nessun testo prima o dopo, nessun mark
 }
 
 Istruzioni:
-1) Verifica che le condizioni per poter creare questa conversazione ci siano. Se non siete entrambi presenti nella stessa location, o se non siete abbastanza vicini, allora rispondi con un `no_action`. La stessa cosa se l'intervento del PG e fuori contesto per la situazione attuale, oppure se la dichiarazione non e opportuna/praticabile in questo momento della conversazione.
+1) Verifica che le condizioni per poter creare questa conversazione ci siano. Usa POSIZIONI IN SCENA per valutare se i due interlocutori sono presenti nella stessa location, e sei sono abbastanza vicini. Se non è così allora rispondi con un `no_action`. La stessa cosa se l'intervento del PG e fuori contesto per la situazione attuale, oppure se la dichiarazione non e opportuna/praticabile in questo momento della conversazione.
 - In questo caso usa il campo `response` per spiegare "fuori ruolo" perche la richiesta del PG non ha senso.
 
 Esempi di situazioni in cui mancano le condizioni per la conversazione:
@@ -32,6 +32,7 @@ Esempi di situazioni in cui chiedere un chiarimento:
 - Battuta del PG: "La chiesa di San Giuseppe Battista si trova sulla collina" . Response. "Forse intendevi San Giovanni Battista (non Giuseppe), giusto?"
 - Battuta del PG: "Ieri siamo andati al funerale". Contesto: il funerale si è tenuto 3 giorni fa. Response. "Il fiunerale non è stato ieri. Stai provando a mentire?"
 - Battuta del PG alla spia russa "Consegnaci la statuetta, e avrai salva la vita". Response: "La spia è vostra nemica. Che tono stai usando? rassicurante o intimidatorio?"
+- Battuta del PG "Buongiorno". Contesto: il pg si trova in una stanza con due PNG e non ha dichiarato a quale dei due si avvicina. Response: "Nella stanza ci sono Joseph e Garlin. A chi ti rivolgi? Ad uno di essi o ad entrambi?"
 
 3) Tieni conto del rapporto personale tra PNG e il gruppo di PG.
 a) un rapporto amichevole indica che il PNG agirà e parlerà per aiutare i PG.

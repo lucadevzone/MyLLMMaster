@@ -162,17 +162,81 @@ function recentPlayerMessagesSummary(messages = [], maxItems = 6) {
     .join('\n')
 }
 
-function fullConversationTranscript(messages = []) {
-  const relevant = (messages || [])
-    .filter(message => message && message.type !== 'orchestrator-debug')
-    .map(message => {
-      const name = normalizeNarrativeText(message.fromName || message.from || 'Sconosciuto')
-      const text = normalizeNarrativeText(message.text)
-      if (!text) return ''
-      return `${name}: ${text}`
-    })
-    .filter(Boolean)
-  return relevant.join('\n')
+function fullConversationTranscript(messages = [], players = []) {
+  const characterNameByEmail = new Map(
+    (players || [])
+      .filter(player => player?.email)
+      .map(player => [player.email, normalizeNarrativeText(player.characterName || player.email)])
+  )
+
+  const lines = []
+  for (const message of (messages || [])) {
+    if (!message || message.type === 'orchestrator-debug') continue
+    const text = normalizeNarrativeText(message.text)
+    if (!text) continue
+    const speaker = characterNameByEmail.get(message.from)
+      || normalizeNarrativeText(message.fromName || message.from || 'Sconosciuto')
+    const line = `${speaker}: ${text}`
+    const previous = lines[lines.length - 1]
+    if (previous && normalizeChatText(previous) === normalizeChatText(line)) continue
+    lines.push(line)
+  }
+  return lines.join('\n')
+}
+
+async function buildNpcMasterSpatialContext(tableId, {
+  scene = null,
+  actorPg = null,
+  actorName = '',
+  npc = null,
+  npcTargetName = '',
+  resolveEntityLabel = (value) => value
+} = {}) {
+  const groupsState = await runtimeStore.getGroupsState(tableId).catch(() => ({ gruppi_attivi: [] }))
+  const activeGroups = Array.isArray(groupsState?.gruppi_attivi) ? groupsState.gruppi_attivi : []
+  const actorGroup = activeGroups.find(group =>
+    Array.isArray(group?.participants) && group.participants.includes(actorName)
+  ) || null
+
+  const actorSceneId = actorGroup?.sceneId || scene?.id_scena || ''
+  const actorSceneLabel = actorSceneId ? resolveEntityLabel(actorSceneId) : ''
+  const actorGroupLabel = actorGroup?.groupId ? `${actorGroup.groupId}` : ''
+
+  const npcPosition = npc?.runtime?.posizione || null
+  const npcPositionId = npcPosition?.id || ''
+  const npcPositionLabel = npcPositionId
+    ? resolveEntityLabel(npcPositionId)
+    : (npcPosition?.label || '')
+
+  const sceneNpcIds = Array.from(new Set([
+    ...((scene?.preparazione?.png_presenti || []).filter(Boolean)),
+    ...((scene?.preparazione?.png_aggiuntivi || []).filter(Boolean))
+  ]))
+
+  const sceneNpcLines = []
+  for (const npcId of sceneNpcIds) {
+    const sceneNpc = await runtimeStore.getNpc(tableId, npcId).catch(() => null)
+    if (!sceneNpc) continue
+    const sceneNpcPosition = sceneNpc.runtime?.posizione || null
+    const sceneNpcPositionLabel = sceneNpcPosition?.id
+      ? resolveEntityLabel(sceneNpcPosition.id)
+      : (sceneNpcPosition?.label || actorSceneLabel || 'posizione non specificata')
+    sceneNpcLines.push(`${sceneNpc.nome || npcId}: ${sceneNpcPositionLabel}`)
+  }
+
+  const lines = [
+    actorName
+      ? `${actorName} si trova attualmente ${actorSceneLabel ? `nella scena ${actorSceneLabel}` : 'in una scena attiva'}${actorGroupLabel ? `, nel gruppo ${actorGroupLabel}` : ''}`
+      : '',
+    npcTargetName
+      ? `${npcTargetName} si trova attualmente ${npcPositionLabel || 'in una posizione non specificata'}`
+      : '',
+    sceneNpcLines.length
+      ? `PNG presenti nella scena focus: ${sceneNpcLines.join('; ')}`
+      : ''
+  ].filter(Boolean)
+
+  return lines.join('\n')
 }
 
 function getRecentClassifications(messages = [], currentMessageId = null, maxItems = 5) {
@@ -1091,7 +1155,7 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
   const features = extractChatFeatures(messageText, options)
   const classified = resolveChatMessageTag(features, options)
   const tag = classified.tag || '?'
-  const npcTarget = findMentionedName(messageText, options.npcNames || [])
+  const npcTarget = findMentionedName(messageText, options.npcNames || []) || options.activeNpcTarget || null
   const questionMetadata = tag === 'domanda al custode'
     ? extractQuestionMetadata(messageText, {
       ...options,
@@ -1143,7 +1207,9 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
     return {
       tag,
       agent: 'NPC Master',
-      reason: 'interazione diretta con un PNG',
+      reason: options.activeNpcTarget && !findMentionedName(messageText, options.npcNames || [])
+        ? 'continuazione della conversazione con il PNG attivo'
+        : 'interazione diretta con un PNG',
       npcTarget,
       focusSceneId: options.focusSceneId || null,
       focusSceneLabel: options.focusSceneLabel || null,
@@ -1154,12 +1220,14 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
   if (tag === 'frase in-character') {
     return {
       tag,
-      agent: 'Scene Master',
-      reason: 'battuta in fiction senza PNG bersaglio esplicito',
-      npcTarget: null,
+      agent: 'NPC Master',
+      reason: 'battuta in fiction affidata al NPC Master',
+      npcTarget: options.activeNpcTarget || null,
       focusSceneId: options.focusSceneId || null,
       focusSceneLabel: options.focusSceneLabel || null,
-      contextBundle: ['focusScene', 'recentChat'],
+      contextBundle: options.activeNpcTarget
+        ? ['focusScene', 'npcSummary:primary', 'recentChat']
+        : ['focusScene', 'recentChat'],
       metadata: null
     }
   }
@@ -2474,6 +2542,15 @@ class CustodeEngine {
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
     if (npc) sections.push(`PNG ATTIVO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
     if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    const spatialContext = await buildNpcMasterSpatialContext(this.tableId, {
+      scene,
+      actorPg,
+      actorName,
+      npc,
+      npcTargetName,
+      resolveEntityLabel
+    })
+    if (spatialContext) sections.push(`POSIZIONI IN SCENA\n${spatialContext}`)
     const transcriptMessages = Array.isArray(ctx?.messages) ? [...ctx.messages] : []
     const currentText = normalizeNarrativeText(message.text)
     if (currentText) {
@@ -2487,7 +2564,7 @@ class CustodeEngine {
         })
       }
     }
-    const transcript = fullConversationTranscript(transcriptMessages)
+    const transcript = fullConversationTranscript(transcriptMessages, ctx?.session?.players || [])
     if (transcript) sections.push(`FINESTRA COMPLETA DELLA CONVERSAZIONE\n${transcript}`)
     const skillsCatalog = renderSkillsCatalogSummary()
     if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
@@ -2846,7 +2923,8 @@ class CustodeEngine {
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
     if (npc) sections.push(`PNG ATTIVO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
     if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
-    const transcript = fullConversationTranscript(svc.getSession(this.tableId)?.messages || [])
+    const npcCtx = svc.getSession(this.tableId)
+    const transcript = fullConversationTranscript(npcCtx?.messages || [], npcCtx?.session?.players || [])
     if (transcript) sections.push(`FINESTRA COMPLETA DELLA CONVERSAZIONE\n${transcript}`)
     const contextText = sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
     const outcomePromptFile = rollResult.esito === 'successo'
@@ -3755,6 +3833,7 @@ class CustodeEngine {
         locationNames,
         objectNames,
         clueNames,
+        activeNpcTarget: ctx?.session?.conversationTargets?.[message.from] || null,
         phase: ctx?.session?.phase || 'inizio_sessione',
         recentClassifications,
         lastSystemPromptKind,
@@ -3771,6 +3850,25 @@ class CustodeEngine {
       await svc.updateMessage(this.tableId, message.id, {
         classificationTag: routing.tag || '?'
       })
+      let conversationTargetsChanged = false
+      if (!ctx.session.conversationTargets || typeof ctx.session.conversationTargets !== 'object') {
+        ctx.session.conversationTargets = {}
+        conversationTargetsChanged = true
+      }
+      if (routing.agent === 'NPC Master' && routing.npcTarget) {
+        if (ctx.session.conversationTargets[message.from] !== routing.npcTarget) {
+          ctx.session.conversationTargets[message.from] = routing.npcTarget
+          conversationTargetsChanged = true
+        }
+      } else if (routing.tag === 'dichiarazione' || routing.agent === 'Scene Master') {
+        if (ctx.session.conversationTargets[message.from]) {
+          delete ctx.session.conversationTargets[message.from]
+          conversationTargetsChanged = true
+        }
+      }
+      if (conversationTargetsChanged) {
+        await svc.saveSession(this.tableId, ctx.session)
+      }
       this.buffer.push({ ...message, tag: routing.tag })
       console.log(
         `[Orchestrator] Routing [${this.tableId}] tag=${routing.tag} agent=${routing.agent || 'none'} reason=${routing.reason} msg=${message.fromName || message.from}: ${message.text}`
