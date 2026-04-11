@@ -38,6 +38,7 @@ async function main() {
   await getOrCreateSession(tableId, ['emilio@example.com', 'luca@example.com'])
   const ctx = getSession(tableId)
   ctx.session.custodePhase = 'fase-4a'
+  ctx.session.phase = 'inizio_sessione'
   ctx.session.players = [
     {
       email: 'emilio@example.com',
@@ -87,9 +88,17 @@ async function main() {
     }
   ]
 
-  for (const message of messages) {
-    await engine.onPlayerMessage(message)
-  }
+  await engine.onPlayerMessage(messages[0])
+  assert.equal(ctx.session.phase, 'first_person')
+
+  await engine.onPlayerMessage(messages[1])
+  await engine.onPlayerMessage(messages[2])
+  assert.equal(ctx.session.phase, 'first_person')
+
+  await engine.onPlayerMessage(messages[3])
+  assert.equal(ctx.session.phase, 'scene')
+
+  await engine.onPlayerMessage(messages[4])
 
   const tags = engine.buffer.map(entry => ({ text: entry.text, tag: entry.tag }))
   assert.deepStrictEqual(tags, [
@@ -124,6 +133,16 @@ async function main() {
     declarationRouting.contextBundle,
     ['focusScene', 'recentChat', 'pgSummary:actor', 'npcSummary:primary', 'objectSummary:secondary']
   )
+
+  const ambiguousSceneRouting = buildOrchestratorRoutingDecision('Non mi fido di lei', {
+    otherPgNames: ['Emil', 'Luk'],
+    focusSceneId: 'scena_asta_grand_palais',
+    focusSceneLabel: "L'asta al Grand Palais",
+    phase: 'scene'
+  })
+  assert.equal(ambiguousSceneRouting.tag, '?')
+  assert.equal(ambiguousSceneRouting.agent, 'Scene Master')
+  assert.equal(ambiguousSceneRouting.reason, 'messaggio ambiguo: fallback alla fase scene')
 
   clearAllTimers(tableId)
   destroy(tableId)

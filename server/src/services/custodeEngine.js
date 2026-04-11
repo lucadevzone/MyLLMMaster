@@ -162,6 +162,19 @@ function recentPlayerMessagesSummary(messages = [], maxItems = 6) {
     .join('\n')
 }
 
+function fullConversationTranscript(messages = []) {
+  const relevant = (messages || [])
+    .filter(message => message && message.type !== 'orchestrator-debug')
+    .map(message => {
+      const name = normalizeNarrativeText(message.fromName || message.from || 'Sconosciuto')
+      const text = normalizeNarrativeText(message.text)
+      if (!text) return ''
+      return `${name}: ${text}`
+    })
+    .filter(Boolean)
+  return relevant.join('\n')
+}
+
 function getRecentClassifications(messages = [], currentMessageId = null, maxItems = 5) {
   return (messages || [])
     .filter(message => message && message.id !== currentMessageId)
@@ -1091,6 +1104,12 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
       questionNpcNames: options.questionNpcNames || options.npcNames || []
     })
     : null
+  const fallbackDeclarationMetadata = (!declarationMetadata && tag === '?')
+    ? extractDeclarationMetadata(messageText, {
+      ...options,
+      questionNpcNames: options.questionNpcNames || options.npcNames || []
+    })
+    : null
 
   if (tag === 'domanda al custode') {
     const isRulesQuestion = questionMetadata?.questionType === 'rules_reference_question'
@@ -1168,6 +1187,43 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
       metadata: null
     }
   }
+  const phase = normalizeRoutingPhase(options.phase || options.gamePhase || '')
+  if (tag === '?') {
+    const fallbackByPhase = phase === 'first_person'
+      ? (npcTarget
+          ? {
+              agent: 'NPC Master',
+              reason: 'messaggio ambiguo: fallback alla fase first_person',
+              contextBundle: ['focusScene', 'npcSummary:primary', 'recentChat']
+            }
+          : {
+              agent: 'Scene Master',
+              reason: 'messaggio ambiguo: fallback alla fase first_person senza PNG bersaglio esplicito',
+              contextBundle: fallbackDeclarationMetadata?.contextBundle || ['focusScene', 'recentChat', 'pgSummary:actor'],
+              metadata: fallbackDeclarationMetadata
+            })
+      : phase === 'inizio_sessione'
+        ? {
+            agent: 'Custode',
+            reason: 'messaggio ambiguo: fallback alla fase inizio_sessione',
+            contextBundle: questionMetadata?.fallbackBundle || ['focusScene', 'recentChat'],
+            metadata: questionMetadata
+          }
+        : {
+            agent: 'Scene Master',
+            reason: 'messaggio ambiguo: fallback alla fase scene',
+            contextBundle: fallbackDeclarationMetadata?.contextBundle || ['focusScene', 'recentChat', 'pgSummary:actor'],
+            metadata: fallbackDeclarationMetadata
+          }
+
+    return {
+      tag,
+      npcTarget: fallbackByPhase.agent === 'NPC Master' ? npcTarget : null,
+      focusSceneId: options.focusSceneId || null,
+      focusSceneLabel: options.focusSceneLabel || null,
+      ...fallbackByPhase
+    }
+  }
   return {
     tag,
     agent: null,
@@ -1178,6 +1234,25 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
     contextBundle: questionMetadata?.fallbackBundle || [],
     metadata: questionMetadata
   }
+}
+
+function inferConversationPhase(currentPhase, routing, options = {}) {
+  const current = normalizeRoutingPhase(currentPhase || 'inizio_sessione') || 'inizio_sessione'
+  const recent = historyCategories(options)
+  const currentTag = normalizeChatText(routing?.tag || '')
+  const recentWithCurrent = recent.concat(currentTag).filter(Boolean)
+  const recentInCharacterCount = recentWithCurrent
+    .slice(-3)
+    .filter(tag => tag === 'frase in-character')
+    .length
+
+  if (routing?.tag === 'dichiarazione') return 'scene'
+  if (routing?.tag === 'frase in-character') return 'first_person'
+  if (recentInCharacterCount >= 2) return 'first_person'
+  if (current === 'inizio_sessione' && routing?.agent === 'Custode' && routing?.tag === 'domanda al custode') {
+    return 'inizio_sessione'
+  }
+  return current
 }
 
 function formatContextBundleEntry(entry, routing = {}) {
@@ -1814,8 +1889,8 @@ class CustodeEngine {
 
     const msg = await svc.addMessage(tableId, {
       type: options.type || 'custode',
-      from: 'custode',
-      fromName: 'Custode',
+      from: options.from || 'custode',
+      fromName: options.fromName || 'Custode',
       to: options.to || null,
       text: safeText,
       messageKind: options.messageKind || null
@@ -2351,6 +2426,261 @@ class CustodeEngine {
     }
   }
 
+  async buildNpcMasterContext(message, routingOrPending = {}) {
+    const table = await getTableOrNull(this.tableId)
+    const ctx = svc.getSession(this.tableId)
+    const notesResources = getModuleNotesResources(table?.moduleId)
+    const index = notesResources?.index || null
+    const resolveEntityLabel = (value) => {
+      const normalized = normalizeChatText(value)
+      if (!normalized || !index) return value
+      const candidate = Object.values(index.byId || {}).find(entry => normalizeChatText(entry.id) === normalized)
+      if (candidate?.name) return candidate.name
+      for (const type of ['npc', 'scene', 'object', 'clue']) {
+        const ref = lookupEntityRefByName(index, type, value)
+        if (ref?.name) return ref.name
+      }
+      return value
+    }
+
+    const npcTargetName = routingOrPending?.npcTarget || routingOrPending?.targetNpc || routingOrPending?.npcName || ''
+    const focusSceneId = routingOrPending?.focusSceneId || null
+    const scene = focusSceneId ? await runtimeStore.getScene(this.tableId, focusSceneId) : null
+    const actorPg = await runtimeStore.getCharacterByPlayerId(this.tableId, message.from)
+      || await runtimeStore.getCharacterByName(this.tableId, message.fromName)
+    const actorName = actorPg?.name
+      || actorPg?.nome
+      || ctx?.session?.players?.find(player => player.email === message.from)?.characterName
+      || message.fromName
+      || message.from
+
+    const npc = npcTargetName
+      ? await runtimeStore.getNpc(this.tableId, lookupEntityRefByName(index, 'npc', npcTargetName)?.id || '')
+      : null
+
+    const moduleCatalog = getModuleQuestionCatalog(table?.moduleId) || {}
+    const mentionedObjectNames = findMentionedNames(message.text, moduleCatalog.objectNames || []).slice(0, 2)
+    const mentionedClueNames = findMentionedNames(message.text, moduleCatalog.clueNames || []).slice(0, 2)
+
+    const loadEntityByName = async (type, value) => {
+      const ref = lookupEntityRefByName(index, type, value)
+      if (!ref) return null
+      if (type === 'object') return runtimeStore.getObject(this.tableId, ref.id)
+      if (type === 'clue') return runtimeStore.getClue(this.tableId, ref.id)
+      return null
+    }
+
+    const sections = []
+    if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
+    if (npc) sections.push(`PNG ATTIVO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
+    if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    const transcriptMessages = Array.isArray(ctx?.messages) ? [...ctx.messages] : []
+    const currentText = normalizeNarrativeText(message.text)
+    if (currentText) {
+      const last = transcriptMessages[transcriptMessages.length - 1]
+      if (!last || normalizeNarrativeText(last.text) !== currentText || last.from !== message.from) {
+        transcriptMessages.push({
+          from: message.from,
+          fromName: actorName,
+          text: currentText,
+          type: 'normal'
+        })
+      }
+    }
+    const transcript = fullConversationTranscript(transcriptMessages)
+    if (transcript) sections.push(`FINESTRA COMPLETA DELLA CONVERSAZIONE\n${transcript}`)
+    const skillsCatalog = renderSkillsCatalogSummary()
+    if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
+
+    for (const name of mentionedObjectNames) {
+      const object = await loadEntityByName('object', name)
+      if (object) sections.push(`OGGETTO CITATO\n${renderObjectSummary(object, { resolveEntityLabel })}`)
+    }
+    for (const name of mentionedClueNames) {
+      const clue = await loadEntityByName('clue', name)
+      if (clue) sections.push(`INDIZIO CITATO\n${renderClueSummary(clue, { resolveEntityLabel })}`)
+    }
+
+    return {
+      npcName: npcTargetName,
+      playerName: actorName,
+      playerUtterance: normalizeNarrativeText(message.text),
+      contextText: sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
+    }
+  }
+
+  async answerNpcMasterInteraction(message, routing) {
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx) return
+
+    try {
+      const handoff = await this.buildNpcMasterContext(message, routing)
+      const result = await this.llm('npc_master_v0_conversazione.md', handoff)
+      if (!result?.response) return
+      result.Skill = normalizeNarrativeText(result.Skill)
+      result.Difficulty = normalizeNarrativeText(result.Difficulty)
+      await this.waitForFocusSilence('npc-master-response')
+      await svc.setAllPlayersState(this.tableId, 'turno-custode')
+      for (const player of (ctx.session.players || [])) {
+        this.io.to(this.room).emit('session:player-update', {
+          email: player.email,
+          playerState: 'turno-custode',
+          connected: player.connected
+        })
+      }
+      const messageKind = result.decision === 'ask_clarification' || result.decision === 'ask_for_roll'
+        ? 'npc_dialogue'
+        : 'npc_dialogue'
+      await this.emitNarrative(result.response, {
+        messageKind,
+        from: 'npc-master',
+        fromName: routing.npcTarget || 'PNG'
+      })
+      const targetPlayer = (ctx.session.players || []).find(player => player.email === message.from) || null
+
+      if (result.decision === 'ask_for_roll' && targetPlayer) {
+        ctx.session.pendingClarification = null
+        ctx.session.pendingRoll = {
+          targetCharacter: targetPlayer.characterName || '',
+          targetPlayerEmail: targetPlayer.email,
+          targetNpc: routing.npcTarget || '',
+          skill: normalizeNarrativeText(result.Skill),
+          difficulty: normalizeNarrativeText(result.Difficulty),
+          declarationText: normalizeNarrativeText(message.text),
+          focusSceneId: routing.focusSceneId || null,
+          source: 'npc-master',
+          createdAt: new Date().toISOString()
+        }
+        await svc.saveSession(this.tableId, ctx.session)
+        this.emitSessionUpdate()
+        await this.setPlayerTurn(targetPlayer.email, 'mio-turno-prova')
+        return
+      }
+
+      if (result.decision === 'ask_clarification' && targetPlayer) {
+        ctx.session.pendingRoll = null
+        ctx.session.pendingClarification = {
+          targetCharacter: targetPlayer.characterName || '',
+          targetPlayerEmail: targetPlayer.email,
+          targetNpc: routing.npcTarget || '',
+          originalDeclarationText: normalizeNarrativeText(message.text),
+          clarificationPrompt: normalizeNarrativeText(result.response),
+          focusSceneId: routing.focusSceneId || null,
+          source: 'npc-master',
+          createdAt: new Date().toISOString()
+        }
+        await svc.saveSession(this.tableId, ctx.session)
+        this.emitSessionUpdate()
+        await this.setPlayerTurn(targetPlayer.email, 'mio-turno-libero')
+        return
+      }
+    } finally {
+      const hasPendingTurn = (ctx.session.players || []).some(player =>
+        player.playerState === 'mio-turno-prova' || player.playerState === 'mio-turno-libero'
+      )
+      if (!hasPendingTurn) {
+        await svc.setAllPlayersState(this.tableId, 'gioco-libero')
+        for (const player of (ctx.session.players || [])) {
+          this.io.to(this.room).emit('session:player-update', {
+            email: player.email,
+            playerState: 'gioco-libero',
+            connected: player.connected
+          })
+        }
+      }
+    }
+  }
+
+  async answerNpcMasterClarification(message, pendingClarification) {
+    const ctx = svc.getSession(this.tableId)
+    if (!ctx) return
+
+    try {
+      const composedMessage = {
+        ...message,
+        text: [
+          pendingClarification?.originalDeclarationText ? `Battuta originaria del PG: ${pendingClarification.originalDeclarationText}` : '',
+          normalizeNarrativeText(message.text) ? `Chiarimento del PG: ${normalizeNarrativeText(message.text)}` : ''
+        ].filter(Boolean).join('\n')
+      }
+      const handoff = await this.buildNpcMasterContext(composedMessage, {
+        npcTarget: pendingClarification?.targetNpc || '',
+        focusSceneId: pendingClarification?.focusSceneId || null
+      })
+      const result = await this.llm('npc_master_v0_conversazione.md', handoff)
+      if (!result?.response) return
+      result.Skill = normalizeNarrativeText(result.Skill)
+      result.Difficulty = normalizeNarrativeText(result.Difficulty)
+      await this.waitForFocusSilence('npc-master-clarification-response')
+      await svc.setAllPlayersState(this.tableId, 'turno-custode')
+      for (const player of (ctx.session.players || [])) {
+        this.io.to(this.room).emit('session:player-update', {
+          email: player.email,
+          playerState: 'turno-custode',
+          connected: player.connected
+        })
+      }
+      await this.emitNarrative(result.response, {
+        messageKind: 'npc_dialogue',
+        from: 'npc-master',
+        fromName: pendingClarification?.targetNpc || 'PNG'
+      })
+
+      const targetPlayer = (ctx.session.players || []).find(player => player.email === pendingClarification?.targetPlayerEmail) || null
+      if (result.decision === 'ask_for_roll' && targetPlayer) {
+        ctx.session.pendingClarification = null
+        ctx.session.pendingRoll = {
+          targetCharacter: targetPlayer.characterName || pendingClarification?.targetCharacter || '',
+          targetPlayerEmail: targetPlayer.email,
+          targetNpc: pendingClarification?.targetNpc || '',
+          skill: normalizeNarrativeText(result.Skill),
+          difficulty: normalizeNarrativeText(result.Difficulty),
+          declarationText: normalizeNarrativeText(pendingClarification?.originalDeclarationText || ''),
+          focusSceneId: pendingClarification?.focusSceneId || null,
+          source: 'npc-master',
+          createdAt: new Date().toISOString()
+        }
+        await svc.saveSession(this.tableId, ctx.session)
+        this.emitSessionUpdate()
+        await this.setPlayerTurn(targetPlayer.email, 'mio-turno-prova')
+        return
+      }
+      if (result.decision === 'ask_clarification' && targetPlayer) {
+        ctx.session.pendingRoll = null
+        ctx.session.pendingClarification = {
+          ...(pendingClarification || {}),
+          targetCharacter: targetPlayer.characterName || pendingClarification?.targetCharacter || '',
+          targetPlayerEmail: targetPlayer.email,
+          clarificationPrompt: normalizeNarrativeText(result.response),
+          createdAt: new Date().toISOString()
+        }
+        await svc.saveSession(this.tableId, ctx.session)
+        this.emitSessionUpdate()
+        await this.setPlayerTurn(targetPlayer.email, 'mio-turno-libero')
+        return
+      }
+
+      ctx.session.pendingClarification = null
+      ctx.session.pendingRoll = null
+      await svc.saveSession(this.tableId, ctx.session)
+      this.emitSessionUpdate()
+    } finally {
+      const hasPendingTurn = (ctx.session.players || []).some(player =>
+        player.playerState === 'mio-turno-prova' || player.playerState === 'mio-turno-libero'
+      )
+      if (!hasPendingTurn) {
+        await svc.setAllPlayersState(this.tableId, 'gioco-libero')
+        for (const player of (ctx.session.players || [])) {
+          this.io.to(this.room).emit('session:player-update', {
+            email: player.email,
+            playerState: 'gioco-libero',
+            connected: player.connected
+          })
+        }
+      }
+    }
+  }
+
   async answerSceneMasterClarification(message, pendingClarification) {
     const ctx = svc.getSession(this.tableId)
     if (!ctx) return
@@ -2483,6 +2813,80 @@ class CustodeEngine {
     }
     const worldState = await getWorldState(this.tableId)
     await this.setGroupState(worldState.focusScene, worldState, 'gioco-libero')
+  }
+
+  async narrateNpcMasterRollOutcome(pendingRoll, rollResult) {
+    const table = await getTableOrNull(this.tableId)
+    const notesResources = getModuleNotesResources(table?.moduleId)
+    const index = notesResources?.index || null
+    const resolveEntityLabel = (value) => {
+      const normalized = normalizeChatText(value)
+      if (!normalized || !index) return value
+      const candidate = Object.values(index.byId || {}).find(entry => normalizeChatText(entry.id) === normalized)
+      if (candidate?.name) return candidate.name
+      for (const type of ['npc', 'scene', 'object', 'clue']) {
+        const ref = lookupEntityRefByName(index, type, value)
+        if (ref?.name) return ref.name
+      }
+      return value
+    }
+
+    const scene = pendingRoll?.focusSceneId
+      ? await runtimeStore.getScene(this.tableId, pendingRoll.focusSceneId)
+      : (await getWorldState(this.tableId)).focusScene
+        ? await runtimeStore.getScene(this.tableId, (await getWorldState(this.tableId)).focusScene)
+        : null
+    const actorPg = pendingRoll?.targetCharacter
+      ? await runtimeStore.getCharacterByName(this.tableId, pendingRoll.targetCharacter)
+      : null
+    const npc = pendingRoll?.targetNpc
+      ? await runtimeStore.getNpc(this.tableId, lookupEntityRefByName(index, 'npc', pendingRoll.targetNpc)?.id || '')
+      : null
+    const sections = []
+    if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
+    if (npc) sections.push(`PNG ATTIVO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
+    if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    const transcript = fullConversationTranscript(svc.getSession(this.tableId)?.messages || [])
+    if (transcript) sections.push(`FINESTRA COMPLETA DELLA CONVERSAZIONE\n${transcript}`)
+    const contextText = sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
+    const outcomePromptFile = rollResult.esito === 'successo'
+      ? 'npc_master_v0_esito_prova_successo.md'
+      : 'npc_master_v0_esito_prova_fallimento.md'
+    const response = await this.llmText(outcomePromptFile, {
+      npcName: pendingRoll?.targetNpc || '',
+      playerName: pendingRoll?.targetCharacter || '',
+      declarationText: pendingRoll?.declarationText || '',
+      skill: pendingRoll?.skill || '',
+      contextText
+    })
+    await this.waitForFocusSilence('npc-master-roll-outcome')
+    await svc.setAllPlayersState(this.tableId, 'turno-custode')
+    for (const player of ((svc.getSession(this.tableId)?.session?.players) || [])) {
+      this.io.to(this.room).emit('session:player-update', {
+        email: player.email,
+        playerState: 'turno-custode',
+        connected: player.connected
+      })
+    }
+    await this.emitNarrative(response, {
+      messageKind: 'npc_dialogue',
+      from: 'npc-master',
+      fromName: pendingRoll?.targetNpc || 'PNG'
+    })
+    const ctx = svc.getSession(this.tableId)
+    if (ctx) {
+      ctx.session.pendingRoll = null
+      await svc.saveSession(this.tableId, ctx.session)
+      this.emitSessionUpdate()
+      await svc.setAllPlayersState(this.tableId, 'gioco-libero')
+      for (const player of (ctx.session.players || [])) {
+        this.io.to(this.room).emit('session:player-update', {
+          email: player.email,
+          playerState: 'gioco-libero',
+          connected: player.connected
+        })
+      }
+    }
   }
 
   async pauseForTechnicalIssue(message) {
@@ -3332,7 +3736,11 @@ class CustodeEngine {
           classificationTag: 'dichiarazione'
         })
         try {
-          await this.answerSceneMasterClarification(message, ctx.session.pendingClarification)
+          if (ctx.session.pendingClarification?.source === 'npc-master') {
+            await this.answerNpcMasterClarification(message, ctx.session.pendingClarification)
+          } else {
+            await this.answerSceneMasterClarification(message, ctx.session.pendingClarification)
+          }
         } catch (err) {
           console.error(`[SceneMaster] Chiarimento fallito [${this.tableId}]: ${err.message}`)
         }
@@ -3353,6 +3761,13 @@ class CustodeEngine {
         focusSceneId,
         focusSceneLabel
       })
+      const nextConversationPhase = inferConversationPhase(ctx?.session?.phase, routing, {
+        recentClassifications
+      })
+      if (nextConversationPhase && nextConversationPhase !== (ctx?.session?.phase || 'inizio_sessione')) {
+        await svc.updateSessionPhase(this.tableId, nextConversationPhase)
+        this.emitSessionUpdate()
+      }
       await svc.updateMessage(this.tableId, message.id, {
         classificationTag: routing.tag || '?'
       })
@@ -3379,6 +3794,12 @@ class CustodeEngine {
           await this.answerSceneMasterDeclaration(message, routing)
         } catch (err) {
           console.error(`[SceneMaster] Risposta diretta fallita [${this.tableId}]: ${err.message}`)
+        }
+      } else if (routing.agent === 'NPC Master') {
+        try {
+          await this.answerNpcMasterInteraction(message, routing)
+        } catch (err) {
+          console.error(`[NpcMaster] Risposta diretta fallita [${this.tableId}]: ${err.message}`)
         }
       }
       return
@@ -3428,13 +3849,18 @@ class CustodeEngine {
     if (!ctx) return
 
     if (this.passiveOrchestratorMode && ctx.session.pendingRoll?.targetPlayerEmail === email) {
-      await this.narrateSceneMasterRollOutcome(ctx.session.pendingRoll, {
+      const rollResult = {
         email,
         caratteristica,
         soglia,
         valore,
         esito: valore <= soglia ? 'successo' : 'fallimento'
-      })
+      }
+      if (ctx.session.pendingRoll?.source === 'npc-master') {
+        await this.narrateNpcMasterRollOutcome(ctx.session.pendingRoll, rollResult)
+      } else {
+        await this.narrateSceneMasterRollOutcome(ctx.session.pendingRoll, rollResult)
+      }
       return
     }
 

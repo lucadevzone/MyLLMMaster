@@ -196,6 +196,12 @@
       "fuori_ruolo": 1,
       "domanda_al_custode": 1
     },
+    "scene": {
+      "dichiarazione": 1
+    },
+    "first_person": {
+      "frase_in_character": 1
+    },
     "dialogo_png": {
       "frase_in_character": 1
     },
