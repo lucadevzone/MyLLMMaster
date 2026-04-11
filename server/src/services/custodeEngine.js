@@ -2328,10 +2328,16 @@ class CustodeEngine {
     const skillsCatalog = renderSkillsCatalogSummary()
     if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
 
+    const originalDeclarationText = normalizeNarrativeText(pendingClarification?.originalDeclarationText || '')
+    const clarificationText = normalizeNarrativeText(message.text)
+    const declarationText = [
+      originalDeclarationText ? `Dichiarazione originaria: ${originalDeclarationText}` : '',
+      clarificationText ? `Chiarimento del giocatore: ${clarificationText}` : ''
+    ].filter(Boolean).join('\n')
+
     return {
       playerName: pendingClarification?.targetCharacter || message.fromName || message.from,
-      originalDeclarationText: pendingClarification?.originalDeclarationText || '',
-      clarificationText: normalizeNarrativeText(message.text),
+      declarationText,
       contextText: sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
     }
   }
@@ -2342,7 +2348,7 @@ class CustodeEngine {
 
     try {
       const handoff = await this.buildSceneMasterClarificationContext(message, pendingClarification)
-      const result = await this.llm('scene_master_v0_chiarimento.md', handoff)
+      const result = await this.llm('scene_master_v0_dichiarazione.md', handoff)
       if (!result?.response) return
       result.Skill = normalizeNarrativeText(result.Skill)
       result.Difficulty = normalizeNarrativeText(result.Difficulty)

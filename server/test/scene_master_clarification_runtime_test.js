@@ -125,16 +125,18 @@ async function main() {
   engine.llm = async (promptFile, vars) => {
     if (promptFile === 'scene_master_v0_dichiarazione.md') {
       declarationCalls += 1
-      return {
-        decision: 'ask_clarification',
-        response: 'In che modo cerchi di convincerla, con fascino o con argomenti?',
-        Skill: '',
-        Difficulty: ''
+      if (declarationCalls === 1) {
+        return {
+          decision: 'ask_clarification',
+          response: 'In che modo cerchi di convincerla, con fascino o con argomenti?',
+          Skill: '',
+          Difficulty: ''
+        }
       }
-    }
-    if (promptFile === 'scene_master_v0_chiarimento.md') {
-      assert.ok(vars.originalDeclarationText.includes('convincer'))
-      assert.ok(vars.clarificationText.toLowerCase().includes('con argomenti'))
+      assert.ok(vars.declarationText.includes('Dichiarazione originaria:'))
+      assert.ok(vars.declarationText.toLowerCase().includes('provo a convincerla'))
+      assert.ok(vars.declarationText.includes('Chiarimento del giocatore:'))
+      assert.ok(vars.declarationText.toLowerCase().includes('con argomenti'))
       return {
         decision: 'respond_now',
         response: 'Sophia ti ascolta con attenzione, ma resta prudente prima di risponderti.',
@@ -166,6 +168,7 @@ async function main() {
   })
 
   const custodeMessages = ctx.messages.filter(message => message.type === 'custode')
+  assert.equal(declarationCalls, 2)
   assert.equal(custodeMessages.length, 2)
   assert.ok(custodeMessages[1].text.includes('Sophia'))
   assert.equal(ctx.session.pendingClarification, null)
