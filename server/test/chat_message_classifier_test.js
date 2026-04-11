@@ -44,6 +44,24 @@ function main() {
   )
 
   assert.strictEqual(
+    classifyChatMessage('vorrei usare il mio facino per ammaliarla e convincerla ad aprirsi e dirmi che cosa la preoccupa', {
+      otherPgNames: names,
+      skillNames: ['Ammaliare', 'Persuadere']
+    }).tag,
+    'dichiarazione'
+  )
+
+  assert.strictEqual(
+    classifyChatMessage('uso il mio fascino per ammaliarla e convincerla ad aprirsi e dirmi che cosa la preoccupa', {
+      otherPgNames: names,
+      skillNames: ['Ammaliare', 'Persuadere'],
+      phase: 'post_rivelazione',
+      lastSystemPromptKind: 'question'
+    }).tag,
+    'dichiarazione'
+  )
+
+  assert.strictEqual(
     classifyChatMessage('Mi nascondo dietro la tenda.', {
       otherPgNames: names,
       skillNames: ['Furtività']

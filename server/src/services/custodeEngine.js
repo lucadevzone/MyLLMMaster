@@ -619,7 +619,7 @@ function extractChatFeatures(text, options = {}) {
     /\b(dico|rispondo|sussurro|mormoro|urlo|grido|bisbiglio|replico)\b/i
   ]
   const declarationPatterns = [
-    /\b(mi avvicino|mi allontano|mi sposto|entro|esco|vado|vado verso|vado al|vado alla|raggiungo|corro|mi precipito|cerco|osservo|guardo|esamino|controllo|seguo|apro|chiudo|prendo|lascio|aspetto|resto|parlo|parlare con|vorrei parlare con|voglio parlare con|mi rivolgo a|chiedo|domando|provo a|tento di|cerco di|faccio|voglio persuadere|persuado|persuadere|convinco|convincere|intimorisco|intimidisco|intimidire|minaccio|minacciare|seduco|sedurre|ammalio|ammaliare|non faccio nulla|non faccio niente|rimango fermo)\b/i
+    /\b(mi avvicino|mi allontano|mi sposto|entro|esco|vado|vado verso|vado al|vado alla|raggiungo|corro|mi precipito|cerco|osservo|guardo|esamino|controllo|seguo|apro|chiudo|prendo|lascio|aspetto|resto|parlo|parlare con|vorrei parlare con|voglio parlare con|mi rivolgo a|chiedo|domando|provo a|tento di|cerco di|faccio|uso|usare|vorrei usare|voglio usare|voglio persuadere|persuado|persuadere|convinco|convincere|intimorisco|intimidisco|intimidire|minaccio|minacciare|seduco|sedurre|ammalio|ammaliare|non faccio nulla|non faccio niente|rimango fermo)\b/i
   ]
   const discussionPatterns = [
     /\b(ragazzi|noi|tu vai|io vado|facciamo|andiamo|dobbiamo|conviene|secondo me|pensate che|che facciamo)\b/i
@@ -643,8 +643,8 @@ function extractChatFeatures(text, options = {}) {
   const hasMechanicsReference = /\b(tiro|prova|abilita|dado|difficolta|bonus)\b/i.test(normalized)
   const hasPastEventReference = /\b(avevamo|era successo|ricordo che|prima|gia incontrato|gia visto)\b/i.test(normalized)
   const hasSystemDirectAddress = /\b(puoi ripetere|mi dici|puoi dirmi)\b/i.test(normalized)
-  const hasActionIntentPattern = /\b(provo a|tento di|mi dirigo verso|uso|prendo|lancio|cerco di|voglio persuadere|voglio convincere|voglio intimidire|voglio sedurre|voglio ammaliare)\b/i.test(normalized)
-  const hasConditionalActionIntent = /\b(vorrei|potrei provare a|vorrei persuadere|vorrei convincere|vorrei intimidire|vorrei sedurre|vorrei ammaliare)\b/i.test(normalized)
+  const hasActionIntentPattern = /\b(provo a|tento di|mi dirigo verso|uso|uso il mio|uso la mia|uso .* per|prendo|lancio|cerco di|voglio usare|voglio usare .* per|voglio persuadere|voglio convincere|voglio intimidire|voglio sedurre|voglio ammaliare)\b/i.test(normalized)
+  const hasConditionalActionIntent = /\b(vorrei|vorrei usare|vorrei usare .* per|potrei provare a|vorrei persuadere|vorrei convincere|vorrei intimidire|vorrei sedurre|vorrei ammaliare)\b/i.test(normalized)
   const hasMyPgPattern = /\b(il mio pg|il mio personaggio)\b/i.test(normalized)
   const hasInvestigationPattern = /\b(cerco|osservo|esamino|controllo|indago|frugo)\b/i.test(normalized)
   const hasMovementPattern = /\b(vado|corro|mi avvicino|mi allontano|entro|esco|salgo|scendo|raggiungo)\b/i.test(normalized)
@@ -791,6 +791,9 @@ function resolveChatMessageTag(features, options = {}) {
   if (features.hasActionIntentPattern) add('dichiarazione', weights.strong, 'action_intent_pattern')
   if (features.hasConditionalActionIntent) add('dichiarazione', weights.strong, 'conditional_action_intent')
   if (features.containsSkillActionTerm) add('dichiarazione', weights.medium, 'skill_derived_action_term')
+  if (features.containsSkillName && (features.hasActionIntentPattern || features.hasConditionalActionIntent || features.hasDeclarationCue)) {
+    add('dichiarazione', weights.medium, 'skill_name_with_action_intent')
+  }
   if (features.hasMyPgPattern) add('dichiarazione', weights.strong, 'my_pg_plus_action')
   if (features.hasInvestigationPattern) add('dichiarazione', weights.medium, 'investigation_pattern')
   if (features.hasMovementPattern) add('dichiarazione', weights.medium, 'movement_pattern')
@@ -863,7 +866,13 @@ function resolveChatMessageTag(features, options = {}) {
     if (modal && counts[modal] >= 2) add(modal, weights.historyBonus, 'history_modal_category')
   }
   const lastSystemPromptKind = normalizeChatText(options.lastSystemPromptKind || '')
-  if (lastSystemPromptKind === 'question') add('domanda_al_custode', weights.historyBonus, 'system_last_message_is_question')
+  if (lastSystemPromptKind === 'question') {
+    if (!features.hasQuestionMark && (features.hasDeclarationCue || features.hasActionIntentPattern || features.hasConditionalActionIntent || features.containsSkillActionTerm)) {
+      add('dichiarazione', weights.historyBonus, 'system_last_message_is_question_answered_with_action')
+    } else {
+      add('domanda_al_custode', weights.historyBonus, 'system_last_message_is_question')
+    }
+  }
   if (lastSystemPromptKind === 'what_do_you_do') add('dichiarazione', weights.historyBonus, 'system_last_message_asks_what_do_you_do')
   if (lastSystemPromptKind === 'npc_dialogue') {
     add('frase_in_character', weights.historyBonus, 'system_last_message_from_npc')
