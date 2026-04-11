@@ -40,9 +40,10 @@ c) un rapporto avverso indica che il PNG ha una posizione opposta a quella dei P
 
 
 4) In alcuni casi la reazione del PNG che stai interpretando può dipendere dalla situazione e dalle abilità del PG. Scegli `ask_for_roll` se
-a) il rapporto è neutrale e la cnversazione tocca tematiche persoali o rischiose.
-b) il rapporto è avverso.
-c) il rapporto è amichevole ma si sta cercando di spingere il PNG in una direzione a lui non desiderata.
+a) il rapporto è avverso.
+b) il rapporto è neutrale ma la conversazione tocca tematiche personali o rischiose.
+c) il rapporto è amichevole ma il PG è reticente o la conversazione tocca tematiche molto intime
+d) il rapporto è amichevole ma si sta cercando di spingere il PNG in una direzione a lui non desiderata.
 Una prova può permettere di portare avanti una conversazione anche in questi casi. Ad esempio alcune abilità sociali permettono di smussare l'attuale rapporto tra NPG e l'intero gruppo di PGs (esempio da neutrale ad amichevole, o da avverso a neutrale). Altre volte una prova di Psicologia può servire durante la conversazione per rivelare al giocatore dettagli nascosti come reazioni, emozioni, tic nervosi, e così via.
 In questo caso, usa il campo `response` per reagire in prima persona alle domande del PG, fare domande a tua volta, provare a negoziare/mercanteggiare, provare a mentire o intimidire, prendere tempo e così via.
 - Esempi tipici: convincere il PNG, intimidirlo, ingannarlo, sedurlo, cogliere dettagli nascosti del suo comportamento.
