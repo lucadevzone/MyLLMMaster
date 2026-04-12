@@ -203,6 +203,26 @@ function getNpcConversationPromptFile(npc = null) {
   return 'npc_master_v0_conversazione_neutrale.md'
 }
 
+function buildClockDate(clock = {}) {
+  const day = normalizeNarrativeText(clock.data_inizio_avventura)
+  const time = normalizeNarrativeText(clock.ora_gioco)
+  if (!day || !time) return null
+  const candidate = new Date(`${day}T${time}:00.000Z`)
+  return Number.isNaN(candidate.getTime()) ? null : candidate
+}
+
+function mergeUniqueStrings(existing = [], additions = []) {
+  const seen = new Set((existing || []).map(value => normalizeChatText(value)).filter(Boolean))
+  const merged = [...(existing || []).filter(Boolean)]
+  for (const value of (additions || [])) {
+    const normalized = normalizeChatText(value)
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    merged.push(normalizeNarrativeText(value))
+  }
+  return merged
+}
+
 async function buildNpcMasterSpatialContext(tableId, {
   scene = null,
   actorPg = null,
@@ -1996,6 +2016,128 @@ class CustodeEngine {
     }
   }
 
+  async buildArchivistRuntimeContext(payload = {}) {
+    const table = await getTableOrNull(this.tableId)
+    const ctx = svc.getSession(this.tableId)
+    const notesResources = getModuleNotesResources(table?.moduleId)
+    const index = notesResources?.index || null
+    const resolveEntityLabel = (value) => {
+      const normalized = normalizeChatText(value)
+      if (!normalized || !index) return value
+      const candidate = Object.values(index.byId || {}).find(entry => normalizeChatText(entry.id) === normalized)
+      if (candidate?.name) return candidate.name
+      for (const type of ['npc', 'scene', 'object', 'clue']) {
+        const ref = lookupEntityRefByName(index, type, value)
+        if (ref?.name) return ref.name
+      }
+      return value
+    }
+
+    const scene = payload.focusSceneId
+      ? await runtimeStore.getScene(this.tableId, payload.focusSceneId)
+      : null
+    const actorPg = payload.playerName
+      ? await runtimeStore.getCharacterByName(this.tableId, payload.playerName)
+      : (payload.playerEmail ? await runtimeStore.getCharacterByPlayerId(this.tableId, payload.playerEmail) : null)
+    const npc = payload.npcName
+      ? await runtimeStore.getNpc(this.tableId, lookupEntityRefByName(index, 'npc', payload.npcName)?.id || '')
+      : null
+    const recentChat = recentPlayerMessagesSummary(ctx?.messages || [])
+
+    const sections = []
+    if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
+    if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    if (npc) sections.push(`PNG ATTIVO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
+    if (recentChat) sections.push(`STORICO CHAT\n${recentChat}`)
+
+    return {
+      sourceAgent: payload.sourceAgent || '',
+      playerName: payload.playerName || '',
+      npcName: payload.npcName || '',
+      declarationText: normalizeNarrativeText(payload.declarationText),
+      narrativeText: normalizeNarrativeText(payload.narrativeText),
+      contextText: sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
+    }
+  }
+
+  async applyArchivistRuntimeUpdate(update = {}, payload = {}) {
+    const focusSceneId = payload.focusSceneId || null
+    const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber || null
+
+    for (const entry of (update.storyLog || [])) {
+      await runtimeStore.appendStoryLogEntry(this.tableId, {
+        sessione: sessionNumber,
+        scena: focusSceneId,
+        type: 'narrative',
+        text: entry
+      })
+    }
+
+    for (const entry of (update.partyKnowledge || [])) {
+      await runtimeStore.appendPartyKnowledgeEntry(this.tableId, {
+        scena: focusSceneId,
+        text: entry
+      })
+    }
+
+    if (Array.isArray(update.npcUpdates) && update.npcUpdates.length) {
+      const worldState = await getWorldState(this.tableId)
+      for (const npcUpdate of update.npcUpdates) {
+        const targetName = normalizeNarrativeText(npcUpdate?.npcName || npcUpdate?.name || npcUpdate?.npc || '')
+        if (!targetName) continue
+        const target = (worldState.npcs || []).find(npc => normalizeChatText(npc.name) === normalizeChatText(targetName))
+        if (!target) continue
+        if (Array.isArray(npcUpdate.addInformazioniRivelate)) {
+          target.informazioni_rivelate = mergeUniqueStrings(target.informazioni_rivelate || [], npcUpdate.addInformazioniRivelate)
+        }
+        if (npcUpdate.atteggiamento_verso_pg != null) {
+          target.atteggiamento_verso_pg = normalizeNarrativeText(npcUpdate.atteggiamento_verso_pg)
+        }
+        if (npcUpdate.note_npc_master != null) {
+          target.note_npc_master = normalizeNarrativeText(npcUpdate.note_npc_master)
+        }
+      }
+      await saveWorldState(this.tableId, worldState)
+    }
+
+    const elapsedMinutes = Math.max(0, Number(update.elapsedMinutes) || 0)
+    if (elapsedMinutes > 0 && focusSceneId) {
+      const scene = await runtimeStore.getScene(this.tableId, focusSceneId)
+      if (scene?.runtime) {
+        const base = scene.runtime.tempo_corrente
+          ? new Date(scene.runtime.tempo_corrente)
+          : buildClockDate(await runtimeStore.getGameClock(this.tableId))
+        if (base && !Number.isNaN(base.getTime())) {
+          const advanced = new Date(base.getTime() + elapsedMinutes * 60 * 1000)
+          scene.runtime.tempo_corrente = advanced.toISOString()
+          if (!scene.runtime.tempo_inizio) scene.runtime.tempo_inizio = base.toISOString()
+          await runtimeStore.saveScene(this.tableId, scene)
+          const clock = await runtimeStore.getGameClock(this.tableId)
+          clock.data_inizio_avventura = normalizeNarrativeText(clock.data_inizio_avventura) || advanced.toISOString().slice(0, 10)
+          clock.ora_gioco = advanced.toISOString().slice(11, 16)
+          const baseDay = Number(clock.giorno_avventura) || 1
+          const baseDate = buildClockDate({ data_inizio_avventura: clock.data_inizio_avventura, ora_gioco: '00:00' })
+          if (baseDate) {
+            const advancedMidnight = new Date(advanced.toISOString().slice(0, 10) + 'T00:00:00.000Z')
+            const deltaDays = Math.round((advancedMidnight.getTime() - baseDate.getTime()) / (24 * 60 * 60 * 1000))
+            clock.giorno_avventura = Math.max(1, baseDay + Math.max(0, deltaDays))
+          }
+          await runtimeStore.saveGameClock(this.tableId, clock)
+        }
+      }
+    }
+  }
+
+  async runArchivistRuntimeUpdate(payload = {}) {
+    try {
+      const handoff = await this.buildArchivistRuntimeContext(payload)
+      const result = await this.llm('archivist_v0_runtime_update.md', handoff)
+      await this.applyArchivistRuntimeUpdate(result, payload)
+    } catch (err) {
+      console.warn(`[Archivist] Aggiornamento runtime fallito [${this.tableId}]: ${err.message}`)
+    }
+  }
+
   async emitPhaseChange(phase) {
     const ctx = svc.getSession(this.tableId)
     if (ctx) {
@@ -2421,6 +2563,16 @@ class CustodeEngine {
           : null
         await this.emitNarrative(result.response, { messageKind })
         const targetPlayer = (ctx.session.players || []).find(player => player.email === message.from) || null
+        if (result.decision === 'respond_now' || result.decision === 'no_action') {
+          await this.runArchivistRuntimeUpdate({
+            sourceAgent: 'scene-master',
+            focusSceneId: routing.focusSceneId || null,
+            playerEmail: message.from,
+            playerName: targetPlayer?.characterName || message.fromName || message.from,
+            declarationText: normalizeNarrativeText(message.text),
+            narrativeText: normalizeNarrativeText(result.response)
+          })
+        }
 
         if (result.decision === 'ask_for_roll' && targetPlayer) {
           ctx.session.pendingClarification = null
@@ -2636,6 +2788,17 @@ class CustodeEngine {
         fromName: routing.npcTarget || 'PNG'
       })
       const targetPlayer = (ctx.session.players || []).find(player => player.email === message.from) || null
+      if (result.decision === 'respond_now' || result.decision === 'no_action') {
+        await this.runArchivistRuntimeUpdate({
+          sourceAgent: 'npc-master',
+          focusSceneId: routing.focusSceneId || null,
+          playerEmail: message.from,
+          playerName: targetPlayer?.characterName || message.fromName || message.from,
+          npcName: routing.npcTarget || '',
+          declarationText: normalizeNarrativeText(message.text),
+          narrativeText: normalizeNarrativeText(result.response)
+        })
+      }
 
       if (result.decision === 'ask_for_roll' && targetPlayer) {
         ctx.session.pendingClarification = null
@@ -2727,6 +2890,17 @@ class CustodeEngine {
         from: 'npc-master',
         fromName: pendingClarification?.targetNpc || 'PNG'
       })
+      if (result.decision === 'respond_now' || result.decision === 'no_action') {
+        await this.runArchivistRuntimeUpdate({
+          sourceAgent: 'npc-master',
+          focusSceneId: pendingClarification?.focusSceneId || null,
+          playerEmail: pendingClarification?.targetPlayerEmail || message.from,
+          playerName: pendingClarification?.targetCharacter || message.fromName || message.from,
+          npcName: pendingClarification?.targetNpc || '',
+          declarationText: normalizeNarrativeText(pendingClarification?.originalDeclarationText || message.text),
+          narrativeText: normalizeNarrativeText(result.response)
+        })
+      }
 
       const targetPlayer = (ctx.session.players || []).find(player => player.email === pendingClarification?.targetPlayerEmail) || null
       if (result.decision === 'ask_for_roll' && targetPlayer) {
@@ -2907,6 +3081,14 @@ class CustodeEngine {
       })
     }
     await this.emitNarrative(response)
+    await this.runArchivistRuntimeUpdate({
+      sourceAgent: 'scene-master',
+      focusSceneId: pendingRoll?.focusSceneId || null,
+      playerEmail: pendingRoll?.targetPlayerEmail || null,
+      playerName: pendingRoll?.targetCharacter || '',
+      declarationText: normalizeNarrativeText(pendingRoll?.declarationText || ''),
+      narrativeText: normalizeNarrativeText(response)
+    })
     const ctx = svc.getSession(this.tableId)
     if (ctx) {
       ctx.session.pendingRoll = null
@@ -2975,6 +3157,15 @@ class CustodeEngine {
       messageKind: 'npc_dialogue',
       from: 'npc-master',
       fromName: pendingRoll?.targetNpc || 'PNG'
+    })
+    await this.runArchivistRuntimeUpdate({
+      sourceAgent: 'npc-master',
+      focusSceneId: pendingRoll?.focusSceneId || null,
+      playerEmail: pendingRoll?.targetPlayerEmail || null,
+      playerName: pendingRoll?.targetCharacter || '',
+      npcName: pendingRoll?.targetNpc || '',
+      declarationText: normalizeNarrativeText(pendingRoll?.declarationText || ''),
+      narrativeText: normalizeNarrativeText(response)
     })
     const ctx = svc.getSession(this.tableId)
     if (ctx) {

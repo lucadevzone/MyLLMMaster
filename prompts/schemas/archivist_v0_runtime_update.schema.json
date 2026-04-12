@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "required": ["storyLog", "partyKnowledge", "npcUpdates", "elapsedMinutes"],
+  "additionalProperties": false,
+  "properties": {
+    "storyLog": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "partyKnowledge": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "npcUpdates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["npcName", "addInformazioniRivelate"],
+        "additionalProperties": false,
+        "properties": {
+          "npcName": { "type": "string" },
+          "addInformazioniRivelate": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "atteggiamento_verso_pg": { "type": "string" },
+          "note_npc_master": { "type": "string" }
+        }
+      }
+    },
+    "elapsedMinutes": {
+      "type": "number"
+    }
+  }
+}

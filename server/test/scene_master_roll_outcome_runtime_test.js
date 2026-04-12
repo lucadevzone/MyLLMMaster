@@ -124,13 +124,21 @@ async function main() {
 
   let calls = 0
   engine.llm = async (promptFile, vars) => {
-    calls += 1
-    assert.equal(promptFile, 'scene_master_v0_dichiarazione.md')
+    if (promptFile === 'scene_master_v0_dichiarazione.md') {
+      calls += 1
+      return {
+        decision: 'ask_for_roll',
+        response: 'Per capirlo davvero, Emil deve fare una prova di Psicologia.',
+        Skill: 'Psicologia',
+        Difficulty: 'normale'
+      }
+    }
+    assert.equal(promptFile, 'archivist_v0_runtime_update.md')
     return {
-      decision: 'ask_for_roll',
-      response: 'Per capirlo davvero, Emil deve fare una prova di Psicologia.',
-      Skill: 'Psicologia',
-      Difficulty: 'normale'
+      storyLog: [],
+      partyKnowledge: [],
+      npcUpdates: [],
+      elapsedMinutes: 0
     }
   }
   engine.llmText = async (promptFile, vars) => {

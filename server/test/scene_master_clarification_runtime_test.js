@@ -144,6 +144,14 @@ async function main() {
         Difficulty: ''
       }
     }
+    if (promptFile === 'archivist_v0_runtime_update.md') {
+      return {
+        storyLog: [],
+        partyKnowledge: [],
+        npcUpdates: [],
+        elapsedMinutes: 0
+      }
+    }
     throw new Error(`Prompt inatteso: ${promptFile}`)
   }
 

@@ -655,6 +655,9 @@ async function syncNpcRuntimeCollection(tableId, npcs) {
     payload.runtime.stato = npc.stato ?? payload.runtime.stato
     if (npc.posizione) payload.runtime.posizione = npc.posizione
     else if (npc.scena_id) payload.runtime.posizione = { tipo: 'scena', id: npc.scena_id }
+    if (npc.atteggiamento_verso_pg != null) payload.runtime.atteggiamento_verso_pg = npc.atteggiamento_verso_pg
+    if (Array.isArray(npc.informazioni_rivelate)) payload.runtime.informazioni_rivelate = npc.informazioni_rivelate
+    if (npc.note_npc_master != null) payload.runtime.note_npc_master = npc.note_npc_master
     updates.push([ref.id, payload])
   }
   for (const [id, payload] of updates) {

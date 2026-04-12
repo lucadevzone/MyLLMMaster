@@ -4,10 +4,11 @@ const os = require('os')
 const path = require('path')
 
 async function main() {
-  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'myllm-npc-master-'))
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'myllm-archivist-'))
   process.env.DATA_DIR_OVERRIDE = dataDir
 
   const { ensureDir, writeJSON } = require('../src/utils/fileStore')
+  const runtimeStore = require('../src/services/tableRuntimeStore')
   const { getOrCreateSession, getSession, destroySession, clearAllTimers } = require('../src/services/sessionService')
   const { getOrCreate, destroy } = require('../src/services/custodeEngine')
 
@@ -36,8 +37,8 @@ async function main() {
     },
     runtime: {
       stato: 'in_corso',
-      tempo_inizio: null,
-      tempo_corrente: null,
+      tempo_inizio: '1936-07-15T20:00:00.000Z',
+      tempo_corrente: '1936-07-15T20:30:00.000Z',
       eventi_accaduti: [],
       trigger_attivati: [],
       indizi_trovati: [],
@@ -51,17 +52,13 @@ async function main() {
     profilo: {
       descrizione: 'Elegante ma inquieta.',
       occupazione: 'Conferenziera',
-      personalita: ['sincera', 'inquieta'],
-      segreto: 'Segreto test',
-      obiettivo_primario: 'Capire cosa sta succedendo',
+      personalita: ['sincera'],
+      segreto: '',
+      obiettivo_primario: '',
       obiettivi_secondari: [],
       agenda: [],
-      conoscenze: {
-        rivela_liberamente: ['Conosceva Belloq'],
-        rivela_se_fiducia: ['Ha un amuleto'],
-        non_rivela_mai: []
-      },
-      stile_dialogo: 'Voce bassa e sincera.'
+      conoscenze: { rivela_liberamente: [], rivela_se_fiducia: [], non_rivela_mai: [] },
+      stile_dialogo: 'Voce bassa.'
     },
     runtime: {
       stato: 'vivo',
@@ -80,12 +77,7 @@ async function main() {
       { file: 'png_sophia_hapgood.json', kind: 'npc', entityCount: 1 }
     ],
     entities: {
-      npc: [{
-        type: 'npc',
-        id: 'png_sophia_hapgood',
-        name: 'Sophia Hapgood',
-        file: 'png_sophia_hapgood.json'
-      }],
+      npc: [{ type: 'npc', id: 'png_sophia_hapgood', name: 'Sophia Hapgood', file: 'png_sophia_hapgood.json' }],
       scene: [{
         type: 'scene',
         id: 'scena_asta_grand_palais',
@@ -100,60 +92,39 @@ async function main() {
       relation: []
     },
     byId: {
-      scena_asta_grand_palais: {
-        type: 'scene',
-        id: 'scena_asta_grand_palais',
-        name: "L'asta al Grand Palais",
-        file: 'scena_asta_grand_palais.json'
-      },
-      png_sophia_hapgood: {
-        type: 'npc',
-        id: 'png_sophia_hapgood',
-        name: 'Sophia Hapgood',
-        file: 'png_sophia_hapgood.json'
-      }
+      scena_asta_grand_palais: { type: 'scene', id: 'scena_asta_grand_palais', name: "L'asta al Grand Palais", file: 'scena_asta_grand_palais.json' },
+      png_sophia_hapgood: { type: 'npc', id: 'png_sophia_hapgood', name: 'Sophia Hapgood', file: 'png_sophia_hapgood.json' }
     },
     byName: {
-      npc: {
-        'sophia hapgood': {
-          type: 'npc',
-          id: 'png_sophia_hapgood',
-          name: 'Sophia Hapgood',
-          file: 'png_sophia_hapgood.json'
-        }
-      },
-      scene: {
-        "l'asta al grand palais": {
-          type: 'scene',
-          id: 'scena_asta_grand_palais',
-          name: "L'asta al Grand Palais",
-          file: 'scena_asta_grand_palais.json'
-        }
-      },
+      npc: { 'sophia hapgood': { type: 'npc', id: 'png_sophia_hapgood', name: 'Sophia Hapgood', file: 'png_sophia_hapgood.json' } },
+      scene: { "l'asta al grand palais": { type: 'scene', id: 'scena_asta_grand_palais', name: "L'asta al Grand Palais", file: 'scena_asta_grand_palais.json' } },
       object: {},
       clue: {}
     }
   })
 
-  const tableId = 'test_npc_master_runtime'
+  const tableId = 'test_archivist_runtime_update'
   const tableDir = path.join(dataDir, 'tables', tableId)
   await ensureDir(path.join(tableDir, 'characters'))
   await ensureDir(path.join(tableDir, 'pngs'))
-  await writeJSON(path.join(tableDir, 'table.json'), {
-    id: tableId,
-    players: [],
-    moduleId: 'mod_21a79df1da33'
-  })
+  await ensureDir(path.join(tableDir, 'scenes'))
+  await writeJSON(path.join(tableDir, 'table.json'), { id: tableId, players: [], moduleId: 'mod_21a79df1da33' })
   await writeJSON(path.join(tableDir, 'groups.json'), {
     turno_corrente: null,
-    gruppi_attivi: [
-      { groupId: 'group01', sceneId: 'scena_asta_grand_palais', participants: ['Emil'] }
-    ]
+    gruppi_attivi: [{ groupId: 'group01', sceneId: 'scena_asta_grand_palais', participants: ['Emil'] }]
   })
+  await writeJSON(path.join(tableDir, 'game_clock.json'), {
+    currentChapter: 1,
+    data_inizio_avventura: '1936-07-15',
+    giorno_avventura: 1,
+    ora_gioco: '20:30'
+  })
+  await writeJSON(path.join(tableDir, 'story_log.json'), { entries: [] })
+  await writeJSON(path.join(tableDir, 'party_knowledge.json'), { entries: [] })
   await writeJSON(path.join(tableDir, 'characters', 'emil.json'), {
     name: 'Emil',
     playerID: 'emilio@example.com',
-    archetype: 'Investigatore'
+    profession: 'Investigatore'
   })
   await writeJSON(path.join(tableDir, 'pngs', 'png_sophia_hapgood.json'), {
     id_png: 'png_sophia_hapgood',
@@ -164,46 +135,53 @@ async function main() {
       informazioni_rivelate: []
     }
   })
+  await writeJSON(path.join(tableDir, 'scenes', 'scena_asta_grand_palais.json'), {
+    id_scena: 'scena_asta_grand_palais',
+    runtime: {
+      stato: 'in_corso',
+      tempo_inizio: '1936-07-15T20:00:00.000Z',
+      tempo_corrente: '1936-07-15T20:30:00.000Z',
+      eventi_accaduti: [],
+      trigger_attivati: [],
+      indizi_trovati: [],
+      note_scene_master: null
+    }
+  })
 
   await getOrCreateSession(tableId, ['emilio@example.com'])
   const ctx = getSession(tableId)
   ctx.session.custodePhase = 'orchestrator-passive'
   ctx.session.phase = 'first_person'
   ctx.session.state = 'sessione-iniziata'
-  ctx.session.players = [
-    { email: 'emilio@example.com', characterName: 'Emil', playerState: 'gioco-libero', connected: true }
-  ]
+  ctx.session.players = [{ email: 'emilio@example.com', characterName: 'Emil', playerState: 'gioco-libero', connected: true }]
 
   const io = { to: () => ({ emit: () => {} }), sockets: { sockets: new Map() } }
   const engine = getOrCreate(tableId, io)
   await engine.startPassiveOrchestrator()
 
-  let llmCalled = false
-  engine.llm = async (promptFile, vars) => {
+  engine.llm = async (promptFile) => {
     if (promptFile === 'npc_master_v0_conversazione_neutrale.md') {
-      llmCalled = true
-      assert.equal(vars.npcName, 'Sophia Hapgood')
-      assert.equal(vars.playerName, 'Emil')
-      assert.ok(vars.contextText.includes('PNG ATTIVO'))
-      assert.ok(vars.contextText.includes('POSIZIONI IN SCENA'))
-      assert.ok(vars.contextText.includes('FINESTRA COMPLETA DELLA CONVERSAZIONE'))
-      assert.ok(vars.contextText.includes('ABILITA DISPONIBILI'))
-      assert.ok(vars.contextText.includes('Persuadere'))
-      assert.ok(!vars.contextText.includes('Armi da Fuoco'))
       return {
         decision: 'respond_now',
-        response: 'Sophia abbassa lo sguardo e ti risponde con voce esitante: "Non qui, non davanti a tutti."',
+        response: 'Sophia abbassa lo sguardo e ammette che la tavoletta le ricorda qualcosa di terribile.',
         Skill: '',
         Difficulty: ''
       }
     }
-    assert.equal(promptFile, 'archivist_v0_runtime_update.md')
-    return {
-      storyLog: [],
-      partyKnowledge: [],
-      npcUpdates: [],
-      elapsedMinutes: 0
+    if (promptFile === 'archivist_v0_runtime_update.md') {
+      return {
+        storyLog: ['Sophia ammette davanti a Emil che la tavoletta le ricorda qualcosa di terribile.'],
+        partyKnowledge: ['Sophia collega apertamente la tavoletta a un ricordo terribile.'],
+        npcUpdates: [{
+          npcName: 'Sophia Hapgood',
+          addInformazioniRivelate: ['La tavoletta le ricorda qualcosa di terribile.'],
+          atteggiamento_verso_pg: 'amichevole: si e aperta con cautela',
+          note_npc_master: 'Dopo questo scambio si mostra piu propensa a confidarsi.'
+        }],
+        elapsedMinutes: 3
+      }
     }
+    throw new Error(`Prompt inatteso: ${promptFile}`)
   }
 
   await engine.onPlayerMessage({
@@ -214,16 +192,28 @@ async function main() {
     text: 'Sophia, puoi dirmi cosa ti turba davvero?'
   })
 
-  assert.equal(llmCalled, true)
-  const npcMessages = ctx.messages.filter(message => message.type === 'custode')
-  assert.equal(npcMessages.length, 1)
-  assert.equal(npcMessages[0].fromName, 'Sophia Hapgood')
-  assert.ok(npcMessages[0].text.includes('Non qui'))
+  const storyLog = await runtimeStore.getStoryLog(tableId)
+  assert.equal(storyLog.entries.length, 1)
+  assert.ok(storyLog.entries[0].text.includes('Sophia ammette'))
+
+  const partyKnowledge = await runtimeStore.getPartyKnowledge(tableId)
+  assert.equal(partyKnowledge.entries.length, 1)
+  assert.ok(partyKnowledge.entries[0].text.includes('ricordo terribile'))
+
+  const npc = await runtimeStore.getNpc(tableId, 'png_sophia_hapgood')
+  assert.ok(npc.runtime.informazioni_rivelate.includes('La tavoletta le ricorda qualcosa di terribile.'))
+  assert.equal(npc.runtime.atteggiamento_verso_pg, 'amichevole: si e aperta con cautela')
+
+  const scene = await runtimeStore.getScene(tableId, 'scena_asta_grand_palais')
+  assert.equal(scene.runtime.tempo_corrente, '1936-07-15T20:33:00.000Z')
+
+  const clock = await runtimeStore.getGameClock(tableId)
+  assert.equal(clock.ora_gioco, '20:33')
 
   clearAllTimers(tableId)
   destroy(tableId)
   destroySession(tableId)
-  console.log('npc_master_runtime_test: ok')
+  console.log('archivist_runtime_update_test: ok')
 }
 
 main().catch(err => {

@@ -129,19 +129,27 @@ async function main() {
 
   let llmCalled = false
   engine.llm = async (promptFile, vars) => {
-    llmCalled = true
-    assert.equal(promptFile, 'scene_master_v0_dichiarazione.md')
-    assert.equal(vars.playerName, 'Emil')
-    assert.ok(vars.declarationText.includes('Corro fino al podio'))
-    assert.ok(vars.contextText.includes('SCENA FOCUS'))
-    assert.ok(vars.contextText.includes('PG ATTIVO'))
-    assert.ok(vars.contextText.includes('ABILITA DISPONIBILI'))
-    assert.ok(vars.contextText.includes('Persuadere'))
+    if (promptFile === 'scene_master_v0_dichiarazione.md') {
+      llmCalled = true
+      assert.equal(vars.playerName, 'Emil')
+      assert.ok(vars.declarationText.includes('Corro fino al podio'))
+      assert.ok(vars.contextText.includes('SCENA FOCUS'))
+      assert.ok(vars.contextText.includes('PG ATTIVO'))
+      assert.ok(vars.contextText.includes('ABILITA DISPONIBILI'))
+      assert.ok(vars.contextText.includes('Persuadere'))
+      return {
+        decision: 'respond_now',
+        response: 'Ti lanci verso il podio, facendoti largo tra gli invitati.',
+        Skill: '',
+        Difficulty: ''
+      }
+    }
+    assert.equal(promptFile, 'archivist_v0_runtime_update.md')
     return {
-      decision: 'respond_now',
-      response: 'Ti lanci verso il podio, facendoti largo tra gli invitati.',
-      Skill: '',
-      Difficulty: ''
+      storyLog: [],
+      partyKnowledge: [],
+      npcUpdates: [],
+      elapsedMinutes: 0
     }
   }
 
