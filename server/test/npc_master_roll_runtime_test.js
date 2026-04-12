@@ -32,7 +32,7 @@ async function main() {
     id_png: 'png_sophia_hapgood',
     nome: 'Sophia Hapgood',
     profilo: { descrizione: 'Elegante ma inquieta.', occupazione: 'Conferenziera', personalita: ['sincera'], segreto: '', obiettivo_primario: '', obiettivi_secondari: [], agenda: [], conoscenze: { rivela_liberamente: [], rivela_se_fiducia: [], non_rivela_mai: [] }, stile_dialogo: 'Voce bassa.' },
-    runtime: { stato: 'vivo', posizione: { tipo: 'scena', id: 'scena_asta_grand_palais' }, atteggiamento_verso_pg: 'neutrale', informazioni_rivelate: [] }
+    runtime: { stato: 'vivo', posizione: { tipo: 'scena', id: 'scena_asta_grand_palais' }, atteggiamento_verso_pg: 'neutrale: guardinga ma disponibile', informazioni_rivelate: [] }
   })
   await writeJSON(path.join(notesDir, 'module_notes_index.json'), {
     generatedAt: new Date().toISOString(),
@@ -62,7 +62,7 @@ async function main() {
   await writeJSON(path.join(tableDir, 'table.json'), { id: tableId, players: [], moduleId: 'mod_21a79df1da33' })
   await writeJSON(path.join(tableDir, 'groups.json'), { turno_corrente: null, gruppi_attivi: [{ groupId: 'group01', sceneId: 'scena_asta_grand_palais', participants: ['Emil'] }] })
   await writeJSON(path.join(tableDir, 'characters', 'emil.json'), { name: 'Emil', playerID: 'emilio@example.com', archetype: 'Investigatore' })
-  await writeJSON(path.join(tableDir, 'pngs', 'png_sophia_hapgood.json'), { id_png: 'png_sophia_hapgood', runtime: { stato: 'vivo', posizione: { tipo: 'scena', id: 'scena_asta_grand_palais' }, atteggiamento_verso_pg: 'neutrale', informazioni_rivelate: [] } })
+  await writeJSON(path.join(tableDir, 'pngs', 'png_sophia_hapgood.json'), { id_png: 'png_sophia_hapgood', runtime: { stato: 'vivo', posizione: { tipo: 'scena', id: 'scena_asta_grand_palais' }, atteggiamento_verso_pg: 'neutrale: guardinga ma disponibile', informazioni_rivelate: [] } })
 
   await getOrCreateSession(tableId, ['emilio@example.com'])
   const ctx = getSession(tableId)
@@ -76,7 +76,7 @@ async function main() {
   await engine.startPassiveOrchestrator()
 
   engine.llm = async (promptFile) => {
-    assert.equal(promptFile, 'npc_master_v0_conversazione.md')
+    assert.equal(promptFile, 'npc_master_v0_conversazione_neutrale.md')
     return {
       decision: 'ask_for_roll',
       response: 'Sophia ti guarda incerta. Per smuoverla davvero serve una prova di Persuadere.',

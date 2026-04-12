@@ -184,6 +184,25 @@ function fullConversationTranscript(messages = [], players = []) {
   return lines.join('\n')
 }
 
+function classifyNpcRelationship(value = '') {
+  const raw = normalizeNarrativeText(value)
+  const normalized = normalizeChatText(raw)
+  if (!normalized) return 'neutrale'
+  const explicitPrefix = raw.split(':')[0]?.trim() || ''
+  const explicitNormalized = normalizeChatText(explicitPrefix)
+  if (['amichevole', 'neutrale', 'avverso'].includes(explicitNormalized)) return explicitNormalized
+  if (/\b(amichevole|fiducios|collaborativ|disponibil|cordial)\b/i.test(normalized)) return 'amichevole'
+  if (/\b(avvers|ostil|nemic|aggressiv|minacci)\b/i.test(normalized)) return 'avverso'
+  return 'neutrale'
+}
+
+function getNpcConversationPromptFile(npc = null) {
+  const relationship = classifyNpcRelationship(npc?.runtime?.atteggiamento_verso_pg || '')
+  if (relationship === 'amichevole') return 'npc_master_v0_conversazione_amichevole.md'
+  if (relationship === 'avverso') return 'npc_master_v0_conversazione_avversa.md'
+  return 'npc_master_v0_conversazione_neutrale.md'
+}
+
 async function buildNpcMasterSpatialContext(tableId, {
   scene = null,
   actorPg = null,
@@ -2316,7 +2335,7 @@ class CustodeEngine {
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
     if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
     if (recentChat) sections.push(`STORICO CHAT\n${recentChat}`)
-    const skillsCatalog = renderSkillsCatalogSummary()
+    const skillsCatalog = renderSkillsCatalogSummary({ dialogueOnly: true })
     if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
 
     for (const name of mentionedNpcNames) {
@@ -2477,7 +2496,7 @@ class CustodeEngine {
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
     if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
     if (recentChat) sections.push(`STORICO CHAT\n${recentChat}`)
-    const skillsCatalog = renderSkillsCatalogSummary()
+    const skillsCatalog = renderSkillsCatalogSummary({ dialogueOnly: true })
     if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
 
     const originalDeclarationText = normalizeNarrativeText(pendingClarification?.originalDeclarationText || '')
@@ -2566,7 +2585,7 @@ class CustodeEngine {
     }
     const transcript = fullConversationTranscript(transcriptMessages, ctx?.session?.players || [])
     if (transcript) sections.push(`FINESTRA COMPLETA DELLA CONVERSAZIONE\n${transcript}`)
-    const skillsCatalog = renderSkillsCatalogSummary()
+    const skillsCatalog = renderSkillsCatalogSummary({ dialogueOnly: true })
     if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
 
     for (const name of mentionedObjectNames) {
@@ -2592,7 +2611,10 @@ class CustodeEngine {
 
     try {
       const handoff = await this.buildNpcMasterContext(message, routing)
-      const result = await this.llm('npc_master_v0_conversazione.md', handoff)
+      const npc = routing?.npcTarget
+        ? await runtimeStore.getNpc(this.tableId, lookupEntityRefByName(getModuleNotesResources((await getTableOrNull(this.tableId))?.moduleId)?.index, 'npc', routing.npcTarget)?.id || '')
+        : null
+      const result = await this.llm(getNpcConversationPromptFile(npc), handoff)
       if (!result?.response) return
       result.Skill = normalizeNarrativeText(result.Skill)
       result.Difficulty = normalizeNarrativeText(result.Difficulty)
@@ -2684,7 +2706,10 @@ class CustodeEngine {
         npcTarget: pendingClarification?.targetNpc || '',
         focusSceneId: pendingClarification?.focusSceneId || null
       })
-      const result = await this.llm('npc_master_v0_conversazione.md', handoff)
+      const npc = pendingClarification?.targetNpc
+        ? await runtimeStore.getNpc(this.tableId, lookupEntityRefByName(getModuleNotesResources((await getTableOrNull(this.tableId))?.moduleId)?.index, 'npc', pendingClarification.targetNpc)?.id || '')
+        : null
+      const result = await this.llm(getNpcConversationPromptFile(npc), handoff)
       if (!result?.response) return
       result.Skill = normalizeNarrativeText(result.Skill)
       result.Difficulty = normalizeNarrativeText(result.Difficulty)

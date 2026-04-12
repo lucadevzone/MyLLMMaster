@@ -117,17 +117,22 @@ function main() {
     name: 'Luk',
     profession: 'Giornalista',
     descrizionePersonale: 'Magro, alto, barbuto',
+    characteristics: { APP: 70 },
     derivedAttributes: {
       hp: { current: 9, max: 9 },
       sanita: { current: 60, max: 99 }
     },
     abilita: {
-      comuni: { osservare: 50, psicologia: 40 },
+      comuni: { osservare: 50, psicologia: 40, credito: 10 },
       specialistiche: [{ nome: 'Biblioteca', valore: 60 }]
     }
   })
   assert.ok(pgText.includes('Luk'))
-  assert.ok(pgText.includes('Biblioteca 60'))
+  assert.ok(pgText.includes('gradevole'))
+  assert.ok(pgText.includes('stile di vita modesto'))
+  assert.ok(pgText.includes('perfette condizioni fisiche'))
+  assert.ok(pgText.includes('Biblioteca (Professionista)'))
+  assert.ok(!pgText.includes('9/9'))
 
   const rulesText = renderRulesExcerpt('Psicologia')
   assert.ok(rulesText.includes('Psicologia'))

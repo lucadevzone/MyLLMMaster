@@ -66,7 +66,7 @@ async function main() {
     runtime: {
       stato: 'vivo',
       posizione: { tipo: 'scena', id: 'scena_asta_grand_palais' },
-      atteggiamento_verso_pg: 'neutrale',
+      atteggiamento_verso_pg: 'neutrale: guardinga ma disponibile',
       informazioni_rivelate: []
     }
   })
@@ -160,7 +160,7 @@ async function main() {
     runtime: {
       stato: 'vivo',
       posizione: { tipo: 'scena', id: 'scena_asta_grand_palais' },
-      atteggiamento_verso_pg: 'neutrale',
+      atteggiamento_verso_pg: 'neutrale: guardinga ma disponibile',
       informazioni_rivelate: []
     }
   })
@@ -181,12 +181,15 @@ async function main() {
   let llmCalled = false
   engine.llm = async (promptFile, vars) => {
     llmCalled = true
-    assert.equal(promptFile, 'npc_master_v0_conversazione.md')
+    assert.equal(promptFile, 'npc_master_v0_conversazione_neutrale.md')
     assert.equal(vars.npcName, 'Sophia Hapgood')
     assert.equal(vars.playerName, 'Emil')
     assert.ok(vars.contextText.includes('PNG ATTIVO'))
     assert.ok(vars.contextText.includes('POSIZIONI IN SCENA'))
     assert.ok(vars.contextText.includes('FINESTRA COMPLETA DELLA CONVERSAZIONE'))
+    assert.ok(vars.contextText.includes('ABILITA DISPONIBILI'))
+    assert.ok(vars.contextText.includes('Persuadere'))
+    assert.ok(!vars.contextText.includes('Armi da Fuoco'))
     return {
       decision: 'respond_now',
       response: 'Sophia abbassa lo sguardo e ti risponde con voce esitante: "Non qui, non davanti a tutti."',

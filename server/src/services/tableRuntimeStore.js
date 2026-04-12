@@ -177,7 +177,7 @@ function defaultNpcRuntimeSlice(id_png) {
     runtime: {
       stato: 'vivo',
       posizione: null,
-      atteggiamento_verso_pg: null,
+      atteggiamento_verso_pg: 'neutrale',
       informazioni_rivelate: [],
       note_npc_master: null
     }

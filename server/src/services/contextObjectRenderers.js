@@ -386,6 +386,61 @@ function renderLocationSummary(scene, options = {}) {
   ])
 }
 
+function describeAppearanceScore(value) {
+  const score = Number(value)
+  if (!Number.isFinite(score)) return ''
+  if (score <= 19) return 'Il suo aspetto e sgradevole e tende a lasciare un’impressione negativa.'
+  if (score <= 39) return 'Il suo aspetto e dimesso e difficilmente attira attenzione positiva.'
+  if (score <= 59) return 'Il suo aspetto e ordinario e non colpisce particolarmente.'
+  if (score <= 79) return 'Il suo aspetto e gradevole e tende a fare una buona impressione.'
+  if (score <= 89) return 'Il suo aspetto e notevole e difficilmente passa inosservato.'
+  return 'Il suo aspetto e straordinario e lascia un’impressione fortissima.'
+}
+
+function describeCreditRating(value) {
+  const score = Number(value)
+  if (!Number.isFinite(score)) return ''
+  if (score <= 0) return 'Dall\'aspetto e dai modi traspare una condizione da squattrinato, senza mezzi reali.'
+  if (score <= 9) return 'Abiti, portamento e piccoli dettagli lasciano intuire una condizione povera, appena sopra il minimo sostentamento.'
+  if (score <= 49) return 'Abbigliamento e modi di fare suggeriscono uno stile di vita modesto, da ceto medio.'
+  if (score <= 89) return 'L\'abbigliamento curato e la sicurezza nei modi fanno pensare a una persona benestante.'
+  if (score <= 98) return 'Tessuti, accessori e disinvoltura sociale fanno intuire una notevole ricchezza.'
+  return 'Ogni dettaglio visibile, dagli abiti ai modi, comunica la ricchezza quasi smisurata di un vero nababbo.'
+}
+
+function describeHpState(hp) {
+  const current = Number(hp?.current)
+  const max = Number(hp?.max)
+  if (!Number.isFinite(current) || !Number.isFinite(max) || max <= 0) return ''
+  const ratio = current / max
+  if (ratio >= 1) return 'E in perfette condizioni fisiche.'
+  if (ratio >= 0.75) return 'Ha qualche segno di affaticamento o di urti recenti, ma resta in buona forma.'
+  if (ratio >= 0.45) return 'Mostra ferite o stanchezza evidenti.'
+  if (ratio > 0) return 'E in cattive condizioni fisiche e appare visibilmente provato.'
+  return 'E al collasso fisico.'
+}
+
+function describeSanityState(sanita) {
+  const current = Number(sanita?.current)
+  const max = Number(sanita?.max)
+  if (!Number.isFinite(current) || !Number.isFinite(max) || max <= 0) return ''
+  const ratio = current / max
+  if (ratio >= 0.8) return 'Appare mentalmente lucido e ben centrato.'
+  if (ratio >= 0.55) return 'Appare sotto pressione, ma ancora abbastanza saldo.'
+  if (ratio >= 0.3) return 'Mostra segni evidenti di stress e logoramento mentale.'
+  return 'Appare profondamente scosso e mentalmente instabile.'
+}
+
+function skillMasteryLabel(value) {
+  const score = Number(value)
+  if (!Number.isFinite(score)) return ''
+  if (score <= 19) return 'Novizio'
+  if (score <= 49) return 'Dilettante'
+  if (score <= 74) return 'Professionista'
+  if (score <= 89) return 'Esperto'
+  return 'Maestro'
+}
+
 function renderPgSummary(character = {}) {
   const name = normalizeText(character.name)
   const profession = normalizeText(character.profession)
@@ -393,23 +448,27 @@ function renderPgSummary(character = {}) {
   const background = normalizeText(character.background)
   const sanita = character.derivedAttributes?.sanita
   const hp = character.derivedAttributes?.hp
-  const notableSkills = []
+  const appText = describeAppearanceScore(character.characteristics?.APP)
   const commonSkills = character.abilita?.comuni || {}
+  const creditRatingText = describeCreditRating(commonSkills.credito)
+  const notableSkills = []
   for (const [skill, value] of Object.entries(commonSkills)) {
-    if ((Number(value) || 0) >= 40) notableSkills.push(`${skill} ${value}`)
+    if ((Number(value) || 0) >= 40) notableSkills.push(`${skill} (${skillMasteryLabel(value)})`)
   }
   const specialistSkills = (character.abilita?.specialistiche || [])
     .map(entry => ({ nome: normalizeText(entry?.nome), valore: Number(entry?.valore) || 0 }))
     .filter(entry => entry.nome && entry.valore >= 40)
     .slice(0, 4)
-    .map(entry => `${entry.nome} ${entry.valore}`)
+    .map(entry => `${entry.nome} (${skillMasteryLabel(entry.valore)})`)
 
   return joinNarrative([
     name ? `${name} e ${profession || 'un personaggio giocante'}` : '',
     description,
+    appText,
+    creditRatingText,
     background,
-    hp ? `I suoi punti ferita attuali sono ${hp.current}/${hp.max}` : '',
-    sanita ? `La sua sanita attuale e ${sanita.current}/${sanita.max}` : '',
+    describeHpState(hp),
+    describeSanityState(sanita),
     notableSkills.length || specialistSkills.length
       ? `Le sue competenze piu rilevanti sono ${(notableSkills.concat(specialistSkills)).slice(0, 6).join('; ')}`
       : ''
@@ -447,8 +506,12 @@ function renderRulesExcerpt(skillName = '') {
   ])
 }
 
-function renderSkillsCatalogSummary() {
-  const skills = loadSkillsRules()
+function renderSkillsCatalogSummary(options = {}) {
+  const dialogueOnly = options.dialogueOnly === true
+  const skills = loadSkillsRules().filter(entry => {
+    if (!dialogueOnly) return true
+    return entry?.['seleziona durante dialogo'] === true
+  })
   if (!skills.length) return ''
   const lines = skills.map(entry => {
     const nome = normalizeText(entry?.nome)
