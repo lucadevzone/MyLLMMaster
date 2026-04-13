@@ -165,6 +165,10 @@ async function main() {
 
   const custodeMessages = ctx.messages.filter(message => message.type === 'custode')
   assert.equal(custodeMessages.length, 2)
+  assert.equal(custodeMessages[0].from, 'scene-master')
+  assert.equal(custodeMessages[0].fromName, 'Scene Master')
+  assert.equal(custodeMessages[1].from, 'scene-master')
+  assert.equal(custodeMessages[1].fromName, 'Scene Master')
   assert.ok(custodeMessages[1].text.includes('nervosismo'))
   assert.equal(ctx.session.pendingRoll, null)
   assert.equal(ctx.session.players[0].playerState, 'gioco-libero')

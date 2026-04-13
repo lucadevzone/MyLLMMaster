@@ -177,6 +177,8 @@ async function main() {
   assert.equal(llmCalled, true)
   const sceneMessages = ctx.messages.filter(message => message.type === 'custode')
   assert.equal(sceneMessages.length, 1)
+  assert.equal(sceneMessages[0].from, 'scene-master')
+  assert.equal(sceneMessages[0].fromName, 'Scene Master')
   assert.ok(sceneMessages[0].text.includes('podio'))
   assert.ok(ctx.session.players.every(player => player.playerState === 'gioco-libero'))
 

@@ -2740,7 +2740,11 @@ class CustodeEngine {
         const messageKind = result.decision === 'ask_clarification' || result.decision === 'ask_for_roll'
           ? 'question'
           : null
-        await this.emitNarrative(result.response, { messageKind })
+        await this.emitNarrative(result.response, {
+          messageKind,
+          from: 'scene-master',
+          fromName: 'Scene Master'
+        })
         const targetPlayer = (ctx.session.players || []).find(player => player.email === message.from) || null
         if (result.decision === 'respond_now' || result.decision === 'no_action') {
           this.queueArchivistRuntimeUpdate({
@@ -3167,7 +3171,11 @@ class CustodeEngine {
       const messageKind = result.decision === 'ask_clarification' || result.decision === 'ask_for_roll'
         ? 'question'
         : null
-      await this.emitNarrative(result.response, { messageKind })
+      await this.emitNarrative(result.response, {
+        messageKind,
+        from: 'scene-master',
+        fromName: 'Scene Master'
+      })
 
       const targetPlayer = (ctx.session.players || []).find(player => player.email === pendingClarification?.targetPlayerEmail) || null
 
@@ -3269,7 +3277,10 @@ class CustodeEngine {
         connected: player.connected
       })
     }
-    await this.emitNarrative(response)
+    await this.emitNarrative(response, {
+      from: 'scene-master',
+      fromName: 'Scene Master'
+    })
     this.queueArchivistRuntimeUpdate({
       sourceAgent: 'scene-master',
       focusSceneId: pendingRoll?.focusSceneId || null,
