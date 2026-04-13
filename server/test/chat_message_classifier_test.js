@@ -75,6 +75,21 @@ function main() {
   )
 
   assert.strictEqual(
+    classifyChatMessage('@ vedo qualcosa di strano sul podio?', { otherPgNames: names }).tag,
+    'domanda al custode'
+  )
+
+  assert.strictEqual(
+    classifyChatMessage('# mi avvicino al podio e osservo la tavoletta', { otherPgNames: names }).tag,
+    'dichiarazione'
+  )
+
+  assert.strictEqual(
+    classifyChatMessage('// un attimo che torno', { otherPgNames: names }).tag,
+    'fuori ruolo'
+  )
+
+  assert.strictEqual(
     classifyChatMessage('Master ma Durmont che sta facendo in questo momento?', { otherPgNames: names, npcNames: ['Durmont'] }).tag,
     'domanda al custode'
   )
@@ -180,6 +195,15 @@ function main() {
   assert.strictEqual(
     classifyChatMessage('Ok', { otherPgNames: names }).tag,
     null
+  )
+
+  assert.strictEqual(
+    classifyChatMessage('"Posso solo chiederle di farmi vedere l\'amuleto?"', {
+      otherPgNames: names,
+      npcNames: ['Sophia Hapgood'],
+      phase: 'first_person'
+    }).tag,
+    'frase in-character'
   )
 
   console.log('chat_message_classifier_test: ok')

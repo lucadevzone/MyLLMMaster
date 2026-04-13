@@ -1,7 +1,7 @@
 {
   "version": 1,
   "notes": {
-    "strategy": "classificazione a cascata con marker espliciti, segnali linguistici, vocabolario modulo, prior di fase e inerzia storica",
+    "strategy": "esperimento a due livelli: marker espliciti, score linguistico ridotto, inerzia recente del singolo player e fallback per fase",
     "explicitMarkerWins": true,
     "categories": [
       "fuori_ruolo",
@@ -34,6 +34,18 @@
       {
         "pattern": "^\\s*//",
         "kind": "slash_ooc"
+      }
+    ],
+    "domanda_al_custode": [
+      {
+        "pattern": "^\\s*@",
+        "kind": "at_question"
+      }
+    ],
+    "dichiarazione": [
+      {
+        "pattern": "^\\s*#",
+        "kind": "hash_declaration"
       }
     ],
     "frase_in_character": [
@@ -192,12 +204,10 @@
     }
   },
   "phasePriors": {
-    "inizio_sessione": {
-      "fuori_ruolo": 1,
-      "domanda_al_custode": 1
-    },
+    "inizio_sessione": {},
     "scene": {
-      "dichiarazione": 1
+      "dichiarazione": 1,
+      "frase_in_character": 1
     },
     "first_person": {
       "frase_in_character": 1

@@ -354,10 +354,21 @@ async function buildNpcMasterSpatialContext(tableId, {
   return lines.join('\n')
 }
 
-function getRecentClassifications(messages = [], currentMessageId = null, maxItems = 5) {
+function stripLeadingRoutingMarker(text) {
+  const raw = normalizeNarrativeText(text)
+  if (!raw) return ''
+  return raw
+    .replace(/^\s*\/\/\s*/, '')
+    .replace(/^\s*@\s*/, '')
+    .replace(/^\s*#\s*/, '')
+    .trim()
+}
+
+function getRecentClassifications(messages = [], currentMessageId = null, maxItems = 3, playerEmail = null) {
   return (messages || [])
     .filter(message => message && message.id !== currentMessageId)
     .filter(message => message.type === 'normal')
+    .filter(message => !playerEmail || message.from === playerEmail)
     .filter(message => !!message.classificationTag)
     .slice(-maxItems)
     .map(message => ({
@@ -745,6 +756,9 @@ function extractChatFeatures(text, options = {}) {
   }
 
   const normalized = normalizeChatText(raw)
+  const hasAtMarker = /^\s*@\s*/.test(raw)
+  const hasHashMarker = /^\s*#\s*/.test(raw)
+  const hasSlashMarker = /^\s*\/\//.test(raw)
   const rawUnquoted = raw.trim().replace(/^[\"']+|[\"']+$/g, '').trim()
   const normalizedUnquoted = normalizeChatText(rawUnquoted)
   if (!normalized) {
@@ -874,6 +888,9 @@ function extractChatFeatures(text, options = {}) {
   return {
     raw,
     normalized,
+    hasAtMarker,
+    hasHashMarker,
+    hasSlashMarker,
     rawUnquoted,
     normalizedUnquoted,
     isEmpty: false,
@@ -931,6 +948,15 @@ function extractChatFeatures(text, options = {}) {
 function resolveChatMessageTag(features, options = {}) {
   if (features.isEmpty) return { tag: null, confidence: 1 }
 
+  if (features.hasSlashMarker) {
+    return { tag: 'fuori ruolo', confidence: 0.99, marker: 'slash' }
+  }
+  if (features.hasAtMarker) {
+    return { tag: 'domanda al custode', confidence: 0.99, marker: 'at' }
+  }
+  if (features.hasHashMarker) {
+    return { tag: 'dichiarazione', confidence: 0.99, marker: 'hash' }
+  }
   if (features.hasOutsideRoleCue) {
     return { tag: 'fuori ruolo', confidence: 0.95 }
   }
@@ -939,6 +965,9 @@ function resolveChatMessageTag(features, options = {}) {
   }
   if (features.hasNullCue) {
     return { tag: null, confidence: 0.8 }
+  }
+  if (features.hasQuotedSpeech) {
+    return { tag: 'frase in-character', confidence: 0.99, marker: 'quotes' }
   }
   if (features.hasQuestionLikeShape && features.vocativeType === 'custode') {
     return { tag: 'domanda al custode', confidence: 0.95 }
@@ -951,9 +980,6 @@ function resolveChatMessageTag(features, options = {}) {
   }
   if (features.hasQuestionMark && features.hasCustodeCue && !features.hasCharacterVocative) {
     return { tag: 'domanda al custode', confidence: 0.9 }
-  }
-  if (features.hasQuotedSpeech) {
-    return { tag: 'frase in-character', confidence: 0.82 }
   }
   const weights = getRoutingWeights()
   const decision = getRoutingDecisionSettings()
@@ -971,33 +997,33 @@ function resolveChatMessageTag(features, options = {}) {
   if (features.hasCasualReaction) add('fuori_ruolo', weights.medium, 'casual_reaction')
 
   // domanda al custode
-  if (features.hasQuestionMark) add('domanda_al_custode', weights.strong, 'question_mark')
-  if (features.hasQuestionWord) add('domanda_al_custode', weights.strong, 'world_or_rules_interrogative')
-  if (features.hasMechanicsReference) add('domanda_al_custode', weights.strong, 'mechanics_reference')
+  if (features.hasQuestionMark) add('domanda_al_custode', weights.medium, 'question_mark')
+  if (features.hasQuestionWord) add('domanda_al_custode', weights.medium, 'world_or_rules_interrogative')
+  if (features.hasMechanicsReference || features.containsSkillName) add('domanda_al_custode', weights.medium, 'mechanics_reference')
   if (features.hasPastEventReference) add('domanda_al_custode', weights.medium, 'past_event_reference')
   if (features.hasSystemDirectAddress) add('domanda_al_custode', weights.medium, 'system_direct_address')
   if (features.startsWithCustodeVocative) add('domanda_al_custode', weights.strong, 'master_or_custode_vocative')
 
   // dichiarazione
-  if (features.hasDeclarationCue) add('dichiarazione', weights.strong, 'first_person_action_verb')
-  if (features.hasActionIntentPattern) add('dichiarazione', weights.strong, 'action_intent_pattern')
-  if (features.hasConditionalActionIntent) add('dichiarazione', weights.strong, 'conditional_action_intent')
-  if (features.containsSkillActionTerm) add('dichiarazione', weights.medium, 'skill_derived_action_term')
-  if (features.containsSkillName && (features.hasActionIntentPattern || features.hasConditionalActionIntent || features.hasDeclarationCue)) {
-    add('dichiarazione', weights.medium, 'skill_name_with_action_intent')
+  if (features.hasDeclarationCue) add('dichiarazione', weights.medium, 'first_person_action_verb')
+  if (features.hasActionIntentPattern) add('dichiarazione', weights.medium, 'action_intent_pattern')
+  if (features.hasConditionalActionIntent) add('dichiarazione', weights.medium, 'conditional_action_intent')
+  if (features.hasDeclarationCue && !features.hasQuestionLikeShape && !features.hasSpeechVerbPattern) {
+    add('dichiarazione', weights.medium, 'clear_action_statement')
   }
-  if (features.hasMyPgPattern) add('dichiarazione', weights.strong, 'my_pg_plus_action')
+  if (features.containsSkillActionTerm || features.containsSkillName) add('dichiarazione', weights.medium, 'skill_related_action')
+  if (features.hasMyPgPattern) add('dichiarazione', weights.medium, 'my_pg_plus_action')
   if (features.hasInvestigationPattern) add('dichiarazione', weights.medium, 'investigation_pattern')
   if (features.hasMovementPattern) add('dichiarazione', weights.medium, 'movement_pattern')
-  if (features.containsLocationName || features.containsObjectName || features.containsClueName) {
-    add('dichiarazione', weights.medium, 'interaction_with_scene_element')
-  }
 
   // frase in-character
   if (features.hasQuotedDialogue) add('frase_in_character', weights.strong, 'quoted_dialogue')
+  if (features.hasQuestionMark || features.hasQuestionWord) add('frase_in_character', weights.medium, 'interrogative_shape')
   if (features.hasDirectAddressToSceneNpc) add('frase_in_character', weights.strong, 'direct_address_to_scene_npc')
   if (features.hasHonorificVocative) add('frase_in_character', weights.strong, 'honorific_vocative')
-  if (features.hasSpeechVerbPattern) add('frase_in_character', weights.medium, 'speech_verb_pattern')
+  if (features.hasSpeechVerbPattern && !features.hasDeclarationCue && !features.hasActionIntentPattern && !features.hasConditionalActionIntent) {
+    add('frase_in_character', weights.medium, 'speech_verb_pattern')
+  }
   if (features.hasSocialObjectPattern && !features.hasDiscussionCue) add('frase_in_character', weights.medium, 'social_object_pattern')
   if (features.hasInCharacterCue && !features.hasCustodeCue && !features.hasDeclarationCue) {
     add('frase_in_character', weights.medium, 'dialogue_without_quotes')
@@ -1009,36 +1035,6 @@ function resolveChatMessageTag(features, options = {}) {
   if (features.hasSharedStrategyPattern) add('discutendo_tra_pg', weights.strong, 'shared_strategy_pattern')
   if (features.hasDiscussionCue) add('discutendo_tra_pg', weights.medium, 'collective_decision_pattern')
   if (features.hasCollectiveDecisionPattern) add('discutendo_tra_pg', weights.medium, 'collective_decision_pattern')
-
-  // module vocabulary bonus
-  const modulePolicy = orchestratorRoutingPolicy.categories || {}
-  const moduleBuckets = {
-    npcNames: features.moduleMatches.npc,
-    objectNames: features.moduleMatches.object,
-    clueNames: features.moduleMatches.clue,
-    locationNames: features.moduleMatches.location,
-    skillNames: features.moduleMatches.skill,
-    pgNames: features.moduleMatches.pg,
-    playerNames: features.moduleMatches.player
-  }
-  for (const [category, categoryConfig] of Object.entries(modulePolicy)) {
-    const allowed = categoryConfig.moduleVocabulary?.allowed || []
-    const blocked = categoryConfig.moduleVocabulary?.blocked || []
-    const hasAllowed = allowed.some(key => moduleBuckets[key])
-    const hasBlocked = blocked.some(key => moduleBuckets[key])
-    if (hasAllowed && !hasBlocked) add(category, weights.moduleBonus, 'module_vocabulary_bonus')
-  }
-
-  // phase prior
-  const phase = normalizeRoutingPhase(options.phase || options.gamePhase || '')
-  if (phase) {
-    const phaseMap = orchestratorRoutingPolicy.phasePriors?.[phase] || null
-    if (phaseMap) {
-      for (const [category, amount] of Object.entries(phaseMap)) {
-        add(category, Number(amount) || weights.phaseBonus, `phase_prior:${phase}`)
-      }
-    }
-  }
 
   // history inertia
   const recent = historyCategories(options)
@@ -1057,21 +1053,6 @@ function resolveChatMessageTag(features, options = {}) {
     const modal = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0]
     if (modal && counts[modal] >= 2) add(modal, weights.historyBonus, 'history_modal_category')
   }
-  const lastSystemPromptKind = normalizeChatText(options.lastSystemPromptKind || '')
-  if (lastSystemPromptKind === 'question') {
-    if (!features.hasQuestionMark && (features.hasDeclarationCue || features.hasActionIntentPattern || features.hasConditionalActionIntent || features.containsSkillActionTerm)) {
-      add('dichiarazione', weights.historyBonus, 'system_last_message_is_question_answered_with_action')
-    } else {
-      add('domanda_al_custode', weights.historyBonus, 'system_last_message_is_question')
-    }
-  }
-  if (lastSystemPromptKind === 'what_do_you_do') add('dichiarazione', weights.historyBonus, 'system_last_message_asks_what_do_you_do')
-  if (lastSystemPromptKind === 'npc_dialogue') {
-    add('frase_in_character', weights.historyBonus, 'system_last_message_from_npc')
-    if (features.containsNpcName || features.hasSocialObjectPattern || features.hasSpeechVerbPattern) {
-      add('frase_in_character', weights.historyBonus, 'system_last_message_from_npc_with_dialogue_cue')
-    }
-  }
 
   const ranked = Object.entries(scores).sort((a, b) => b[1].score - a[1].score)
   if (!ranked.length) {
@@ -1082,13 +1063,39 @@ function resolveChatMessageTag(features, options = {}) {
   const runnerUpScore = ranked[1]?.[1]?.score || 0
   const margin = winnerData.score - runnerUpScore
 
-  if (margin < decision.minWinningMargin) {
+  if (margin >= decision.minWinningMargin) {
+    const winnerTag = normalizeRoutingCategoryTag(winnerKey)
+    const confidence = Math.min(0.93, 0.55 + (winnerData.score * 0.04) + (margin * 0.03))
+    return { tag: winnerTag, confidence, scores }
+  }
+
+  const phase = normalizeRoutingPhase(options.phase || options.gamePhase || '')
+  if (!phase || phase === 'inizio_sessione') {
     return { tag: null, confidence: 0.45, scores, ambiguous: true }
   }
 
-  const winnerTag = normalizeRoutingCategoryTag(winnerKey)
-  const confidence = Math.min(0.93, 0.55 + (winnerData.score * 0.04) + (margin * 0.03))
-  return { tag: winnerTag, confidence, scores }
+  const phaseMap = orchestratorRoutingPolicy.phasePriors?.[phase] || null
+  const boostedScores = JSON.parse(JSON.stringify(scores))
+  if (phaseMap) {
+    for (const [category, amount] of Object.entries(phaseMap)) {
+      scoreRoutingCategory(boostedScores, category, Number(amount) || weights.phaseBonus, `phase_prior:${phase}`)
+    }
+  }
+
+  const boostedRanked = Object.entries(boostedScores).sort((a, b) => b[1].score - a[1].score)
+  if (!boostedRanked.length) {
+    return { tag: null, confidence: 0.4, scores: boostedScores, ambiguous: true }
+  }
+
+  const [boostedWinnerKey, boostedWinnerData] = boostedRanked[0]
+  const boostedRunnerUpScore = boostedRanked[1]?.[1]?.score || 0
+  if (boostedWinnerData.score === boostedRunnerUpScore) {
+    return { tag: null, confidence: 0.46, scores: boostedScores, ambiguous: true, phaseTie: true, phaseResolved: true }
+  }
+
+  const boostedWinnerTag = normalizeRoutingCategoryTag(boostedWinnerKey)
+  const confidence = Math.min(0.88, 0.5 + (boostedWinnerData.score * 0.03))
+  return { tag: boostedWinnerTag, confidence, scores: boostedScores, phaseResolved: true }
 }
 
 function classifyChatMessage(text, options = {}) {
@@ -1267,28 +1274,29 @@ function extractDeclarationMetadata(text, options = {}) {
 }
 
 function buildOrchestratorRoutingDecision(messageText, options = {}) {
+  const scoringText = stripLeadingRoutingMarker(messageText)
   const features = extractChatFeatures(messageText, options)
   const classified = resolveChatMessageTag(features, options)
   const tag = classified.tag || '?'
-  const mentionedNpcTarget = findMentionedName(messageText, options.npcNames || [])
+  const mentionedNpcTarget = findMentionedName(scoringText, options.npcNames || [])
   const npcTarget = mentionedNpcTarget || options.activeNpcTarget || null
   const implicitNpcHandlerNames = Array.isArray(options.implicitNpcHandlerNames)
     ? options.implicitNpcHandlerNames.map(name => normalizeNarrativeText(name)).filter(Boolean)
     : []
   const questionMetadata = tag === 'domanda al custode'
-    ? extractQuestionMetadata(messageText, {
+    ? extractQuestionMetadata(scoringText, {
       ...options,
       questionNpcNames: options.questionNpcNames || options.npcNames || []
     })
     : null
   const declarationMetadata = tag === 'dichiarazione'
-    ? extractDeclarationMetadata(messageText, {
+    ? extractDeclarationMetadata(scoringText, {
       ...options,
       questionNpcNames: options.questionNpcNames || options.npcNames || []
     })
     : null
   const fallbackDeclarationMetadata = (!declarationMetadata && tag === '?')
-    ? extractDeclarationMetadata(messageText, {
+    ? extractDeclarationMetadata(scoringText, {
       ...options,
       questionNpcNames: options.questionNpcNames || options.npcNames || []
     })
@@ -1388,6 +1396,18 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
   }
   const phase = normalizeRoutingPhase(options.phase || options.gamePhase || '')
   if (tag === '?') {
+    if (classified.phaseTie) {
+      return {
+        tag,
+        agent: 'Scene Master',
+        reason: 'messaggio ambiguo: parita dopo bonus di fase, preferenza allo Scene Master',
+        npcTarget: null,
+        focusSceneId: options.focusSceneId || null,
+        focusSceneLabel: options.focusSceneLabel || null,
+        contextBundle: fallbackDeclarationMetadata?.contextBundle || ['focusScene', 'recentChat', 'pgSummary:actor'],
+        metadata: fallbackDeclarationMetadata
+      }
+    }
     const fallbackByPhase = phase === 'first_person'
       ? (npcTarget
           ? {
@@ -1403,10 +1423,10 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
             })
       : phase === 'inizio_sessione'
         ? {
-            agent: 'Custode',
-            reason: 'messaggio ambiguo: fallback alla fase inizio_sessione',
-            contextBundle: questionMetadata?.fallbackBundle || ['focusScene', 'recentChat'],
-            metadata: questionMetadata
+            agent: null,
+            reason: 'messaggio ambiguo: ignorato in fase inizio_sessione',
+            contextBundle: [],
+            metadata: null
           }
         : {
             agent: 'Scene Master',
@@ -1446,6 +1466,7 @@ function inferConversationPhase(currentPhase, routing, options = {}) {
     .length
 
   if (routing?.tag === 'dichiarazione') return 'scene'
+  if (routing?.agent === 'Scene Master') return 'scene'
   if (routing?.tag === 'frase in-character') return 'first_person'
   if (recentInCharacterCount >= 2) return 'first_person'
   if (current === 'inizio_sessione' && routing?.agent === 'Custode' && routing?.tag === 'domanda al custode') {
@@ -4189,7 +4210,7 @@ class CustodeEngine {
     const clueNames = Array.from(new Set([
       ...(moduleCatalog.clueNames || [])
     ]))
-    const recentClassifications = getRecentClassifications(ctx.messages, message.id)
+    const recentClassifications = getRecentClassifications(ctx.messages, message.id, 3, message.from)
     const lastSystemPromptKind = getLastSystemPromptKind(ctx.messages)
 
     if (this.passiveOrchestratorMode) {

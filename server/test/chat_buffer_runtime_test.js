@@ -158,6 +158,18 @@ async function main() {
   assert.equal(continuingNpcRouting.agent, 'NPC Master')
   assert.equal(continuingNpcRouting.npcTarget, 'Sophia Hapgood')
 
+  const quotedQuestionRouting = buildOrchestratorRoutingDecision('"Posso solo chiederle di farmi vedere l\'amuleto?"', {
+    otherPgNames: ['Emil', 'Luk'],
+    npcNames: ['Sophia Hapgood'],
+    activeNpcTarget: 'Sophia Hapgood',
+    focusSceneId: 'scena_asta_grand_palais',
+    focusSceneLabel: "L'asta al Grand Palais",
+    phase: 'first_person'
+  })
+  assert.equal(quotedQuestionRouting.tag, 'frase in-character')
+  assert.equal(quotedQuestionRouting.agent, 'NPC Master')
+  assert.equal(quotedQuestionRouting.npcTarget, 'Sophia Hapgood')
+
   const genericInCharacterRouting = buildOrchestratorRoutingDecision('"Buongiorno."', {
     otherPgNames: ['Emil', 'Luk'],
     npcNames: ['Sophia Hapgood'],
@@ -179,6 +191,14 @@ async function main() {
   assert.equal(ambiguousNearbyNpcRouting.tag, 'frase in-character')
   assert.equal(ambiguousNearbyNpcRouting.agent, 'Scene Master')
   assert.equal(ambiguousNearbyNpcRouting.reason, 'battuta ambigua: ci sono piu PNG a portata del PG')
+
+  const ambiguousInitialRouting = buildOrchestratorRoutingDecision('Non so', {
+    otherPgNames: ['Emil', 'Luk'],
+    phase: 'inizio_sessione'
+  })
+  assert.equal(ambiguousInitialRouting.tag, '?')
+  assert.equal(ambiguousInitialRouting.agent, null)
+  assert.equal(ambiguousInitialRouting.reason, 'messaggio ambiguo: ignorato in fase inizio_sessione')
 
   await engine.onPlayerMessage({
     from: 'luca@example.com',
