@@ -2918,6 +2918,7 @@ class CustodeEngine {
       npcName: npcTargetName,
       atteggiamento_verso_pg: normalizeNarrativeText(npc?.runtime?.atteggiamento_verso_pg || ''),
       playerName: actorName,
+      pgName: actorName,
       playerUtterance: normalizeNarrativeText(message.text),
       contextText: sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
     }
