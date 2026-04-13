@@ -114,6 +114,16 @@ async function main() {
     playerID: 'emilio@example.com',
     archetype: 'Investigatore'
   })
+  await writeJSON(path.join(tableDir, 'party_knowledge.json'), {
+    entries: [
+      {
+        id: 1,
+        scena: 'scena_asta_grand_palais',
+        timestamp: '1936-07-15T20:30:00.000Z',
+        text: 'Il party sa che l asta e tesa e sorvegliata.'
+      }
+    ]
+  })
 
   await getOrCreateSession(tableId, ['emilio@example.com'])
   const ctx = getSession(tableId)
@@ -132,9 +142,12 @@ async function main() {
     if (promptFile === 'scene_master_v0_dichiarazione.md') {
       llmCalled = true
       assert.equal(vars.playerName, 'Emil')
+      assert.equal(vars.pgName, 'Emil')
       assert.ok(vars.declarationText.includes('Corro fino al podio'))
       assert.ok(vars.contextText.includes('SCENA FOCUS'))
       assert.ok(vars.contextText.includes('PG ATTIVO'))
+      assert.ok(vars.contextText.includes('Conoscenze gia acquisite dai PG'))
+      assert.ok(vars.contextText.includes('Il party sa che l asta e tesa e sorvegliata'))
       assert.ok(vars.contextText.includes('ABILITA DISPONIBILI'))
       assert.ok(vars.contextText.includes('Persuadere'))
       return {

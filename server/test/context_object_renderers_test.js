@@ -64,6 +64,7 @@ function main() {
       descrizione: 'Uomo elegante e austero.',
       occupazione: 'Operativo Ahnenerbe / SS',
       personalita: ['freddo', 'osservatore'],
+      segreto: 'Sta cercando Belloq per conto dell Ahnenerbe.',
       obiettivo_primario: 'Ottenere le informazioni di Belloq',
       conoscenze: {
         rivela_liberamente: [],
@@ -84,6 +85,7 @@ function main() {
   })
   assert.ok(renderedNpc.includes("L'asta al Grand Palais"))
   assert.ok(!renderedNpc.includes('Il suo stato attuale e vivo'))
+  assert.ok(renderedNpc.includes('Il suo segreto rilevante e questo'))
 
   const object = normalizeObjectItem({
     id_oggetto: 'obj_amuleto_nur_ab_sal',

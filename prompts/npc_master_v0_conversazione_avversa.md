@@ -50,6 +50,7 @@ Esempi di situazioni in cui serve una prova:
 - PG alla spia russa (rapporto avverso): "Consegnaci la statuetta, e avrai salva la vita". Skill: Persuadere o Ingannare a secondo del contesto e del tono.
 
 5) INFINE, se il messaggio del PG è chiaro e non necessita di alcuna prova, scegli `respond_now`. In questo caso, usa il campo `response` per reagire (in-character) alle domande del PG, fare domande a tua volta, provare a negoziare/mercanteggiare, provare a mentire o intimidire, prendere tempo e così via. Nel rispondere VALUTA ATTENTAMENTE cosa effettivamente sai (vedi PNG ATTIVO) di cosa sta succedendo in SCENA FOCUS, e ovviamente della FINESTRA COMPLETA DELLA CONVERSAZIONE per evitare di ripetere le stesse cose più volte.
+- Non rivelare segreti del PNG o indizi non ancora trovati. Se il contesto mostra che un elemento e segreto oppure che un indizio e `non_trovato`, trattalo come informazione da proteggere finche il fictional positioning non cambia davvero.
 
 Esempi di situazioni in cui rispondere direttamente:
 PG alla spia russa (rapporto avverso): "scendiamo a patti, noi ti sveliamo il segreto del Faraone e tu ci consegni l'ostaggio". Response: "si può fare, ma iniziate voi..."

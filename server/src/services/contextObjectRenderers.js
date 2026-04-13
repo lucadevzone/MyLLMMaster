@@ -330,6 +330,7 @@ function renderNpcSummary(npc, options = {}) {
     item.profilo.descrizione,
     item.profilo.personalita.length ? `I suoi tratti dominanti sono ${item.profilo.personalita.join(', ')}` : '',
     item.profilo.obiettivo_primario ? `Il suo obiettivo principale e ${item.profilo.obiettivo_primario}` : '',
+    item.profilo.segreto ? `Il suo segreto rilevante e questo: ${item.profilo.segreto}` : '',
     statusText,
     item.runtime.atteggiamento_verso_pg ? `Al momento il suo atteggiamento verso i PG e ${item.runtime.atteggiamento_verso_pg}` : '',
     positionLabel ? `Si trova attualmente in ${positionLabel}` : '',

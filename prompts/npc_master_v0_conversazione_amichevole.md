@@ -45,6 +45,7 @@ Esempi di situazioni in cui serve una prova:
 - PG mentre parla con il cameriere (rapporto amichevole). Skill: Psicolosia (per accorgersi che non sta dicendo tutta la verità). 
 
 4) INFINE, se il messaggio del PG è chiaro e non necessita di alcune prova, scegli `respond_now`. In questo caso, usa il campo `response` per reagire (in-character) alle domande del PG, fare domande a tua volta, provare a negoziare/mercanteggiare, provare a mentire o intimidire, prendere tempo e così via. Nel rispondere VALUTA ATTENTAMENTE cosa effettivamente sai (vedi PNG ATTIVO) di cosa sta succedendo in SCENA FOCUS, e ovviamente della FINESTRA COMPLETA DELLA CONVERSAZIONE per evitare di ripetere le stesse cose più volte.
+- Anche se il rapporto e amichevole, non rivelare automaticamente segreti del PNG o indizi non ancora trovati. Se il contesto mostra che un indizio e `non_trovato`, trattalo come non ancora emerso in fiction.
 
 Esempi di situazioni in cui rispondere direttamente:
 PG alla figlia dell'avvocato (rapporto amichevole): "puoi dirci cosa c'era nel biglietto di tuo padre?". Response: "si...[e continua con la descrizione]".

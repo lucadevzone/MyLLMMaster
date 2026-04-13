@@ -3,6 +3,16 @@ const fs = require('fs').promises
 const os = require('os')
 const path = require('path')
 
+async function waitFor(predicate, { timeoutMs = 1500, intervalMs = 25 } = {}) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = await predicate()
+    if (result) return result
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
+  return null
+}
+
 async function main() {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'myllm-archivist-'))
   process.env.DATA_DIR_OVERRIDE = dataDir
@@ -198,26 +208,46 @@ async function main() {
     text: 'Sophia, puoi dirmi cosa ti turba davvero?'
   })
 
-  const storyLog = await runtimeStore.getStoryLog(tableId)
+  const storyLog = await waitFor(async () => {
+    const current = await runtimeStore.getStoryLog(tableId)
+    return current.entries.length ? current : null
+  })
+  assert.ok(storyLog)
   assert.equal(storyLog.entries.length, 1)
   assert.ok(storyLog.entries[0].text.includes('Sophia ammette'))
 
-  const partyKnowledge = await runtimeStore.getPartyKnowledge(tableId)
+  const partyKnowledge = await waitFor(async () => {
+    const current = await runtimeStore.getPartyKnowledge(tableId)
+    return current.entries.length ? current : null
+  })
+  assert.ok(partyKnowledge)
   assert.equal(partyKnowledge.entries.length, 1)
   assert.ok(partyKnowledge.entries[0].text.includes('ricordo terribile'))
 
-  const npc = await runtimeStore.getNpc(tableId, 'png_sophia_hapgood')
+  const npc = await waitFor(async () => {
+    const current = await runtimeStore.getNpc(tableId, 'png_sophia_hapgood')
+    return current?.runtime?.informazioni_rivelate?.length ? current : null
+  })
+  assert.ok(npc)
   assert.ok(npc.runtime.informazioni_rivelate.includes('La tavoletta le ricorda qualcosa di terribile.'))
   assert.equal(npc.runtime.atteggiamento_verso_pg, 'amichevole: si e aperta con cautela')
 
-  const actorPg = await runtimeStore.getCharacterByName(tableId, 'Emil')
+  const actorPg = await waitFor(async () => {
+    const current = await runtimeStore.getCharacterByName(tableId, 'Emil')
+    return current?.runtime?.handlers?.length ? current : null
+  })
+  assert.ok(actorPg)
   assert.equal(actorPg.stato_corrente, 'Vicino a Sophia, in conversazione riservata.')
   assert.equal(actorPg.runtime.position, 'accanto a Sophia Hapgood, a lato della sala')
   assert.equal(actorPg.runtime.handlers.length, 1)
   assert.equal(actorPg.runtime.handlers[0].type, 'npc')
   assert.equal(actorPg.runtime.handlers[0].name, 'Sophia Hapgood')
 
-  const scene = await runtimeStore.getScene(tableId, 'scena_asta_grand_palais')
+  const scene = await waitFor(async () => {
+    const current = await runtimeStore.getScene(tableId, 'scena_asta_grand_palais')
+    return current?.runtime?.tempo_corrente === '1936-07-15T20:33:00.000Z' ? current : null
+  })
+  assert.ok(scene)
   assert.equal(scene.runtime.tempo_corrente, '1936-07-15T20:33:00.000Z')
 
   const clock = await runtimeStore.getGameClock(tableId)

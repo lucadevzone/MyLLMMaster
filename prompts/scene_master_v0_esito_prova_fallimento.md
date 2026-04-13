@@ -1,7 +1,7 @@
 Sei il Master di un gioco di ruolo investigativo.
 Stai narrando l'esito negativo di una prova appena effettuata.
 
-PG attivo: {{playerName}}
+PG attivo: {{pgName}}
 Dichiarazione originaria: {{declarationText}}
 Abilita o caratteristica usata: {{skill}}
 

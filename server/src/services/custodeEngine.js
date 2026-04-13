@@ -220,6 +220,33 @@ function buildHandlerRoutingMetadata(npcNames = []) {
   }
 }
 
+async function loadCluesHeldByNpc(tableId, npcId, index = null) {
+  const normalizedNpcId = normalizeChatText(npcId)
+  const clueRefs = Array.isArray(index?.entities?.clue) ? index.entities.clue : []
+  if (!normalizedNpcId || !clueRefs.length) return []
+
+  const ownedRefs = clueRefs.filter(ref => normalizeChatText(ref?.references?.owner || ref?.owner) === normalizedNpcId)
+  if (!ownedRefs.length) return []
+
+  const clues = []
+  for (const ref of ownedRefs) {
+    const clue = await runtimeStore.getClue(tableId, ref.id).catch(() => null)
+    if (clue) clues.push(clue)
+  }
+  return clues
+}
+
+async function buildPgActiveContextText(tableId, actorPg) {
+  if (!actorPg) return ''
+  const parts = [renderPgSummary(actorPg)]
+  const partyKnowledge = await runtimeStore.getPartyKnowledge(tableId).catch(() => ({ entries: [] }))
+  const partyKnowledgeText = runtimeStore.renderPartyKnowledgeText(partyKnowledge)
+  if (partyKnowledgeText) {
+    parts.push(`Conoscenze gia acquisite dai PG:\n${partyKnowledgeText}`)
+  }
+  return parts.filter(Boolean).join('\n\n')
+}
+
 function normalizeArchivistHandlers(handlers = [], index = null) {
   if (!Array.isArray(handlers)) return []
   const normalized = []
@@ -2111,7 +2138,7 @@ class CustodeEngine {
 
     const sections = []
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
-    if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    if (actorPg) sections.push(`PG ATTIVO\n${await buildPgActiveContextText(this.tableId, actorPg)}`)
     if (npc) sections.push(`PNG ATTIVO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
     if (recentChat) sections.push(`STORICO CHAT\n${recentChat}`)
 
@@ -2249,6 +2276,12 @@ class CustodeEngine {
     } catch (err) {
       console.warn(`[Archivist] Aggiornamento runtime fallito [${this.tableId}]: ${err.message}`)
     }
+  }
+
+  queueArchivistRuntimeUpdate(payload = {}) {
+    this.runArchivistRuntimeUpdate(payload).catch(err => {
+      console.warn(`[Archivist] Aggiornamento runtime asincrono fallito [${this.tableId}]: ${err.message}`)
+    })
   }
 
   async emitPhaseChange(phase) {
@@ -2594,14 +2627,19 @@ class CustodeEngine {
 
     const sections = []
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
-    if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    if (actorPg) sections.push(`PG ATTIVO\n${await buildPgActiveContextText(this.tableId, actorPg)}`)
     if (recentChat) sections.push(`STORICO CHAT\n${recentChat}`)
     const skillsCatalog = renderSkillsCatalogSummary({ dialogueOnly: true })
     if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
 
     for (const name of mentionedNpcNames) {
       const npc = await loadEntityByName('npc', name)
-      if (npc) sections.push(`NPC CITATO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
+      if (!npc) continue
+      sections.push(`NPC CITATO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
+      const heldClues = await loadCluesHeldByNpc(this.tableId, npc.id_png, index)
+      for (const clue of heldClues) {
+        sections.push(`INDIZIO IN POSSESSO DEL PNG\n${renderClueSummary(clue, { resolveEntityLabel })}`)
+      }
     }
     for (const name of mentionedObjectNames) {
       const object = await loadEntityByName('object', name)
@@ -2621,6 +2659,7 @@ class CustodeEngine {
     return {
       declarationText: normalizeNarrativeText(message.text),
       playerName: actorName,
+      pgName: actorName,
       contextText: sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
     }
   }
@@ -2683,7 +2722,7 @@ class CustodeEngine {
         await this.emitNarrative(result.response, { messageKind })
         const targetPlayer = (ctx.session.players || []).find(player => player.email === message.from) || null
         if (result.decision === 'respond_now' || result.decision === 'no_action') {
-          await this.runArchivistRuntimeUpdate({
+          this.queueArchivistRuntimeUpdate({
             sourceAgent: 'scene-master',
             focusSceneId: routing.focusSceneId || null,
             playerEmail: message.from,
@@ -2765,7 +2804,7 @@ class CustodeEngine {
     const recentChat = recentPlayerMessagesSummary(svc.getSession(this.tableId)?.messages || [])
     const sections = []
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
-    if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    if (actorPg) sections.push(`PG ATTIVO\n${await buildPgActiveContextText(this.tableId, actorPg)}`)
     if (recentChat) sections.push(`STORICO CHAT\n${recentChat}`)
     const skillsCatalog = renderSkillsCatalogSummary({ dialogueOnly: true })
     if (skillsCatalog) sections.push(`ABILITA DISPONIBILI\n${skillsCatalog}`)
@@ -2779,6 +2818,7 @@ class CustodeEngine {
 
     return {
       playerName: pendingClarification?.targetCharacter || message.fromName || message.from,
+      pgName: pendingClarification?.targetCharacter || message.fromName || message.from,
       declarationText,
       contextText: sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
     }
@@ -2830,8 +2870,14 @@ class CustodeEngine {
 
     const sections = []
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
-    if (npc) sections.push(`PNG ATTIVO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
-    if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    if (npc) {
+      sections.push(`PNG ATTIVO\n${renderNpcSummary(npc, { resolveEntityLabel })}`)
+      const heldClues = await loadCluesHeldByNpc(this.tableId, npc.id_png, index)
+      for (const clue of heldClues) {
+        sections.push(`INDIZIO IN POSSESSO DEL PNG\n${renderClueSummary(clue, { resolveEntityLabel })}`)
+      }
+    }
+    if (actorPg) sections.push(`PG ATTIVO\n${await buildPgActiveContextText(this.tableId, actorPg)}`)
     const spatialContext = await buildNpcMasterSpatialContext(this.tableId, {
       scene,
       actorPg,
@@ -2909,7 +2955,7 @@ class CustodeEngine {
       })
       const targetPlayer = (ctx.session.players || []).find(player => player.email === message.from) || null
       if (result.decision === 'respond_now' || result.decision === 'no_action') {
-        await this.runArchivistRuntimeUpdate({
+        this.queueArchivistRuntimeUpdate({
           sourceAgent: 'npc-master',
           focusSceneId: routing.focusSceneId || null,
           playerEmail: message.from,
@@ -3011,7 +3057,7 @@ class CustodeEngine {
         fromName: pendingClarification?.targetNpc || 'PNG'
       })
       if (result.decision === 'respond_now' || result.decision === 'no_action') {
-        await this.runArchivistRuntimeUpdate({
+        this.queueArchivistRuntimeUpdate({
           sourceAgent: 'npc-master',
           focusSceneId: pendingClarification?.focusSceneId || null,
           playerEmail: pendingClarification?.targetPlayerEmail || message.from,
@@ -3178,13 +3224,14 @@ class CustodeEngine {
       : null
     const sections = []
     if (scene) sections.push(`SCENA FOCUS\n${renderSceneSummary(scene, { resolveEntityLabel })}`)
-    if (actorPg) sections.push(`PG ATTIVO\n${renderPgSummary(actorPg)}`)
+    if (actorPg) sections.push(`PG ATTIVO\n${await buildPgActiveContextText(this.tableId, actorPg)}`)
     const contextText = sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
     const outcomePromptFile = rollResult.esito === 'successo'
       ? 'scene_master_v0_esito_prova_successo.md'
       : 'scene_master_v0_esito_prova_fallimento.md'
     const response = await this.llmText(outcomePromptFile, {
       playerName: pendingRoll?.targetCharacter || '',
+      pgName: pendingRoll?.targetCharacter || '',
       declarationText: pendingRoll?.declarationText || '',
       skill: pendingRoll?.skill || '',
       difficulty: pendingRoll?.difficulty || '',
@@ -3201,7 +3248,7 @@ class CustodeEngine {
       })
     }
     await this.emitNarrative(response)
-    await this.runArchivistRuntimeUpdate({
+    this.queueArchivistRuntimeUpdate({
       sourceAgent: 'scene-master',
       focusSceneId: pendingRoll?.focusSceneId || null,
       playerEmail: pendingRoll?.targetPlayerEmail || null,
@@ -3278,7 +3325,7 @@ class CustodeEngine {
       from: 'npc-master',
       fromName: pendingRoll?.targetNpc || 'PNG'
     })
-    await this.runArchivistRuntimeUpdate({
+    this.queueArchivistRuntimeUpdate({
       sourceAgent: 'npc-master',
       focusSceneId: pendingRoll?.focusSceneId || null,
       playerEmail: pendingRoll?.targetPlayerEmail || null,
