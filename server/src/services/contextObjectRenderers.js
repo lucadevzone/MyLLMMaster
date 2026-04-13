@@ -446,6 +446,12 @@ function renderPgSummary(character = {}) {
   const profession = normalizeText(character.profession)
   const description = normalizeText(character.descrizionePersonale)
   const background = normalizeText(character.background)
+  const runtimePosition = normalizeText(character.runtime?.position)
+  const runtimeHandlers = Array.isArray(character.runtime?.handlers)
+    ? character.runtime.handlers
+      .map(handler => normalizeText(handler?.name || handler?.label))
+      .filter(Boolean)
+    : []
   const sanita = character.derivedAttributes?.sanita
   const hp = character.derivedAttributes?.hp
   const appText = describeAppearanceScore(character.characteristics?.APP)
@@ -467,6 +473,8 @@ function renderPgSummary(character = {}) {
     appText,
     creditRatingText,
     background,
+    runtimePosition ? `Al momento si trova ${runtimePosition}` : '',
+    runtimeHandlers.length ? `Ha a portata di interazione: ${runtimeHandlers.join(', ')}` : '',
     describeHpState(hp),
     describeSanityState(sanita),
     notableSkills.length || specialistSkills.length

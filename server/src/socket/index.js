@@ -35,6 +35,11 @@ module.exports = function setupSocket(io) {
     return users.find(u => u.email === email)?.name || email
   }
 
+  function getCharacterName(tableId, email) {
+    const ctx = svc.getSession(tableId)
+    return ctx?.session?.players?.find(player => player.email === email)?.characterName || null
+  }
+
   async function getDiary(tableId) {
     const storyLog = await getStoryLog(tableId)
     return renderStoryLogText(storyLog)
@@ -153,8 +158,8 @@ module.exports = function setupSocket(io) {
       if (!tableId) return
       await svc.clearPlayerTyping(tableId, email)
 
-      const playerName = await getPlayerName(email)
-      const msg = await svc.addMessage(tableId, { type, from: email, fromName: playerName, to, text })
+      const speakerName = getCharacterName(tableId, email) || await getPlayerName(email)
+      const msg = await svc.addMessage(tableId, { type, from: email, fromName: speakerName, to, text })
 
       if (type === 'whisper' && to) {
         // Consegna solo al mittente e al destinatario

@@ -30,6 +30,7 @@ async function main() {
     data_inizio_avventura: '',
     npcs: [
       { name: 'Durmont', scena_id: 'scene_001' },
+      { name: 'Sophia Hapgood', scena_id: 'scene_001' },
       { name: 'Madame Fouchet', scena_id: 'scene_002' }
     ],
     items: []
@@ -166,6 +167,33 @@ async function main() {
   })
   assert.equal(genericInCharacterRouting.tag, 'frase in-character')
   assert.equal(genericInCharacterRouting.agent, 'NPC Master')
+
+  const ambiguousNearbyNpcRouting = buildOrchestratorRoutingDecision('"Buongiorno."', {
+    otherPgNames: ['Emil', 'Luk'],
+    npcNames: ['Sophia Hapgood', 'Marcel Dumont'],
+    implicitNpcHandlerNames: ['Sophia Hapgood', 'Marcel Dumont'],
+    focusSceneId: 'scena_asta_grand_palais',
+    focusSceneLabel: "L'asta al Grand Palais",
+    phase: 'first_person'
+  })
+  assert.equal(ambiguousNearbyNpcRouting.tag, 'frase in-character')
+  assert.equal(ambiguousNearbyNpcRouting.agent, 'Scene Master')
+  assert.equal(ambiguousNearbyNpcRouting.reason, 'battuta ambigua: ci sono piu PNG a portata del PG')
+
+  await engine.onPlayerMessage({
+    from: 'luca@example.com',
+    fromName: 'Luca',
+    text: 'Mi avvicino a Sophia per parlarle a bassa voce.'
+  })
+  assert.equal(ctx.session.conversationTargets['luca@example.com'], 'Sophia Hapgood')
+
+  await engine.onPlayerMessage({
+    from: 'luca@example.com',
+    fromName: 'Luca',
+    text: '"Vorrei sapere di piu di Belloq."'
+  })
+  assert.equal(engine.buffer[engine.buffer.length - 1].tag, 'frase in-character')
+  assert.equal(ctx.session.conversationTargets['luca@example.com'], 'Sophia Hapgood')
 
   clearAllTimers(tableId)
   destroy(tableId)

@@ -4,7 +4,7 @@ const os = require('os')
 const path = require('path')
 
 async function main() {
-  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'myllm-archivist-'))
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'myllm-archivist-handlers-'))
   process.env.DATA_DIR_OVERRIDE = dataDir
 
   const { ensureDir, writeJSON } = require('../src/utils/fileStore')
@@ -16,18 +16,14 @@ async function main() {
   const notesDir = path.join(dataDir, 'modules', '21a79df1da33', 'notes')
   await ensureDir(notesDir)
   await writeJSON(path.join(dataDir, 'users.json'), [
-    { email: 'emilio@example.com', name: 'Emilio' }
+    { email: 'luca@example.com', name: 'Luca' }
   ])
 
   await writeJSON(path.join(notesDir, 'scena_asta_grand_palais.json'), {
     id_scena: 'scena_asta_grand_palais',
     titolo: "L'asta al Grand Palais",
     preparazione: {
-      location: {
-        nome: 'Sala delle Antichità, Grand Palais',
-        descrizione_atmosfera: 'Asta privata elegante e tesa.',
-        dettagli_sensoriali: ['brusio sommesso']
-      },
+      location: { nome: 'Sala delle Antichita, Grand Palais', descrizione_atmosfera: 'Asta privata elegante e tesa.', dettagli_sensoriali: ['brusio sommesso'] },
       connessioni: [],
       png_presenti: ['png_sophia_hapgood'],
       indizi_disponibili: [],
@@ -35,15 +31,7 @@ async function main() {
       trigger: [],
       condizioni_uscita: { naturale: '', forzata: '', fallimento: '' }
     },
-    runtime: {
-      stato: 'in_corso',
-      tempo_inizio: '1936-07-15T20:00:00.000Z',
-      tempo_corrente: '1936-07-15T20:30:00.000Z',
-      eventi_accaduti: [],
-      trigger_attivati: [],
-      indizi_trovati: [],
-      note_scene_master: null
-    }
+    runtime: { stato: 'in_corso', tempo_inizio: null, tempo_corrente: null, eventi_accaduti: [], trigger_attivati: [], indizi_trovati: [], note_scene_master: null }
   })
 
   await writeJSON(path.join(notesDir, 'png_sophia_hapgood.json'), {
@@ -82,7 +70,7 @@ async function main() {
         type: 'scene',
         id: 'scena_asta_grand_palais',
         name: "L'asta al Grand Palais",
-        locationName: 'Sala delle Antichità, Grand Palais',
+        locationName: 'Sala delle Antichita, Grand Palais',
         file: 'scena_asta_grand_palais.json',
         references: { npcs: ['png_sophia_hapgood'], clues: [], connections: [] },
         appearsWith: { npcs: ['png_sophia_hapgood'], clues: [], connections: [] }
@@ -96,14 +84,18 @@ async function main() {
       png_sophia_hapgood: { type: 'npc', id: 'png_sophia_hapgood', name: 'Sophia Hapgood', file: 'png_sophia_hapgood.json' }
     },
     byName: {
-      npc: { 'sophia hapgood': { type: 'npc', id: 'png_sophia_hapgood', name: 'Sophia Hapgood', file: 'png_sophia_hapgood.json' } },
-      scene: { "l'asta al grand palais": { type: 'scene', id: 'scena_asta_grand_palais', name: "L'asta al Grand Palais", file: 'scena_asta_grand_palais.json' } },
+      npc: {
+        'sophia hapgood': { type: 'npc', id: 'png_sophia_hapgood', name: 'Sophia Hapgood', file: 'png_sophia_hapgood.json' }
+      },
+      scene: {
+        "l'asta al grand palais": { type: 'scene', id: 'scena_asta_grand_palais', name: "L'asta al Grand Palais", file: 'scena_asta_grand_palais.json' }
+      },
       object: {},
       clue: {}
     }
   })
 
-  const tableId = 'test_archivist_runtime_update'
+  const tableId = 'test_archivist_handlers_routing'
   const tableDir = path.join(dataDir, 'tables', tableId)
   await ensureDir(path.join(tableDir, 'characters'))
   await ensureDir(path.join(tableDir, 'pngs'))
@@ -111,20 +103,24 @@ async function main() {
   await writeJSON(path.join(tableDir, 'table.json'), { id: tableId, players: [], moduleId: 'mod_21a79df1da33' })
   await writeJSON(path.join(tableDir, 'groups.json'), {
     turno_corrente: null,
-    gruppi_attivi: [{ groupId: 'group01', sceneId: 'scena_asta_grand_palais', participants: ['Emil'] }]
+    gruppi_attivi: [{ groupId: 'group01', sceneId: 'scena_asta_grand_palais', participants: ['Luk'] }]
   })
+  await writeJSON(path.join(tableDir, 'story_log.json'), { entries: [] })
+  await writeJSON(path.join(tableDir, 'party_knowledge.json'), { entries: [] })
   await writeJSON(path.join(tableDir, 'game_clock.json'), {
     currentChapter: 1,
     data_inizio_avventura: '1936-07-15',
     giorno_avventura: 1,
     ora_gioco: '20:30'
   })
-  await writeJSON(path.join(tableDir, 'story_log.json'), { entries: [] })
-  await writeJSON(path.join(tableDir, 'party_knowledge.json'), { entries: [] })
-  await writeJSON(path.join(tableDir, 'characters', 'emil.json'), {
-    name: 'Emil',
-    playerID: 'emilio@example.com',
-    profession: 'Investigatore'
+  await writeJSON(path.join(tableDir, 'characters', 'luk.json'), {
+    name: 'Luk',
+    playerID: 'luca@example.com',
+    profession: 'Investigatore',
+    runtime: {
+      handlers: [{ type: 'npc', id: 'png_sophia_hapgood', name: 'Sophia Hapgood' }],
+      position: 'accanto a Sophia Hapgood'
+    }
   })
   await writeJSON(path.join(tableDir, 'pngs', 'png_sophia_hapgood.json'), {
     id_png: 'png_sophia_hapgood',
@@ -137,96 +133,73 @@ async function main() {
   })
   await writeJSON(path.join(tableDir, 'scenes', 'scena_asta_grand_palais.json'), {
     id_scena: 'scena_asta_grand_palais',
-    runtime: {
-      stato: 'in_corso',
-      tempo_inizio: '1936-07-15T20:00:00.000Z',
-      tempo_corrente: '1936-07-15T20:30:00.000Z',
-      eventi_accaduti: [],
-      trigger_attivati: [],
-      indizi_trovati: [],
-      note_scene_master: null
-    }
+    runtime: { stato: 'in_corso', tempo_inizio: null, tempo_corrente: null, eventi_accaduti: [], trigger_attivati: [], indizi_trovati: [], note_scene_master: null }
   })
 
-  await getOrCreateSession(tableId, ['emilio@example.com'])
+  await getOrCreateSession(tableId, ['luca@example.com'])
   const ctx = getSession(tableId)
   ctx.session.custodePhase = 'orchestrator-passive'
   ctx.session.phase = 'first_person'
   ctx.session.state = 'sessione-iniziata'
-  ctx.session.players = [{ email: 'emilio@example.com', characterName: 'Emil', playerState: 'gioco-libero', connected: true }]
+  ctx.session.players = [{ email: 'luca@example.com', characterName: 'Luk', playerState: 'gioco-libero', connected: true }]
+  ctx.session.conversationTargets = {}
 
   const io = { to: () => ({ emit: () => {} }), sockets: { sockets: new Map() } }
   const engine = getOrCreate(tableId, io)
   await engine.startPassiveOrchestrator()
-
-  engine.llm = async (promptFile) => {
-    if (promptFile === 'npc_master_v0_conversazione_neutrale.md') {
-      return {
-        decision: 'respond_now',
-        response: 'Sophia abbassa lo sguardo e ammette che la tavoletta le ricorda qualcosa di terribile.',
-        Skill: '',
-        Difficulty: ''
-      }
-    }
-    if (promptFile === 'archivist_v0_runtime_update.md') {
-      return {
-        storyLog: ['Sophia ammette davanti a Emil che la tavoletta le ricorda qualcosa di terribile.'],
-        partyKnowledge: ['Sophia collega apertamente la tavoletta a un ricordo terribile.'],
-        pgUpdates: [{
-          playerName: 'Emil',
-          stato: 'Vicino a Sophia, in conversazione riservata.',
-          position: 'accanto a Sophia Hapgood, a lato della sala',
-          handlers: [{ type: 'npc', name: 'Sophia Hapgood' }]
-        }],
-        npcUpdates: [{
-          npcName: 'Sophia Hapgood',
-          addInformazioniRivelate: ['La tavoletta le ricorda qualcosa di terribile.'],
-          atteggiamento_verso_pg: 'amichevole: si e aperta con cautela',
-          note_npc_master: 'Dopo questo scambio si mostra piu propensa a confidarsi.'
-        }],
-        elapsedMinutes: 3
-      }
-    }
-    throw new Error(`Prompt inatteso: ${promptFile}`)
-  }
+  let sceneMasterCalls = 0
+  let npcMasterCalls = 0
+  engine.answerCustodeQuestion = async () => {}
+  engine.answerNpcMasterInteraction = async () => { npcMasterCalls += 1 }
+  engine.answerSceneMasterDeclaration = async () => { sceneMasterCalls += 1 }
 
   await engine.onPlayerMessage({
     id: 'msg-1',
     type: 'normal',
-    from: 'emilio@example.com',
-    fromName: 'Emilio',
-    text: 'Sophia, puoi dirmi cosa ti turba davvero?'
+    from: 'luca@example.com',
+    fromName: 'Luca',
+    text: '"Buongiorno."'
   })
 
-  const storyLog = await runtimeStore.getStoryLog(tableId)
-  assert.equal(storyLog.entries.length, 1)
-  assert.ok(storyLog.entries[0].text.includes('Sophia ammette'))
+  assert.equal(ctx.session.conversationTargets['luca@example.com'], 'Sophia Hapgood')
+  assert.equal(engine.buffer[0].tag, 'frase in-character')
+  assert.equal(npcMasterCalls, 1)
+  assert.equal(sceneMasterCalls, 0)
 
-  const partyKnowledge = await runtimeStore.getPartyKnowledge(tableId)
-  assert.equal(partyKnowledge.entries.length, 1)
-  assert.ok(partyKnowledge.entries[0].text.includes('ricordo terribile'))
+  const actor = await runtimeStore.getCharacterByName(tableId, 'Luk')
+  assert.equal(actor.runtime.handlers[0].name, 'Sophia Hapgood')
 
-  const npc = await runtimeStore.getNpc(tableId, 'png_sophia_hapgood')
-  assert.ok(npc.runtime.informazioni_rivelate.includes('La tavoletta le ricorda qualcosa di terribile.'))
-  assert.equal(npc.runtime.atteggiamento_verso_pg, 'amichevole: si e aperta con cautela')
+  await writeJSON(path.join(tableDir, 'characters', 'luk.json'), {
+    ...actor,
+    runtime: {
+      ...(actor.runtime || {}),
+      handlers: [
+        { type: 'npc', id: 'png_sophia_hapgood', name: 'Sophia Hapgood' },
+        { type: 'npc', id: 'png_marcel_dumont', name: 'Marcel Dumont' }
+      ]
+    }
+  })
+  ctx.session.conversationTargets = {}
+  ctx.messages = []
+  engine.buffer = []
 
-  const actorPg = await runtimeStore.getCharacterByName(tableId, 'Emil')
-  assert.equal(actorPg.stato_corrente, 'Vicino a Sophia, in conversazione riservata.')
-  assert.equal(actorPg.runtime.position, 'accanto a Sophia Hapgood, a lato della sala')
-  assert.equal(actorPg.runtime.handlers.length, 1)
-  assert.equal(actorPg.runtime.handlers[0].type, 'npc')
-  assert.equal(actorPg.runtime.handlers[0].name, 'Sophia Hapgood')
+  await engine.onPlayerMessage({
+    id: 'msg-2',
+    type: 'normal',
+    from: 'luca@example.com',
+    fromName: 'Luca',
+    text: '"Buongiorno."'
+  })
 
-  const scene = await runtimeStore.getScene(tableId, 'scena_asta_grand_palais')
-  assert.equal(scene.runtime.tempo_corrente, '1936-07-15T20:33:00.000Z')
-
-  const clock = await runtimeStore.getGameClock(tableId)
-  assert.equal(clock.ora_gioco, '20:33')
+  assert.equal(ctx.session.conversationTargets['luca@example.com'], undefined)
+  assert.equal(engine.buffer[0].tag, 'frase in-character')
+  assert.equal(sceneMasterCalls, 1)
+  assert.equal(npcMasterCalls, 1)
 
   clearAllTimers(tableId)
   destroy(tableId)
   destroySession(tableId)
-  console.log('archivist_runtime_update_test: ok')
+  console.log('archivist_handlers_routing_test: ok')
 }
 
 main().catch(err => {

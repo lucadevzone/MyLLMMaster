@@ -59,6 +59,16 @@ const playerStatusStyle = computed(() => {
   return { bg: style.bg, text }
 })
 
+function displayNameByEmail(email) {
+  const sessionPlayer = sess.session?.players?.find(player => player.email === email)
+  return sessionPlayer?.characterName || playerNames.value[email] || email
+}
+
+function messageAuthorLabel(msg) {
+  if (msg.from === 'custode') return 'Custode'
+  return msg.fromName || displayNameByEmail(msg.from)
+}
+
 function dynamicStateText(state) {
   if (state === 'mio-turno-prova') {
     const skill = sess.session?.pendingRoll?.skill
@@ -70,7 +80,7 @@ function dynamicStateText(state) {
     const active = sess.session?.players?.find(p =>
       p.playerState === 'mio-turno-libero' || p.playerState === 'mio-turno-prova'
     )
-    return active ? `Turno di ${playerNames.value[active.email] || active.email}` : 'Attendi il tuo turno'
+    return active ? `Turno di ${displayNameByEmail(active.email)}` : 'Attendi il tuo turno'
   }
   return ''
 }
@@ -294,7 +304,7 @@ function weaponSummary(weapon) {
             :style="{ '--bubble-color': bubbleColor(msg.from) }">
             <div class="bubble-header">
               <span class="bubble-author">
-                {{ msg.from === 'custode' ? 'Custode' : (playerNames[msg.from] || msg.from) }}
+                {{ messageAuthorLabel(msg) }}
               </span>
               <span v-if="msgBadge(msg)" :class="['badge', msgBadge(msg).css]" style="font-size:0.65rem">
                 {{ msgBadge(msg).text }}
@@ -328,7 +338,7 @@ function weaponSummary(weapon) {
             `// testo` per fuori ruolo, `"testo"` per parlare in-character.
           </div>
           <div v-if="whisperTarget" class="whisper-indicator">
-            Sussurro a: <strong>{{ playerNames[whisperTarget] || whisperTarget }}</strong>
+            Sussurro a: <strong>{{ displayNameByEmail(whisperTarget) }}</strong>
             <button @click="whisperTarget = null" style="margin-left:0.5rem;cursor:pointer;border:none;background:none;font-size:0.8rem">✕</button>
           </div>
           <textarea
@@ -453,7 +463,7 @@ function weaponSummary(weapon) {
                   width:'8px', height:'8px', borderRadius:'50%', display:'inline-block',
                   background: p.connected ? '#4ade80' : '#fca5a5'
                 }" />
-                <span>{{ playerNames[p.email] || p.email }}</span>
+                <span>{{ displayNameByEmail(p.email) }}</span>
                 <span v-if="p.voteTardi" title="Ha votato È tardi" style="font-size:0.7rem">🕐</span>
               </div>
             </div>

@@ -112,7 +112,7 @@ async function callOllama(model, prompt, expectJson = true, phase = '?', schema 
       }
 
       // Estrai JSON dalla risposta (il modello potrebbe aggiungere testo intorno)
-      const parsed = extractJSON(raw)
+      const parsed = normalizeSchemaResponse(phase, extractJSON(raw))
       if (parsed !== null) {
         const schemaError = validateSchemaResponse(schema, parsed, phase)
         if (schemaError) {
@@ -164,6 +164,28 @@ function extractJSON(text) {
   }
   if (end === -1) return null
   try { return JSON.parse(text.slice(start, end + 1)) } catch { return null }
+}
+
+function normalizeSchemaResponse(phase, data) {
+  if (!data || phase !== 'archivist_v0_runtime_update.md') return data
+  if (!Array.isArray(data.storyLog)) data.storyLog = []
+  if (!Array.isArray(data.partyKnowledge)) data.partyKnowledge = []
+  if (!Array.isArray(data.pgUpdates)) data.pgUpdates = []
+  if (!Array.isArray(data.npcUpdates)) data.npcUpdates = []
+  if (typeof data.elapsedMinutes !== 'number') data.elapsedMinutes = Number(data.elapsedMinutes) || 0
+
+  data.npcUpdates = data.npcUpdates.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item
+    if (item.atteggiamento_verso_pg == null && item.atteggiameno_verso_pg != null) {
+      return {
+        ...item,
+        atteggiamento_verso_pg: item.atteggiameno_verso_pg
+      }
+    }
+    return item
+  })
+
+  return data
 }
 
 function validateSchemaResponse(schema, data, phase) {
@@ -319,7 +341,7 @@ async function callOllamaWithTools(model, prompt, toolDefinitions, toolHandlers,
 
         // Risposta finale — estrai JSON
         const raw = (msg?.content || '').trim()
-        const parsed = extractJSON(raw)
+        const parsed = normalizeSchemaResponse(phase, extractJSON(raw))
         const logPrompt = messages
           .map(m => `[${m.role}]\n${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
           .join('\n\n---\n\n')
@@ -373,6 +395,7 @@ module.exports = {
   loadPrompt,
   loadPromptSchema,
   callOllama,
+  normalizeSchemaResponse,
   tableLogsDir,
   LLM_NUM_CTX,
   getDefaultLlmModel

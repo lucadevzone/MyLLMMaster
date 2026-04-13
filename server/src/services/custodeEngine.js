@@ -203,6 +203,55 @@ function getNpcConversationPromptFile(npc = null) {
   return 'npc_master_v0_conversazione_neutrale.md'
 }
 
+function extractSingleNpcConversationTarget(routing = {}) {
+  if (routing?.agent === 'NPC Master' && routing?.npcTarget) return routing.npcTarget
+  const mentionedNpcs = routing?.metadata?.entities?.npcs || []
+  return mentionedNpcs.length === 1 ? mentionedNpcs[0] : null
+}
+
+function buildHandlerRoutingMetadata(npcNames = []) {
+  const normalized = (npcNames || []).map(name => normalizeNarrativeText(name)).filter(Boolean)
+  return {
+    entities: {
+      npcs: normalized
+    },
+    primaryEntity: normalized[0] ? { type: 'npc', value: normalized[0] } : null,
+    secondaryEntities: normalized.slice(1, 3).map(value => ({ type: 'npc', value }))
+  }
+}
+
+function normalizeArchivistHandlers(handlers = [], index = null) {
+  if (!Array.isArray(handlers)) return []
+  const normalized = []
+  const seen = new Set()
+
+  for (const handler of handlers) {
+    const rawType = normalizeChatText(handler?.type || '')
+    const rawName = normalizeNarrativeText(handler?.name || handler?.label || '')
+    if (!rawType || !rawName || !['npc', 'object', 'clue'].includes(rawType)) continue
+
+    let ref = index ? lookupEntityRefByName(index, rawType, rawName) : null
+    if (!ref && index) {
+      for (const fallbackType of ['npc', 'object', 'clue']) {
+        ref = lookupEntityRefByName(index, fallbackType, rawName)
+        if (ref) break
+      }
+    }
+
+    const canonical = {
+      type: ref?.type || rawType,
+      id: ref?.id || null,
+      name: ref?.name || rawName
+    }
+    const key = `${canonical.type}:${normalizeChatText(canonical.id || canonical.name)}`
+    if (!canonical.name || seen.has(key)) continue
+    seen.add(key)
+    normalized.push(canonical)
+  }
+
+  return normalized
+}
+
 function buildClockDate(clock = {}) {
   const day = normalizeNarrativeText(clock.data_inizio_avventura)
   const time = normalizeNarrativeText(clock.ora_gioco)
@@ -1194,7 +1243,11 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
   const features = extractChatFeatures(messageText, options)
   const classified = resolveChatMessageTag(features, options)
   const tag = classified.tag || '?'
-  const npcTarget = findMentionedName(messageText, options.npcNames || []) || options.activeNpcTarget || null
+  const mentionedNpcTarget = findMentionedName(messageText, options.npcNames || [])
+  const npcTarget = mentionedNpcTarget || options.activeNpcTarget || null
+  const implicitNpcHandlerNames = Array.isArray(options.implicitNpcHandlerNames)
+    ? options.implicitNpcHandlerNames.map(name => normalizeNarrativeText(name)).filter(Boolean)
+    : []
   const questionMetadata = tag === 'domanda al custode'
     ? extractQuestionMetadata(messageText, {
       ...options,
@@ -1254,6 +1307,18 @@ function buildOrchestratorRoutingDecision(messageText, options = {}) {
       focusSceneLabel: options.focusSceneLabel || null,
       contextBundle: ['focusScene', 'npcSummary:primary', 'recentChat'],
       metadata: null
+    }
+  }
+  if (tag === 'frase in-character' && !npcTarget && implicitNpcHandlerNames.length > 1) {
+    return {
+      tag,
+      agent: 'Scene Master',
+      reason: 'battuta ambigua: ci sono piu PNG a portata del PG',
+      npcTarget: null,
+      focusSceneId: options.focusSceneId || null,
+      focusSceneLabel: options.focusSceneLabel || null,
+      contextBundle: ['focusScene', 'recentChat', 'pgSummary:actor', 'npcSummary:primary', 'npcSummary:secondary'],
+      metadata: buildHandlerRoutingMetadata(implicitNpcHandlerNames)
     }
   }
   if (tag === 'frase in-character') {
@@ -2060,9 +2125,37 @@ class CustodeEngine {
     }
   }
 
+  async getImplicitNpcTargetForPlayer(playerId) {
+    const actorPg = playerId
+      ? await runtimeStore.getCharacterByPlayerId(this.tableId, playerId)
+      : null
+    const npcHandlers = Array.isArray(actorPg?.runtime?.handlers)
+      ? actorPg.runtime.handlers
+        .filter(handler => normalizeChatText(handler?.type || '') === 'npc')
+        .map(handler => normalizeNarrativeText(handler?.name || ''))
+        .filter(Boolean)
+      : []
+    return npcHandlers.length === 1 ? npcHandlers[0] : null
+  }
+
+  async getImplicitNpcHandlersForPlayer(playerId) {
+    const actorPg = playerId
+      ? await runtimeStore.getCharacterByPlayerId(this.tableId, playerId)
+      : null
+    return Array.isArray(actorPg?.runtime?.handlers)
+      ? actorPg.runtime.handlers
+        .filter(handler => normalizeChatText(handler?.type || '') === 'npc')
+        .map(handler => normalizeNarrativeText(handler?.name || ''))
+        .filter(Boolean)
+      : []
+  }
+
   async applyArchivistRuntimeUpdate(update = {}, payload = {}) {
     const focusSceneId = payload.focusSceneId || null
     const sessionNumber = svc.getSession(this.tableId)?.session?.sessionNumber || null
+    const table = await getTableOrNull(this.tableId)
+    const notesResources = getModuleNotesResources(table?.moduleId)
+    const index = notesResources?.index || null
 
     for (const entry of (update.storyLog || [])) {
       await runtimeStore.appendStoryLogEntry(this.tableId, {
@@ -2098,6 +2191,26 @@ class CustodeEngine {
         }
       }
       await saveWorldState(this.tableId, worldState)
+    }
+
+    if (Array.isArray(update.pgUpdates) && update.pgUpdates.length) {
+      for (const pgUpdate of update.pgUpdates) {
+        const targetName = normalizeNarrativeText(pgUpdate?.playerName || pgUpdate?.name || pgUpdate?.pg || '')
+        if (!targetName) continue
+        const target = await runtimeStore.getCharacterByName(this.tableId, targetName)
+        if (!target?.name) continue
+        const next = { ...target }
+        if (!next.runtime || typeof next.runtime !== 'object' || Array.isArray(next.runtime)) next.runtime = {}
+        if (pgUpdate.stato != null) next.stato_corrente = normalizeNarrativeText(pgUpdate.stato)
+        if (pgUpdate.position != null) next.runtime.position = normalizeNarrativeText(pgUpdate.position)
+        if (Array.isArray(pgUpdate.handlers)) {
+          next.runtime.handlers = normalizeArchivistHandlers(pgUpdate.handlers, index)
+        }
+        await writeJSON(
+          path.join(runtimeStore.charactersDir(this.tableId), `${runtimeStore.sanitizeFileStem(next.name)}.json`),
+          next
+        )
+      }
     }
 
     const elapsedMinutes = Math.max(0, Number(update.elapsedMinutes) || 0)
@@ -2458,7 +2571,13 @@ class CustodeEngine {
       : null
 
     const moduleCatalog = getModuleQuestionCatalog(table?.moduleId) || {}
-    const mentionedNpcNames = findMentionedNames(message.text, moduleCatalog.npcNames || []).slice(0, 2)
+    const metadataNpcNames = Array.isArray(routing?.metadata?.entities?.npcs)
+      ? routing.metadata.entities.npcs.slice(0, 2)
+      : []
+    const mentionedNpcNames = Array.from(new Set([
+      ...findMentionedNames(message.text, moduleCatalog.npcNames || []).slice(0, 2),
+      ...metadataNpcNames
+    ])).slice(0, 2)
     const mentionedObjectNames = findMentionedNames(message.text, moduleCatalog.objectNames || []).slice(0, 2)
     const mentionedClueNames = findMentionedNames(message.text, moduleCatalog.clueNames || []).slice(0, 2)
     const mentionedLocationNames = findMentionedNames(message.text, moduleCatalog.locationNames || []).slice(0, 1)
@@ -2751,6 +2870,7 @@ class CustodeEngine {
 
     return {
       npcName: npcTargetName,
+      atteggiamento_verso_pg: normalizeNarrativeText(npc?.runtime?.atteggiamento_verso_pg || ''),
       playerName: actorName,
       playerUtterance: normalizeNarrativeText(message.text),
       contextText: sections.join('\n\n') || 'Nessun contesto strutturato disponibile.'
@@ -4041,6 +4161,11 @@ class CustodeEngine {
         return
       }
 
+      const implicitNpcHandlers = await this.getImplicitNpcHandlersForPlayer(message.from)
+      const implicitNpcTarget = ctx?.session?.conversationTargets?.[message.from]
+        || await this.getImplicitNpcTargetForPlayer(message.from)
+        || null
+
       const routing = buildOrchestratorRoutingDecision(message.text, {
         otherPgNames,
         otherPlayerNames,
@@ -4049,7 +4174,8 @@ class CustodeEngine {
         locationNames,
         objectNames,
         clueNames,
-        activeNpcTarget: ctx?.session?.conversationTargets?.[message.from] || null,
+        activeNpcTarget: implicitNpcTarget,
+        implicitNpcHandlerNames: implicitNpcHandlers,
         phase: ctx?.session?.phase || 'inizio_sessione',
         recentClassifications,
         lastSystemPromptKind,
@@ -4071,9 +4197,10 @@ class CustodeEngine {
         ctx.session.conversationTargets = {}
         conversationTargetsChanged = true
       }
-      if (routing.agent === 'NPC Master' && routing.npcTarget) {
-        if (ctx.session.conversationTargets[message.from] !== routing.npcTarget) {
-          ctx.session.conversationTargets[message.from] = routing.npcTarget
+      const nextConversationTarget = extractSingleNpcConversationTarget(routing)
+      if (nextConversationTarget) {
+        if (ctx.session.conversationTargets[message.from] !== nextConversationTarget) {
+          ctx.session.conversationTargets[message.from] = nextConversationTarget
           conversationTargetsChanged = true
         }
       } else if (routing.tag === 'dichiarazione' || routing.agent === 'Scene Master') {
@@ -4103,7 +4230,7 @@ class CustodeEngine {
         } catch (err) {
           console.error(`[Custode] Risposta diretta fallita [${this.tableId}]: ${err.message}`)
         }
-      } else if (routing.agent === 'Scene Master' && routing.tag === 'dichiarazione') {
+      } else if (routing.agent === 'Scene Master') {
         try {
           await this.answerSceneMasterDeclaration(message, routing)
         } catch (err) {

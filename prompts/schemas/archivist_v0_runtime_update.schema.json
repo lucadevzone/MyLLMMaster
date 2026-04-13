@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "required": ["storyLog", "partyKnowledge", "npcUpdates", "elapsedMinutes"],
+  "required": ["storyLog", "partyKnowledge", "pgUpdates", "npcUpdates", "elapsedMinutes"],
   "additionalProperties": false,
   "properties": {
     "storyLog": {
@@ -10,6 +10,34 @@
     "partyKnowledge": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "pgUpdates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["playerName", "handlers"],
+        "additionalProperties": false,
+        "properties": {
+          "playerName": { "type": "string" },
+          "stato": { "type": "string" },
+          "position": { "type": "string" },
+          "handlers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "name"],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["npc", "object", "clue"]
+                },
+                "name": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
     },
     "npcUpdates": {
       "type": "array",

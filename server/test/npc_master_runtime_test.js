@@ -183,6 +183,7 @@ async function main() {
     if (promptFile === 'npc_master_v0_conversazione_neutrale.md') {
       llmCalled = true
       assert.equal(vars.npcName, 'Sophia Hapgood')
+      assert.equal(vars.atteggiamento_verso_pg, 'neutrale: guardinga ma disponibile')
       assert.equal(vars.playerName, 'Emil')
       assert.ok(vars.contextText.includes('PNG ATTIVO'))
       assert.ok(vars.contextText.includes('POSIZIONI IN SCENA'))

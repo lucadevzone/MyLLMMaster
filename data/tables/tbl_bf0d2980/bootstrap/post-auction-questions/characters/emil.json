@@ -1,0 +1,93 @@
+{
+  "name": "Emil",
+  "eta": 35,
+  "profession": "Investigatore Privato",
+  "descrizionePersonale": "Impermeabile, sguardo misterioso",
+  "background": "",
+  "Fortuna": 50,
+  "characteristics": {
+    "FOR": 80,
+    "COS": 60,
+    "DES": 40,
+    "TAG": 60,
+    "INT": 70,
+    "POT": 50,
+    "APP": 50,
+    "EDU": 60
+  },
+  "derivedAttributes": {
+    "hp": {
+      "max": 12,
+      "current": 12
+    },
+    "mp": {
+      "max": 10,
+      "current": 10
+    },
+    "sanita": {
+      "max": 99,
+      "current": 50,
+      "startingValue": 50
+    },
+    "bonusDanno": "+1d4",
+    "build": 1,
+    "movimento": 8
+  },
+  "abilita": {
+    "comuni": {
+      "schivare": 20,
+      "rissa": 25,
+      "ascoltare": 20,
+      "charme": 15,
+      "intimidire": 15,
+      "persuadere": 10,
+      "raggirare": 5,
+      "osservare": 25,
+      "psicologia": 10,
+      "credito": 10
+    },
+    "specialistiche": [
+      {
+        "nome": "Arte/Artigianato (Fotografia)",
+        "valore": 40
+      },
+      {
+        "nome": "Travestimento",
+        "valore": 40
+      },
+      {
+        "nome": "Legge",
+        "valore": 40
+      },
+      {
+        "nome": "Biblioteca",
+        "valore": 40
+      },
+      {
+        "nome": "Interpersonale (a scelta)",
+        "valore": 40
+      },
+      {
+        "nome": "Psicologia",
+        "valore": 40
+      },
+      {
+        "nome": "Individuare Nascosti",
+        "valore": 40
+      },
+      {
+        "nome": "Abilità a scelta",
+        "valore": 40
+      }
+    ]
+  },
+  "armiECombattimento": [],
+  "equipaggiamento": [],
+  "playerID": "lsabatucci+emilio@gmail.com",
+  "id": "adfc5b5a-e4af-4cab-97ca-53cd70bcf0ef",
+  "stato_corrente": "In sala, ma lontano da tutti gli interlocutori e dai punti di interesse immediati.",
+  "runtime": {
+    "position": "in sala, ma lontano da tutti",
+    "handlers": []
+  }
+}
