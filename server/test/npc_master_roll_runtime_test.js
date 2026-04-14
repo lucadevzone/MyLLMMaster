@@ -76,7 +76,7 @@ async function main() {
   await engine.startPassiveOrchestrator()
 
   engine.llm = async (promptFile) => {
-    assert.equal(promptFile, 'npc_master_v0_conversazione_neutrale.md')
+    assert.equal(promptFile, 'npc_master_v1_conversazione_neutrale.md')
     return {
       decision: 'ask_for_roll',
       response: 'Sophia ti guarda incerta. Per smuoverla davvero serve una prova di Persuadere.',

@@ -198,9 +198,16 @@ function classifyNpcRelationship(value = '') {
 
 function getNpcConversationPromptFile(npc = null) {
   const relationship = classifyNpcRelationship(npc?.runtime?.atteggiamento_verso_pg || '')
-  if (relationship === 'amichevole') return 'npc_master_v0_conversazione_amichevole.md'
-  if (relationship === 'avverso') return 'npc_master_v0_conversazione_avversa.md'
-  return 'npc_master_v0_conversazione_neutrale.md'
+  if (relationship === 'amichevole') return 'npc_master_v1_conversazione_amichevole.md'
+  if (relationship === 'avverso') return 'npc_master_v1_conversazione_avversa.md'
+  return 'npc_master_v1_conversazione_neutrale.md'
+}
+
+function normalizeRollDifficulty(value = '') {
+  const normalized = normalizeNarrativeText(value).toLowerCase()
+  if (!normalized) return ''
+  if (normalized === 'ardua' || normalized === 'arduo') return 'estrema'
+  return normalized
 }
 
 function extractSingleNpcConversationTarget(routing = {}) {
@@ -2292,7 +2299,31 @@ class CustodeEngine {
   async runArchivistRuntimeUpdate(payload = {}) {
     try {
       const handoff = await this.buildArchivistRuntimeContext(payload)
-      const result = await this.llm('archivist_v0_runtime_update.md', handoff)
+      const prototypeLlm = Object.getPrototypeOf(this)?.llm
+      const usesCustomLlm = typeof this.llm === 'function' && this.llm !== prototypeLlm
+
+      const result = usesCustomLlm
+        ? await this.llm('archivist_v0_runtime_update.md', handoff)
+        : await (async () => {
+            const table = await getTableOrNull(this.tableId)
+            if (!table) throw new Error(`Tavolo ${this.tableId} non trovato`)
+            const model = ollama.getDefaultLlmModel()
+            if (!model) {
+              console.warn(`[Archivist] Modello LLM non configurato [${this.tableId}]`)
+              return null
+            }
+            const ragResolver = buildRagResolver(table.moduleId, this.tableId)
+            return ollama.runPhase(
+              model,
+              'archivist_v0_runtime_update.md',
+              handoff,
+              { num_ctx: ollama.LLM_NUM_CTX },
+              this.tableId,
+              ragResolver
+            )
+          })()
+
+      if (!result) return
       await this.applyArchivistRuntimeUpdate(result, payload)
     } catch (err) {
       console.warn(`[Archivist] Aggiornamento runtime fallito [${this.tableId}]: ${err.message}`)
@@ -2727,7 +2758,7 @@ class CustodeEngine {
       const result = await this.llm('scene_master_v0_dichiarazione.md', handoff)
       if (result?.response) {
         result.Skill = normalizeNarrativeText(result.Skill)
-        result.Difficulty = normalizeNarrativeText(result.Difficulty)
+        result.Difficulty = normalizeRollDifficulty(result.Difficulty)
         await this.waitForFocusSilence('scene-master-response')
         await svc.setAllPlayersState(this.tableId, 'turno-custode')
         for (const player of (ctx.session.players || [])) {
@@ -2961,7 +2992,7 @@ class CustodeEngine {
       const result = await this.llm(getNpcConversationPromptFile(npc), handoff)
       if (!result?.response) return
       result.Skill = normalizeNarrativeText(result.Skill)
-      result.Difficulty = normalizeNarrativeText(result.Difficulty)
+      result.Difficulty = normalizeRollDifficulty(result.Difficulty)
       await this.waitForFocusSilence('npc-master-response')
       await svc.setAllPlayersState(this.tableId, 'turno-custode')
       for (const player of (ctx.session.players || [])) {
@@ -3067,7 +3098,7 @@ class CustodeEngine {
       const result = await this.llm(getNpcConversationPromptFile(npc), handoff)
       if (!result?.response) return
       result.Skill = normalizeNarrativeText(result.Skill)
-      result.Difficulty = normalizeNarrativeText(result.Difficulty)
+      result.Difficulty = normalizeRollDifficulty(result.Difficulty)
       await this.waitForFocusSilence('npc-master-clarification-response')
       await svc.setAllPlayersState(this.tableId, 'turno-custode')
       for (const player of (ctx.session.players || [])) {
@@ -3158,7 +3189,7 @@ class CustodeEngine {
       const result = await this.llm('scene_master_v0_dichiarazione.md', handoff)
       if (!result?.response) return
       result.Skill = normalizeNarrativeText(result.Skill)
-      result.Difficulty = normalizeNarrativeText(result.Difficulty)
+      result.Difficulty = normalizeRollDifficulty(result.Difficulty)
       await this.waitForFocusSilence('scene-master-clarification-response')
       await svc.setAllPlayersState(this.tableId, 'turno-custode')
       for (const player of (ctx.session.players || [])) {
@@ -3210,6 +3241,17 @@ class CustodeEngine {
         this.emitSessionUpdate()
         await this.setPlayerTurn(targetPlayer.email, 'mio-turno-libero')
         return
+      }
+
+      if (result.decision === 'respond_now' || result.decision === 'no_action') {
+        this.queueArchivistRuntimeUpdate({
+          sourceAgent: 'scene-master',
+          focusSceneId: pendingClarification?.focusSceneId || null,
+          playerEmail: pendingClarification?.targetPlayerEmail || message.from,
+          playerName: pendingClarification?.targetCharacter || message.fromName || message.from,
+          declarationText: normalizeNarrativeText(pendingClarification?.originalDeclarationText || message.text),
+          narrativeText: normalizeNarrativeText(result.response)
+        })
       }
 
       ctx.session.pendingClarification = null

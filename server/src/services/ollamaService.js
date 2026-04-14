@@ -90,7 +90,7 @@ async function callOllama(model, prompt, expectJson = true, phase = '?', schema 
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
       const body = { model, prompt, stream: false }
-      if (expectJson) body.format = 'json'
+      if (expectJson) body.format = schema || 'json'
       if (Object.keys(ollamaOptions).length > 0) body.options = ollamaOptions
 
       const res = await fetch(`${OLLAMA_URL}/api/generate`, {
@@ -173,6 +173,25 @@ function normalizeSchemaResponse(phase, data) {
   if (!Array.isArray(data.pgUpdates)) data.pgUpdates = []
   if (!Array.isArray(data.npcUpdates)) data.npcUpdates = []
   if (typeof data.elapsedMinutes !== 'number') data.elapsedMinutes = Number(data.elapsedMinutes) || 0
+
+  data.pgUpdates = data.pgUpdates.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item
+    if (item.stato == null) {
+      if (item.status != null) {
+        return {
+          ...item,
+          stato: item.status
+        }
+      }
+      if (item.state != null) {
+        return {
+          ...item,
+          stato: item.state
+        }
+      }
+    }
+    return item
+  })
 
   data.npcUpdates = data.npcUpdates.map(item => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item

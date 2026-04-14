@@ -180,7 +180,7 @@ async function main() {
 
   let llmCalled = false
   engine.llm = async (promptFile, vars) => {
-    if (promptFile === 'npc_master_v0_conversazione_neutrale.md') {
+    if (promptFile === 'npc_master_v1_conversazione_neutrale.md') {
       llmCalled = true
       assert.equal(vars.npcName, 'Sophia Hapgood')
       assert.equal(vars.atteggiamento_verso_pg, 'neutrale: guardinga ma disponibile')

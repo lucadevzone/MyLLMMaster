@@ -77,24 +77,35 @@ async function main() {
 
   let calls = 0
   engine.llm = async (promptFile, vars) => {
-    assert.equal(promptFile, 'npc_master_v0_conversazione_neutrale.md')
-    calls += 1
-    if (calls === 1) {
+    if (promptFile === 'npc_master_v1_conversazione_neutrale.md') {
+      calls += 1
+      if (calls === 1) {
+        return {
+          decision: 'ask_clarification',
+          response: 'Sophia inclina la testa. "Aprirmi in che senso, Emil?"',
+          Skill: '',
+          Difficulty: ''
+        }
+      }
+      assert.ok(vars.playerUtterance.includes('Battuta originaria del PG'))
+      assert.ok(vars.playerUtterance.includes('Chiarimento del PG'))
       return {
-        decision: 'ask_clarification',
-        response: 'Sophia inclina la testa. "Aprirmi in che senso, Emil?"',
+        decision: 'respond_now',
+        response: 'Sophia stringe le labbra, poi sussurra: "Temo che quella tavoletta sia legata a qualcosa che non dovrebbe svegliarsi."',
         Skill: '',
         Difficulty: ''
       }
     }
-    assert.ok(vars.playerUtterance.includes('Battuta originaria del PG'))
-    assert.ok(vars.playerUtterance.includes('Chiarimento del PG'))
-    return {
-      decision: 'respond_now',
-      response: 'Sophia stringe le labbra, poi sussurra: "Temo che quella tavoletta sia legata a qualcosa che non dovrebbe svegliarsi."',
-      Skill: '',
-      Difficulty: ''
+    if (promptFile === 'archivist_v0_runtime_update.md') {
+      return {
+        storyLog: [],
+        partyKnowledge: [],
+        pgUpdates: [],
+        npcUpdates: [],
+        elapsedMinutes: 0
+      }
     }
+    throw new Error(`Prompt inatteso: ${promptFile}`)
   }
 
   await engine.onPlayerMessage({

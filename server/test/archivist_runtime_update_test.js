@@ -170,7 +170,7 @@ async function main() {
   await engine.startPassiveOrchestrator()
 
   engine.llm = async (promptFile) => {
-    if (promptFile === 'npc_master_v0_conversazione_neutrale.md') {
+    if (promptFile === 'npc_master_v1_conversazione_neutrale.md') {
       return {
         decision: 'respond_now',
         response: 'Sophia abbassa lo sguardo e ammette che la tavoletta le ricorda qualcosa di terribile.',

@@ -3,6 +3,16 @@ const fs = require('fs').promises
 const os = require('os')
 const path = require('path')
 
+async function waitFor(predicate, { timeoutMs = 1500, intervalMs = 25 } = {}) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = await predicate()
+    if (result) return result
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
+  return null
+}
+
 async function main() {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'myllm-scene-clarify-'))
   process.env.DATA_DIR_OVERRIDE = dataDir
@@ -122,6 +132,7 @@ async function main() {
   await engine.startPassiveOrchestrator()
 
   let declarationCalls = 0
+  let archivistCalls = 0
   engine.llm = async (promptFile, vars) => {
     if (promptFile === 'scene_master_v0_dichiarazione.md') {
       declarationCalls += 1
@@ -145,6 +156,9 @@ async function main() {
       }
     }
     if (promptFile === 'archivist_v0_runtime_update.md') {
+      archivistCalls += 1
+      assert.ok(vars.declarationText.toLowerCase().includes('provo a convincerla'))
+      assert.ok(vars.narrativeText.includes('Sophia ti ascolta'))
       return {
         storyLog: [],
         partyKnowledge: [],
@@ -183,6 +197,8 @@ async function main() {
   assert.equal(custodeMessages[1].from, 'scene-master')
   assert.equal(custodeMessages[1].fromName, 'Scene Master')
   assert.ok(custodeMessages[1].text.includes('Sophia'))
+  await waitFor(() => archivistCalls === 1)
+  assert.equal(archivistCalls, 1)
   assert.equal(ctx.session.pendingClarification, null)
   assert.equal(ctx.session.players[0].playerState, 'gioco-libero')
 
