@@ -16,6 +16,7 @@ const myChar = ref(null)
 const playerNames = ref({})     // email → name
 const activeTab = ref('stats')  // stats | diary | session
 const messageInput = ref('')
+const messageInputEl = ref(null)
 const myNotes = ref('')
 const chatEl = ref(null)
 const whisperTarget = ref(null)
@@ -24,6 +25,39 @@ const TYPING_DEBOUNCE_MS = 1500
 let timerInterval = null
 let typingStopTimeout = null
 const isTyping = ref(false)
+const showFormatHelp = ref(false)
+
+const CHAT_FORMATS = [
+  {
+    key: 'ooc',
+    label: 'Fuori ruolo',
+    syntax: '// [testo]',
+    description: 'Discutere tra PG o parlare fuori fiction.',
+    prefix: '// '
+  },
+  {
+    key: 'custode',
+    label: 'Domanda al Custode',
+    syntax: '@ [testo]',
+    description: 'Chiedere chiarimenti sul mondo o sulla scena.',
+    prefix: '@ '
+  },
+  {
+    key: 'declaration',
+    label: 'Dichiarazione',
+    syntax: '# [testo]',
+    description: 'Far avanzare la scena con un’azione dichiarata.',
+    prefix: '# '
+  },
+  {
+    key: 'ic',
+    label: 'In-character',
+    syntax: '"[testo]"',
+    description: 'Parlare direttamente in fiction.',
+    prefix: '"',
+    suffix: '"'
+  }
+]
 
 // ── Stato sessione: label e colori ────────────────────────────────────────────
 const SESSION_LABELS = {
@@ -159,6 +193,41 @@ function sendMessage() {
     sess.sendMessage(text, 'normal')
   }
   messageInput.value = ''
+}
+
+function stripAllFormats(text) {
+  const trimmed = text.trim()
+  for (const fmt of CHAT_FORMATS) {
+    if (fmt.suffix) {
+      if (trimmed.startsWith(fmt.prefix) && trimmed.endsWith(fmt.suffix)) {
+        return trimmed.slice(fmt.prefix.length, trimmed.length - fmt.suffix.length)
+      }
+    } else {
+      if (trimmed.startsWith(fmt.prefix)) {
+        return trimmed.slice(fmt.prefix.length)
+      }
+    }
+  }
+  return trimmed
+}
+
+async function applyMessageFormat(format) {
+  if (!canType.value) return
+  const stripped = stripAllFormats(messageInput.value || '')
+
+  if (!stripped) {
+    messageInput.value = format.prefix + (format.suffix || '')
+    await nextTick()
+    const el = messageInputEl.value
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(format.prefix.length, format.prefix.length)
+    return
+  }
+
+  messageInput.value = format.prefix + stripped + (format.suffix || '')
+  await nextTick()
+  messageInputEl.value?.focus()
 }
 
 function onKeydown(e) {
@@ -334,14 +403,42 @@ function weaponSummary(weapon) {
 
         <!-- Input area -->
         <div class="input-area">
-          <div class="chat-hint">
-            `// testo` per fuori ruolo, `"testo"` per parlare in-character.
+          <div v-if="showFormatHelp" class="chat-format-panel">
+            <div class="chat-format-title">Come scrivere in chat</div>
+            <div class="chat-format-grid">
+              <div v-for="format in CHAT_FORMATS" :key="format.key" class="chat-format-card">
+                <div class="chat-format-head">
+                  <span class="chat-format-label">{{ format.label }}</span>
+                  <code class="chat-format-syntax">{{ format.syntax }}</code>
+                </div>
+                <div class="chat-format-desc">{{ format.description }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="format-toolbar">
+            <button
+              v-for="format in CHAT_FORMATS"
+              :key="`btn-${format.key}`"
+              type="button"
+              class="format-pill"
+              :disabled="!canType"
+              @click="applyMessageFormat(format)"
+            >
+              {{ format.label }}
+            </button>
+            <button
+              type="button"
+              class="format-pill format-pill--help"
+              :title="showFormatHelp ? 'Nascondi guida' : 'Mostra guida'"
+              @click="showFormatHelp = !showFormatHelp"
+            >?</button>
           </div>
           <div v-if="whisperTarget" class="whisper-indicator">
             Sussurro a: <strong>{{ displayNameByEmail(whisperTarget) }}</strong>
             <button @click="whisperTarget = null" style="margin-left:0.5rem;cursor:pointer;border:none;background:none;font-size:0.8rem">✕</button>
           </div>
           <textarea
+            ref="messageInputEl"
             v-model="messageInput"
             class="chat-input"
             :disabled="!canType"
@@ -601,6 +698,105 @@ function weaponSummary(weapon) {
   margin-bottom: 0.45rem;
 }
 
+.chat-format-panel {
+  margin-bottom: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) + 2px);
+  background:
+    linear-gradient(135deg, rgba(96, 165, 250, 0.08), rgba(16, 185, 129, 0.04)),
+    var(--color-bg);
+}
+
+.chat-format-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chat-format-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.chat-format-card {
+  padding: 0.55rem 0.6rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.chat-format-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.chat-format-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.chat-format-syntax {
+  font-size: 0.72rem;
+  padding: 0.12rem 0.38rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+
+.chat-format-desc {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--color-text-light);
+}
+
+.format-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+  align-items: center;
+}
+
+.format-pill--help {
+  margin-left: auto;
+  min-width: 1.8rem;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.format-pill {
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: rgba(59, 130, 246, 0.08);
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.format-pill:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.35);
+  transform: translateY(-1px);
+}
+
+.format-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .whisper-indicator {
   font-size: 0.8rem;
   color: #6b7280;
@@ -627,6 +823,12 @@ function weaponSummary(weapon) {
 .chat-input:disabled { background: var(--color-bg); opacity: 0.6; }
 
 .input-buttons { display: flex; gap: 0.5rem; }
+
+@media (max-width: 900px) {
+  .chat-format-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Destra */
 .session-right {
